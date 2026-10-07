@@ -1,0 +1,6 @@
+{
+  "name": "DocSecure — Plataforma de Controle e Gestão Segura de Documentos",
+  "description": "Plataforma corporativa de alta segurança para controle e gestão de documentos, RBAC granular, gestão de setores, dispositivos confiáveis, auditoria imutável e autenticação 2FA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
