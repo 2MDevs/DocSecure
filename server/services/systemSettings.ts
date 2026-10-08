@@ -189,6 +189,7 @@ export async function getAllSettingsSummary(): Promise<{
   envOnly: { key: string; isSet: boolean }[];
   encryptionKeyConfigured: boolean;
   adminStatus: { exists: boolean; createdAt?: string; email?: string };
+  initialSetupMode: boolean;
 }> {
   const settings: SettingItem[] = [];
 
@@ -245,12 +246,75 @@ export async function getAllSettingsSummary(): Promise<{
     }
   } catch {}
 
+  const isSetupActive = await isInitialSetupModeActive();
+
   return {
     settings,
     envOnly,
     encryptionKeyConfigured: isEncryptionKeyConfigured(),
     adminStatus,
+    initialSetupMode: isSetupActive,
   };
+}
+
+/**
+ * Verifica se o sistema está em modo de configuração inicial.
+ * Regras:
+ * 1. A chave SETUP_COMPLETED em system_settings não existe ou é diferente de 'true'; E
+ * 2. O SMTP não está configurado (sem SMTP_HOST, SMTP_USER e SMTP_PASS efetivos).
+ */
+export async function isInitialSetupModeActive(): Promise<boolean> {
+  try {
+    // 1. Checar se SETUP_COMPLETED já foi gravado no banco como 'true'
+    const { rows } = await pool.query(
+      "SELECT value FROM system_settings WHERE key = 'SETUP_COMPLETED' LIMIT 1"
+    );
+    if (rows.length > 0 && rows[0].value === 'true') {
+      return false;
+    }
+
+    // 2. Checar se SMTP está efetivamente configurado (HOST, USER e PASS)
+    const host = (await getEffectiveSetting('SMTP_HOST')).value;
+    const user = (await getEffectiveSetting('SMTP_USER')).value;
+    const pass = (await getEffectiveSetting('SMTP_PASS')).value;
+
+    const isSmtpConfigured = Boolean(
+      host && host.trim().length > 0 &&
+      user && user.trim().length > 0 &&
+      pass && pass.trim().length > 0
+    );
+
+    if (isSmtpConfigured) {
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.warn('[Initial Setup Check Error]', err);
+    return false;
+  }
+}
+
+/**
+ * Marca SETUP_COMPLETED='true' em system_settings.
+ * Invocado EXCLUSIVAMENTE pelo sistema após teste de e-mail bem-sucedido.
+ */
+export async function markSetupCompleted(userEmail: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO system_settings (key, value, is_secret, updated_at, updated_by)
+     VALUES ('SETUP_COMPLETED', 'true', false, NOW(), $1)
+     ON CONFLICT (key) DO UPDATE SET
+       value = 'true',
+       updated_at = NOW(),
+       updated_by = EXCLUDED.updated_by`,
+    [userEmail]
+  );
+  memorySettingsCache.set('SETUP_COMPLETED', {
+    value: 'true',
+    isSecret: false,
+    updatedAt: new Date(),
+    updatedBy: userEmail,
+  });
 }
 
 /**
@@ -261,6 +325,11 @@ export async function saveSetting(
   rawVal: string | null,
   userEmail: string
 ): Promise<{ key: string; isSecret: boolean }> {
+  // SETUP_COMPLETED não pode ser alterado por nenhuma rota da API nem pela tela
+  if (key === 'SETUP_COMPLETED') {
+    throw new Error('A chave SETUP_COMPLETED não pode ser alterada manualmente.');
+  }
+
   const meta = DEFAULT_SETTINGS[key] || { defaultValue: '', isSecret: false };
 
   // Se valor for nulo ou vazio, remove do banco (voltando para .env ou padrão)

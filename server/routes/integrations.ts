@@ -8,6 +8,7 @@ import {
   getAllSettingsSummary,
   saveSetting,
   getEffectiveSetting,
+  markSetupCompleted,
   SettingsUpdateSchema,
   DEFAULT_SETTINGS,
 } from '../services/systemSettings';
@@ -174,10 +175,65 @@ integrationsRouter.post('/settings', async (req: Request, res: Response) => {
       console.warn('[Audit Log Insert Warning]', e);
     }
 
+    // Regra 5: Ao salvar o SMTP, envie automaticamente um e-mail de teste.
+    // Se o envio funcionar, grave SETUP_COMPLETED='true' em system_settings.
+    const smtpKeys = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'];
+    const smtpWasUpdated = alteredKeys.some((k) => smtpKeys.includes(k)) || alteredSecrets.some((k) => smtpKeys.includes(k));
+
+    let smtpAutoTestResult: { success: boolean; message: string } | null = null;
+    let setupCompletedNow = false;
+
+    if (smtpWasUpdated) {
+      console.log(`[SMTP AUTO-TEST] Parâmetros SMTP atualizados. Disparando e-mail de teste automático para ${user.email}...`);
+      try {
+        const testRes = await sendTestEmail(user.email, user.name);
+        smtpAutoTestResult = testRes;
+
+        if (testRes.success) {
+          await markSetupCompleted(user.email);
+          setupCompletedNow = true;
+          console.log(`[SETUP COMPLETED] Configuração inicial concluída com sucesso por ${user.email}.`);
+
+          // Auditoria de conclusão de configuração inicial
+          const setupLogId = 'audit-' + crypto.randomBytes(8).toString('hex');
+          const setupLogHash = crypto.createHash('sha256').update(setupLogId + user.id + Date.now()).digest('hex');
+          await pool.query(
+            `INSERT INTO audit_logs (
+              id, timestamp, user_id, user_name, role, department, action,
+              resource_id, resource_name, details, ip_address, device_info, result, hash
+            ) VALUES ($1, NOW(), $2, $3, $4, $5, 'INITIAL_SETUP_COMPLETED', 'system_settings', 'Configuração Inicial Concluída', $6, $7, 'Painel Web', 'SUCCESS', $8)`,
+            [
+              setupLogId,
+              user.id,
+              user.name,
+              user.role,
+              user.departmentName || 'Infraestrutura',
+              `Configuração inicial concluída. E-mail de teste SMTP entregue com sucesso para ${user.email}. 2FA ativado para todos os usuários.`,
+              ip,
+              setupLogHash,
+            ]
+          );
+        }
+      } catch (testErr: any) {
+        smtpAutoTestResult = { success: false, message: testErr.message || 'Falha ao executar teste automático de e-mail.' };
+      }
+    }
+
+    let responseMessage = 'Configurações atualizadas e aplicadas em tempo real com sucesso.';
+    if (smtpAutoTestResult) {
+      if (smtpAutoTestResult.success) {
+        responseMessage = `Configurações salvas e e-mail de teste enviado com sucesso para ${user.email}! Configuração inicial concluída (2FA ativado para o sistema).`;
+      } else {
+        responseMessage = `Configurações salvas. Porém o teste automático do servidor SMTP falhou: ${smtpAutoTestResult.message}. O modo de configuração inicial permanecerá ativo até um envio bem-sucedido.`;
+      }
+    }
+
     const updatedSummary = await getAllSettingsSummary();
     return res.json({
       success: true,
-      message: 'Configurações atualizadas e aplicadas em tempo real com sucesso.',
+      message: responseMessage,
+      smtpTest: smtpAutoTestResult,
+      setupCompleted: setupCompletedNow,
       summary: updatedSummary,
     });
   } catch (err: any) {
@@ -193,6 +249,11 @@ integrationsRouter.post('/test-smtp', async (req: Request, res: Response) => {
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1';
 
     const result = await sendTestEmail(user.email, user.name);
+
+    if (result.success) {
+      // Se teste manual funcionar, também garante gravação do SETUP_COMPLETED
+      await markSetupCompleted(user.email);
+    }
 
     // Auditoria
     try {
@@ -221,7 +282,7 @@ integrationsRouter.post('/test-smtp', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: result.message });
     }
 
-    return res.json({ success: true, message: result.message });
+    return res.json({ success: true, message: result.message, setupCompleted: true });
   } catch (err: any) {
     console.error('[INTEGRATIONS SMTP TEST ERROR]', err);
     return res.status(500).json({

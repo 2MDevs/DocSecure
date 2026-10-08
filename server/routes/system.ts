@@ -4,6 +4,7 @@ import fs from 'fs';
 import { pool, getDbStatus } from '../db';
 import { requireAuth, requireRole, sanitizeUser } from '../auth/middleware';
 import { getDepartmentsWithRealStorage } from './departments';
+import { isInitialSetupModeActive } from '../services/systemSettings';
 
 export const systemRouter = Router();
 
@@ -283,6 +284,7 @@ systemRouter.get('/bootstrap', requireAuth, async (req: Request, res: Response) 
     }
 
     const dbStatus = await getDbStatus();
+    const initialSetupMode = await isInitialSetupModeActive();
 
     return res.json({
       currentUser: user,
@@ -295,6 +297,7 @@ systemRouter.get('/bootstrap', requireAuth, async (req: Request, res: Response) 
       apiKeys,
       webhooks,
       dbStatus,
+      initialSetupMode,
     });
   } catch (err: any) {
     console.error('[BOOTSTRAP ERROR] Falha ao carregar dados do banco:', err.message);

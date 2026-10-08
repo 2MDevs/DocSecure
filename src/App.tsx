@@ -90,6 +90,7 @@ export default function App() {
 
   const [isLoadingInitialData, setIsLoadingInitialData] = useState<boolean>(true);
   const [apiSyncError, setApiSyncError] = useState<string | null>(null);
+  const [initialSetupMode, setInitialSetupMode] = useState<boolean>(false);
 
   // Active View & Navigation
   const [activeTab, setActiveTab] = useState<NavigationTab>('dev_dashboard');
@@ -132,6 +133,7 @@ export default function App() {
         if (Array.isArray(data.apiKeys)) setApiKeys(data.apiKeys);
         if (Array.isArray(data.webhooks)) setWebhooks(data.webhooks);
         if (data.dbStatus) setDbStatus(data.dbStatus);
+        if (data.initialSetupMode !== undefined) setInitialSetupMode(Boolean(data.initialSetupMode));
       }
       setApiSyncError(null);
     } catch (err: any) {
@@ -178,12 +180,16 @@ export default function App() {
   };
 
   // Complete Login
-  const completeLogin = (user: User) => {
+  const completeLogin = (user: User, isSetupMode?: boolean) => {
     setCurrentUser(user);
     setPendingUser2FA(null);
 
+    if (isSetupMode !== undefined) {
+      setInitialSetupMode(Boolean(isSetupMode));
+    }
+
     if (user.role === 'DEVELOPER') {
-      setActiveTab('dev_dashboard');
+      setActiveTab(isSetupMode ? 'integrations' : 'dev_dashboard');
     } else {
       setActiveTab('my_documents');
     }
@@ -909,6 +915,28 @@ export default function App() {
 
       {/* Main Workspace Area */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
+        {/* Banner Fixo: Modo de Configuração Inicial (Rule 4) */}
+        {initialSetupMode && currentUser.role === 'DEVELOPER' && (
+          <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-md border-b border-amber-600 sticky top-0 z-50 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-2.5 w-2.5 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-950 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-950"></span>
+              </span>
+              <span>
+                Configuração inicial pendente: configure o e-mail em Integração para ativar a verificação em duas etapas
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('integrations')}
+              className="ml-4 px-3 py-1 bg-slate-950 hover:bg-slate-850 text-amber-300 hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-sm"
+            >
+              Configurar Integração
+            </button>
+          </div>
+        )}
+
         {/* Desktop Header with Live Database Indicator */}
         <DesktopHeader
           currentUser={currentUser}
@@ -1060,7 +1088,12 @@ export default function App() {
 
           {activeTab === 'settings' && <SecuritySettings currentUser={currentUser} />}
 
-          {activeTab === 'integrations' && <IntegrationsView currentUser={currentUser} />}
+          {activeTab === 'integrations' && (
+            <IntegrationsView
+              currentUser={currentUser}
+              onSetupCompleted={() => setInitialSetupMode(false)}
+            />
+          )}
 
           {['shared', 'favorites', 'trash'].includes(activeTab) && (
             <DocumentsExplorer

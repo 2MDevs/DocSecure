@@ -20,6 +20,7 @@ export interface BootstrapData {
   auditLogs: AuditLog[];
   apiKeys: ApiKey[];
   webhooks: WebhookConfig[];
+  initialSetupMode?: boolean;
   dbStatus: {
     connected: boolean;
     databaseName: string;
@@ -54,6 +55,7 @@ export interface LoginResponse {
   require2FA?: boolean;
   challengeToken?: string;
   maskedEmail?: string;
+  initialSetupMode?: boolean;
 }
 
 export const apiClient = {
@@ -414,6 +416,7 @@ export const apiClient = {
     envOnly: Array<{ key: string; isSet: boolean }>;
     encryptionKeyConfigured: boolean;
     adminStatus: { exists: boolean; createdAt?: string; email?: string };
+    initialSetupMode?: boolean;
   }> {
     const res = await fetch('/api/integrations/settings', {
       credentials: 'include',

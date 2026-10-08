@@ -20,7 +20,7 @@ import { User as UserType } from '../../types';
 import { apiClient } from '../../services/apiClient';
 
 interface LoginViewProps {
-  onLoginSuccess: (user: UserType) => void;
+  onLoginSuccess: (user: UserType, initialSetupMode?: boolean) => void;
   availableUsers?: UserType[];
   onTriggerLockoutNotice?: () => void;
   onRequestDeviceApproval?: (user: UserType) => void;
@@ -78,8 +78,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         setStep('2FA');
         setResendCooldown(60);
       } else if (res.user) {
-        // Dispositivo confiável -> Acesso liberado
-        onLoginSuccess(res.user);
+        // Dispositivo confiável ou modo de configuração inicial -> Acesso liberado
+        onLoginSuccess(res.user, res.initialSetupMode);
       } else {
         setErrorMessage('Usuário ou senha inválidos');
       }

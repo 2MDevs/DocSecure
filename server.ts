@@ -27,6 +27,9 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const isProduction = process.env.NODE_ENV === 'production';
 
+// Habilita suporte a proxies reversos (Nginx/Cloud Run) para correta detecção de IP no rate limiter e cookies
+app.set('trust proxy', 1);
+
 // 1. Hardening & Segurança HTTP
 app.use(
   helmet({

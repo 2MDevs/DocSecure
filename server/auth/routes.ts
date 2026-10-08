@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db';
 import { send2FACode, sendPasswordResetEmail, maskEmail } from '../mailer';
+import { isInitialSetupModeActive } from '../services/systemSettings';
 import {
   requireAuth,
   sanitizeUser,
@@ -101,7 +102,63 @@ authRouter.post('/login', authRateLimiter, async (req: Request, res: Response) =
       [user.id]
     );
 
-    // 2. CHECAGEM DE DISPOSITIVO CONFIÁVEL VIA COOKIE HTTPONLY
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1';
+
+    // 2. CHECAGEM DO MODO DE CONFIGURAÇÃO INICIAL (SMTP PENDENTE)
+    const isSetupMode = await isInitialSetupModeActive();
+    if (isSetupMode) {
+      const devEmails = (process.env.DEVELOPER_EMAILS || '')
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+      const isDeveloper = devEmails.includes(user.email.toLowerCase());
+
+      if (!isDeveloper) {
+        return res.status(503).json({
+          error: 'Sistema aguardando configuração inicial pelo desenvolvedor.',
+        });
+      }
+
+      // Desenvolvedor autenticado no modo de configuração inicial:
+      // Pula o 2FA e cria a sessão normalmente via createSession. NÃO registra dispositivo confiável.
+      console.warn(`[AVISO SEGURANÇA] Login sem 2FA (configuração inicial) - Desenvolvedor: ${user.email} | IP: ${ip}`);
+
+      // Registrar em audit_logs
+      const logId = 'audit-' + crypto.randomBytes(8).toString('hex');
+      const logHash = crypto.createHash('sha256').update(logId + user.id + Date.now()).digest('hex');
+      try {
+        await pool.query(
+          `INSERT INTO audit_logs (
+            id, timestamp, user_id, user_name, role, department, action,
+            resource_id, resource_name, details, ip_address, device_info, result, hash
+          ) VALUES ($1, NOW(), $2, $3, $4, $5, 'INITIAL_SETUP_LOGIN', 'system_auth', 'Login sem 2FA (configuração inicial)', $6, $7, $8, 'SUCCESS', $9)`,
+          [
+            logId,
+            user.id,
+            user.name,
+            user.role,
+            user.department_name || 'Infraestrutura',
+            'Login sem 2FA (configuração inicial)',
+            ip,
+            req.headers['user-agent'] || 'Navegador Web',
+            logHash,
+          ]
+        );
+      } catch (auditErr) {
+        console.warn('[Audit Log Insert Warning]', auditErr);
+      }
+
+      await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+      await createSession(user.id, req, res);
+
+      return res.json({
+        user: sanitizeUser(user),
+        trustedDevice: false,
+        initialSetupMode: true,
+      });
+    }
+
+    // 3. CHECAGEM DE DISPOSITIVO CONFIÁVEL VIA COOKIE HTTPONLY
     const clientDeviceToken = req.cookies?.docsecure_device_token;
     let isDeviceTrusted = false;
 

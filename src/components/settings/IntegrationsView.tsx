@@ -35,9 +35,10 @@ interface SettingItem {
 
 interface IntegrationsViewProps {
   currentUser: User;
+  onSetupCompleted?: () => void;
 }
 
-export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser }) => {
+export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser, onSetupCompleted }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -47,6 +48,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser 
   const [settingsList, setSettingsList] = useState<SettingItem[]>([]);
   const [envOnlyList, setEnvOnlyList] = useState<Array<{ key: string; isSet: boolean }>>([]);
   const [encryptionKeyConfigured, setEncryptionKeyConfigured] = useState(true);
+  const [initialSetupMode, setInitialSetupMode] = useState(false);
   const [adminStatus, setAdminStatus] = useState<{ exists: boolean; createdAt?: string; email?: string }>({
     exists: false,
   });
@@ -97,6 +99,9 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser 
       setEnvOnlyList(res.envOnly);
       setEncryptionKeyConfigured(res.encryptionKeyConfigured);
       setAdminStatus(res.adminStatus);
+      if (res.initialSetupMode !== undefined) {
+        setInitialSetupMode(Boolean(res.initialSetupMode));
+      }
 
       // Populate form
       const getVal = (k: string) => res.settings.find((s) => s.key === k)?.value || '';
@@ -190,6 +195,15 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser 
 
       const res = await apiClient.saveIntegrationSettings(payload, passwordOverride || reauthPassword);
 
+      if ((res as any).smtpTest) {
+        setSmtpTestResult((res as any).smtpTest);
+      }
+
+      if ((res as any).setupCompleted || res.summary?.initialSetupMode === false) {
+        setInitialSetupMode(false);
+        onSetupCompleted?.();
+      }
+
       setSuccessMessage(res.message || 'Configurações salvas e aplicadas em tempo real com sucesso!');
       setIsReauthModalOpen(false);
       setReauthPassword('');
@@ -234,6 +248,10 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser 
       setSmtpTestResult(null);
       const res = await apiClient.testSmtpConnection();
       setSmtpTestResult(res);
+      if (res.success) {
+        setInitialSetupMode(false);
+        onSetupCompleted?.();
+      }
     } catch (err: any) {
       setSmtpTestResult({ success: false, message: err.message || 'Falha no teste SMTP.' });
     } finally {
@@ -342,6 +360,23 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser 
         <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-900 text-xs animate-in fade-in">
           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
           <div className="leading-relaxed font-medium">{errorMessage}</div>
+        </div>
+      )}
+
+      {/* Initial Setup Mode Notice */}
+      {initialSetupMode && (
+        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start gap-3.5 text-amber-950 text-xs shadow-sm">
+          <Mail className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1 flex-1">
+            <div className="font-bold text-sm text-amber-900 flex items-center gap-2">
+              <span>Configuração Inicial em Andamento</span>
+              <span className="px-2 py-0.5 bg-amber-200 text-amber-900 rounded text-[10px] uppercase tracking-wider font-extrabold">Modo Ativo</span>
+            </div>
+            <p className="text-amber-800 leading-relaxed">
+              O sistema está aguardando a configuração do servidor SMTP. Preencha as credenciais na seção <strong>E-mail (SMTP)</strong> abaixo e clique em <strong>Salvar Alterações</strong>.
+              O sistema fará automaticamente um disparo de teste para <strong>{currentUser.email}</strong>. Quando o teste for bem-sucedido, o 2FA será definitivamente ativado e este modo será concluído.
+            </p>
+          </div>
         </div>
       )}
 

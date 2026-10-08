@@ -127,8 +127,6 @@ export async function initDatabase(): Promise<void> {
         user_agent TEXT,
         revoked_at TIMESTAMPTZ
       );
-      CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
-      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 
       -- Tokens de Recuperação / Primeiro Acesso de Senha
       CREATE TABLE IF NOT EXISTS password_resets (
@@ -139,7 +137,6 @@ export async function initDatabase(): Promise<void> {
         used_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_password_resets_token_hash ON password_resets(token_hash);
 
       -- Dispositivos Confiáveis (Trusted Devices)
       CREATE TABLE IF NOT EXISTS devices (
@@ -159,8 +156,6 @@ export async function initDatabase(): Promise<void> {
         trusted_until TIMESTAMPTZ,
         is_current BOOLEAN DEFAULT false
       );
-      CREATE INDEX IF NOT EXISTS idx_devices_token_hash ON devices(device_token_hash);
-      CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
 
       -- Pastas
       CREATE TABLE IF NOT EXISTS folders (
@@ -221,7 +216,6 @@ export async function initDatabase(): Promise<void> {
         hash VARCHAR(255) NOT NULL,
         previous_hash VARCHAR(255)
       );
-      CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);
 
       -- Chaves de API
       CREATE TABLE IF NOT EXISTS api_keys (
@@ -258,7 +252,7 @@ export async function initDatabase(): Promise<void> {
       );
     `);
 
-    // 2. Migration: Ensure all columns exist on pre-existing tables
+    // 2. Migration: Ensure all columns exist on pre-existing tables ANTES de criar os índices
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INT DEFAULT 0;
@@ -272,6 +266,16 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_challenge_expires TIMESTAMPTZ;
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_token_hash VARCHAR(64);
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS trusted_until TIMESTAMPTZ;
+    `);
+
+    // 3. Criação de Índices após garantir a existência das colunas
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_password_resets_token_hash ON password_resets(token_hash);
+      CREATE INDEX IF NOT EXISTS idx_devices_token_hash ON devices(device_token_hash);
+      CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);
     `);
 
     // 3. Migration: Auto-hash any legacy plain-text passwords using bcrypt cost 12
