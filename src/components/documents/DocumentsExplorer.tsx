@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Folder as FolderIcon,
   FileText,
@@ -13,19 +13,19 @@ import {
   Users,
   Briefcase,
   Building,
-  MoreVertical,
   Download,
   Eye,
   Trash2,
-  Share2,
-  ShieldAlert,
-  ArrowLeft,
   FileCode,
   ShieldCheck,
-  Settings,
   SlidersHorizontal,
-  FolderLock,
-  UserCheck,
+  FolderPlus,
+  FolderOpen,
+  ArrowRight,
+  Info,
+  Layers,
+  Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 import { Department, Folder, DocumentItem, User, PermissionType } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
@@ -41,12 +41,15 @@ interface DocumentsExplorerProps {
   onOpenDocument: (doc: DocumentItem) => void;
   onDownloadDocument: (doc: DocumentItem) => void;
   onOpenUploadModal: (deptId?: string, folderId?: string) => void;
-  onOpenCreateFolderModal: (deptId?: string) => void;
+  onOpenCreateFolderModal: (deptId?: string, parentId?: string | null) => void;
   onAccessDenied: (reason: string, resourceName: string) => void;
   onToggleFavorite: (docId: string) => void;
   onDeleteDocument: (docId: string) => void;
   onUpdateUserPermissions: (userId: string, folderId: string, permissions: PermissionType[]) => void;
   onUpdateFolder?: (folderId: string, updates: Partial<Folder>) => void;
+  onDeleteFolder?: (folderId: string) => void;
+  onMoveDocument?: (docId: string, targetFolderId: string) => void;
+  onMoveFolder?: (folderId: string, targetFolderId: string) => void;
 }
 
 export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
@@ -65,13 +68,21 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   onDeleteDocument,
   onUpdateUserPermissions,
   onUpdateFolder,
+  onDeleteFolder,
+  onMoveDocument,
+  onMoveFolder,
 }) => {
   const [currentDeptId, setCurrentDeptId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [activeDepartmentTab, setActiveDepartmentTab] = useState<'arquivos' | 'permissoes'>('arquivos');
-  
-  // Folder configuration modal state
+
+  // Interactive selection & drag-and-drop state
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [draggingEntity, setDraggingEntity] = useState<{ type: 'document' | 'folder'; id: string; name: string } | null>(null);
+
+  // Folder configuration modal state (Properties & Who Can Access)
   const [configFolderModalData, setConfigFolderModalData] = useState<{
     isOpen: boolean;
     folder: Folder | null;
@@ -80,10 +91,28 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     folder: null,
   });
 
+  // Delete folder confirmation modal
+  const [deleteConfirmFolder, setDeleteConfirmFolder] = useState<Folder | null>(null);
+
+  // Floating Context Menu state
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    x: number;
+    y: number;
+    type: 'folder' | 'blank';
+    folder?: Folder;
+  }>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    type: 'blank',
+  });
+
+  const explorerRef = useRef<HTMLDivElement>(null);
+
   const currentDepartment = departments.find((d) => d.id === currentDeptId);
   const currentFolder = folders.find((f) => f.id === currentFolderId);
 
-  // Filter items by search term or location
   const isAtRoot = currentDeptId === null;
 
   const visibleDepartments = departments.filter((d) => {
@@ -101,7 +130,10 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   const currentDocs = documents.filter((doc) => {
     if (searchTerm) {
-      return doc.name.toLowerCase().includes(searchTerm.toLowerCase()) || doc.tags?.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()));
+      return (
+        doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doc.tags?.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
     }
     if (isAtRoot) return false;
     if (currentFolderId) {
@@ -117,14 +149,34 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     currentUser.role === 'DIRECTOR' ||
     (currentUser.role === 'MANAGER' && currentUser.departmentId === (currentDeptId || currentFolder?.departmentId));
 
-  // Get department collaborators
-  const departmentCollaborators = users.filter((u) => {
-    if (!currentDeptId && !currentFolder?.departmentId) return u.role === 'EMPLOYEE';
-    const targetDeptId = currentDeptId || currentFolder?.departmentId;
-    return u.departmentId === targetDeptId && u.role === 'EMPLOYEE';
-  });
+  // Close context menu on outside click or scroll or escape
+  useEffect(() => {
+    const handleClose = () => {
+      setContextMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setContextMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+        setSelectedFolderId(null);
+      }
+      // 1 clique seleciona + Enter abre a pasta
+      if (e.key === 'Enter' && selectedFolderId) {
+        const target = currentFolders.find((f) => f.id === selectedFolderId);
+        if (target) {
+          handleOpenFolder(target);
+        }
+      }
+    };
 
-  // Open Folder Config Modal
+    window.addEventListener('click', handleClose);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedFolderId, currentFolders]);
+
+  // Open Folder Config Modal (Propriedades / Configuração de quem pode acessar)
   const handleOpenFolderConfig = (folder: Folder, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!canManageFolderPermissions) {
@@ -141,15 +193,13 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const handleOpenDepartment = (dept: Department) => {
     const perm = verifyPermission(currentUser, 'department', dept.id, dept.id, 'VIEW_FOLDER');
     if (!perm.allowed) {
-      onAccessDenied(
-        perm.reason || `Você não possui permissão para acessar o setor ${dept.name}.`,
-        dept.name
-      );
+      onAccessDenied(perm.reason || `Você não possui permissão para acessar o setor ${dept.name}.`, dept.name);
       return;
     }
 
     setCurrentDeptId(dept.id);
     setCurrentFolderId(null);
+    setSelectedFolderId(null);
   };
 
   const handleOpenFolder = (folder: Folder) => {
@@ -163,6 +213,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     }
 
     setCurrentFolderId(folder.id);
+    setSelectedFolderId(null);
   };
 
   const handleOpenDocument = (doc: DocumentItem) => {
@@ -189,6 +240,102 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       return;
     }
     onDownloadDocument(doc);
+  };
+
+  // Drag and Drop Handlers
+  const handleDragStartDocument = (e: React.DragEvent, doc: DocumentItem) => {
+    const data = { type: 'document' as const, id: doc.id, name: doc.name };
+    e.dataTransfer.setData('text/plain', JSON.stringify(data));
+    setDraggingEntity(data);
+  };
+
+  const handleDragStartFolder = (e: React.DragEvent, folder: Folder) => {
+    const data = { type: 'folder' as const, id: folder.id, name: folder.name };
+    e.dataTransfer.setData('text/plain', JSON.stringify(data));
+    setDraggingEntity(data);
+  };
+
+  const handleDragOverFolder = (e: React.DragEvent, folderId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (dragOverFolderId !== folderId) {
+      setDragOverFolderId(folderId);
+    }
+  };
+
+  const handleDragLeaveFolder = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFolderId(null);
+  };
+
+  const handleDropOnFolder = (e: React.DragEvent, targetFolder: Folder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFolderId(null);
+    setDraggingEntity(null);
+
+    try {
+      const raw = e.dataTransfer.getData('text/plain');
+      if (!raw) return;
+      const data = JSON.parse(raw) as { type: 'document' | 'folder'; id: string; name: string };
+
+      if (data.type === 'document') {
+        if (onMoveDocument) {
+          onMoveDocument(data.id, targetFolder.id);
+        }
+      } else if (data.type === 'folder') {
+        if (data.id !== targetFolder.id && onMoveFolder) {
+          onMoveFolder(data.id, targetFolder.id);
+        }
+      }
+    } catch (err) {
+      console.warn('[Drag Drop Error]', err);
+    }
+  };
+
+  // Context Menu Handlers
+  const handleFolderContextMenu = (e: React.MouseEvent, folder: Folder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedFolderId(folder.id);
+
+    const x = Math.min(e.clientX, window.innerWidth - 220);
+    const y = Math.min(e.clientY, window.innerHeight - 260);
+
+    setContextMenu({
+      isOpen: true,
+      x,
+      y,
+      type: 'folder',
+      folder,
+    });
+  };
+
+  const handleBlankAreaContextMenu = (e: React.MouseEvent) => {
+    // Only open if inside department view
+    if (isAtRoot) return;
+    e.preventDefault();
+
+    const x = Math.min(e.clientX, window.innerWidth - 220);
+    const y = Math.min(e.clientY, window.innerHeight - 180);
+
+    setContextMenu({
+      isOpen: true,
+      x,
+      y,
+      type: 'blank',
+    });
+  };
+
+  const handleDeleteFolderConfirmed = () => {
+    if (deleteConfirmFolder && onDeleteFolder) {
+      onDeleteFolder(deleteConfirmFolder.id);
+      setDeleteConfirmFolder(null);
+      if (selectedFolderId === deleteConfirmFolder.id) {
+        setSelectedFolderId(null);
+      }
+    }
   };
 
   const getFileIcon = (ext: string) => {
@@ -222,13 +369,15 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   };
 
   return (
-    <div className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-150 select-none">
+    <div
+      ref={explorerRef}
+      onContextMenu={handleBlankAreaContextMenu}
+      className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-150 select-none min-h-[600px] relative"
+    >
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Meus Documentos
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Meus Documentos</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Acesse, organize e gerencie pastas e documentos empresariais com controle de permissões.
           </p>
@@ -244,7 +393,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
               className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all shadow-2xs"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
-              <span>Permissões da Pasta</span>
+              <span>Propriedades da Pasta</span>
             </button>
           )}
 
@@ -259,10 +408,10 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
           <button
             type="button"
-            onClick={() => onOpenCreateFolderModal(currentDeptId || undefined)}
-            className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-medium inline-flex items-center gap-1.5 transition-all shadow-2xs"
+            onClick={() => onOpenCreateFolderModal(currentDeptId || undefined, currentFolderId || undefined)}
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-medium inline-flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
           >
-            <FolderIcon className="w-4 h-4 text-slate-500" />
+            <FolderPlus className="w-4 h-4 text-blue-600" />
             <span>Nova Pasta</span>
           </button>
 
@@ -299,8 +448,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           onClick={() => {
             setCurrentDeptId(null);
             setCurrentFolderId(null);
+            setSelectedFolderId(null);
           }}
-          className={`hover:text-blue-600 transition-colors inline-flex items-center gap-1 ${
+          className={`hover:text-blue-600 transition-colors inline-flex items-center gap-1 cursor-pointer ${
             isAtRoot ? 'text-blue-600 font-semibold' : 'text-slate-500'
           }`}
         >
@@ -312,8 +462,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
             <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
             <button
               type="button"
-              onClick={() => setCurrentFolderId(null)}
-              className={`hover:text-blue-600 transition-colors ${
+              onClick={() => {
+                setCurrentFolderId(null);
+                setSelectedFolderId(null);
+              }}
+              className={`hover:text-blue-600 transition-colors cursor-pointer ${
                 !currentFolderId ? 'text-blue-600 font-semibold' : 'text-slate-500'
               }`}
             >
@@ -327,6 +480,14 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
             <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-blue-600 font-semibold">{currentFolder.name}</span>
           </>
+        )}
+
+        {/* Interactive Helper Hint */}
+        {!isAtRoot && (
+          <span className="ml-auto text-[11px] text-slate-400 hidden sm:inline-flex items-center gap-1">
+            <Info className="w-3 h-3 text-slate-400" />
+            <span>Duplo clique ou 1 clique + Enter abre a pasta • Botão direito para opções</span>
+          </span>
         )}
       </div>
 
@@ -358,8 +519,10 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveDepartmentTab('arquivos')}
-                      className={`px-3 py-1 rounded-lg transition-colors ${
-                        activeDepartmentTab === 'arquivos' ? 'bg-white text-blue-600 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900'
+                      className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                        activeDepartmentTab === 'arquivos'
+                          ? 'bg-white text-blue-600 shadow-xs font-semibold'
+                          : 'text-slate-500 hover:text-slate-900'
                       }`}
                     >
                       Arquivos
@@ -367,8 +530,10 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveDepartmentTab('permissoes')}
-                      className={`px-3 py-1 rounded-lg transition-colors ${
-                        activeDepartmentTab === 'permissoes' ? 'bg-white text-blue-600 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900'
+                      className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                        activeDepartmentTab === 'permissoes'
+                          ? 'bg-white text-blue-600 shadow-xs font-semibold'
+                          : 'text-slate-500 hover:text-slate-900'
                       }`}
                     >
                       Permissões
@@ -398,9 +563,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
             </div>
           )}
 
-          {/* Root View: Grid or List */}
-          {isAtRoot && (
-            viewMode === 'grid' ? (
+          {/* Root View: Grid or List of Departments */}
+          {isAtRoot &&
+            (viewMode === 'grid' ? (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {visibleDepartments.map((dept) => (
                   <button
@@ -420,9 +585,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                       {dept.isLocked && <Lock className="w-3 h-3 text-slate-400 shrink-0" />}
                     </div>
 
-                    <span className="text-[11px] text-slate-400 mt-1">
-                      {dept.itemCount} itens
-                    </span>
+                    <span className="text-[11px] text-slate-400 mt-1">{dept.itemCount} itens</span>
                   </button>
                 ))}
               </div>
@@ -463,9 +626,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                           <td className="py-3 px-4 text-slate-500 tabular-nums font-medium">
                             {dept.itemCount} itens
                           </td>
-                          <td className="py-3 px-4 text-slate-700">
-                            {dept.managerName || 'Diretoria'}
-                          </td>
+                          <td className="py-3 px-4 text-slate-700">{dept.managerName || 'Diretoria'}</td>
                           <td className="py-3 px-4 text-slate-500 tabular-nums">
                             {usedGb} GB / {limitGb} GB
                           </td>
@@ -492,8 +653,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                   </tbody>
                 </table>
               </div>
-            )
-          )}
+            ))}
 
           {/* Subfolders Grid / List when inside a Department */}
           {!isAtRoot && (
@@ -503,46 +663,82 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                   {/* Subfolders grid */}
                   {currentFolders.length > 0 && (
                     <div>
-                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                        Pastas ({currentFolders.length})
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                        <span>Pastas ({currentFolders.length})</span>
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          Arraste e solte arquivos ou pastas para organizar
+                        </span>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {currentFolders.map((folder) => (
-                          <div
-                            key={folder.id}
-                            onClick={() => handleOpenFolder(folder)}
-                            className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all text-left flex items-start justify-between group cursor-pointer"
-                          >
-                            <div className="flex items-start gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                                <FolderIcon className="w-5 h-5 fill-amber-400 text-amber-500" />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1">
-                                  <h4 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 truncate">
-                                    {folder.name}
-                                  </h4>
-                                  {folder.isLocked && <Lock className="w-3 h-3 text-slate-400 shrink-0" />}
-                                </div>
-                                <p className="text-[10px] text-slate-400 mt-0.5">
-                                  {folder.itemCount} itens • {folder.updatedAt}
-                                </p>
-                              </div>
-                            </div>
+                        {currentFolders.map((folder) => {
+                          const isSelected = selectedFolderId === folder.id;
+                          const isDragOver = dragOverFolderId === folder.id;
 
-                            {/* Folder settings trigger for managers */}
-                            {canManageFolderPermissions && (
-                              <button
-                                type="button"
-                                onClick={(e) => handleOpenFolderConfig(folder, e)}
-                                title="Configurar Permissões dos Colaboradores"
-                                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors"
-                              >
-                                <SlidersHorizontal className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                          return (
+                            <div
+                              key={folder.id}
+                              tabIndex={0}
+                              draggable={true}
+                              onDragStart={(e) => handleDragStartFolder(e, folder)}
+                              onDragOver={(e) => handleDragOverFolder(e, folder.id)}
+                              onDragLeave={handleDragLeaveFolder}
+                              onDrop={(e) => handleDropOnFolder(e, folder)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedFolderId(folder.id);
+                              }}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenFolder(folder);
+                              }}
+                              onContextMenu={(e) => handleFolderContextMenu(e, folder)}
+                              className={`p-4 rounded-xl border transition-all text-left flex items-start justify-between group cursor-pointer relative ${
+                                isDragOver
+                                  ? 'bg-blue-50/90 border-blue-500 ring-2 ring-blue-500/50 scale-[1.02] shadow-md'
+                                  : isSelected
+                                  ? 'bg-blue-50/40 border-blue-400 ring-2 ring-blue-500/40 shadow-xs'
+                                  : 'bg-white border-slate-200/80 hover:border-blue-300 hover:shadow-xs'
+                              }`}
+                            >
+                              <div className="flex items-start gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                  <FolderIcon className="w-5 h-5 fill-amber-400 text-amber-500" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1">
+                                    <h4 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 truncate">
+                                      {folder.name}
+                                    </h4>
+                                    {folder.isLocked && <Lock className="w-3 h-3 text-slate-400 shrink-0" />}
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 mt-0.5">
+                                    {folder.itemCount} itens • {folder.updatedAt}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Folder settings trigger for managers */}
+                              {canManageFolderPermissions && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenFolderConfig(folder, e)}
+                                  title="Propriedades e Permissões"
+                                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors"
+                                >
+                                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+
+                              {isDragOver && (
+                                <div className="absolute inset-0 bg-blue-600/10 rounded-xl pointer-events-none flex items-center justify-center">
+                                  <span className="px-2 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold shadow-xs">
+                                    Soltar para mover
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -573,8 +769,10 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                           return (
                             <div
                               key={doc.id}
+                              draggable={true}
+                              onDragStart={(e) => handleDragStartDocument(e, doc)}
                               onClick={() => handleOpenDocument(doc)}
-                              className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all flex items-center justify-between cursor-pointer group"
+                              className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all flex items-center justify-between cursor-grab active:cursor-grabbing group"
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 {getFileIcon(doc.extension)}
@@ -592,7 +790,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => onToggleFavorite(doc.id)}
-                                  className={`p-1.5 rounded-lg transition-colors ${
+                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                                     doc.isFavorite ? 'text-amber-500' : 'text-slate-300 hover:text-slate-500'
                                   }`}
                                   title="Favoritar"
@@ -603,7 +801,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                                 <button
                                   type="button"
                                   onClick={(e) => handleTriggerDownload(doc, e)}
-                                  className={`p-1.5 rounded-lg transition-colors ${
+                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                                     canDownload
                                       ? 'hover:bg-slate-100 text-slate-400 hover:text-blue-600'
                                       : 'text-slate-200 hover:text-rose-500'
@@ -616,7 +814,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenDocument(doc)}
-                                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors"
+                                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
                                   title="Visualizar"
                                 >
                                   <Eye className="w-4 h-4" />
@@ -645,51 +843,76 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                       {/* Subfolders in List Table */}
-                      {currentFolders.map((folder) => (
-                        <tr
-                          key={folder.id}
-                          onClick={() => handleOpenFolder(folder)}
-                          className="hover:bg-blue-50/30 transition-colors cursor-pointer group"
-                        >
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
-                                <FolderIcon className="w-4 h-4 fill-amber-400 text-amber-500" />
+                      {currentFolders.map((folder) => {
+                        const isSelected = selectedFolderId === folder.id;
+                        const isDragOver = dragOverFolderId === folder.id;
+
+                        return (
+                          <tr
+                            key={folder.id}
+                            tabIndex={0}
+                            draggable={true}
+                            onDragStart={(e) => handleDragStartFolder(e, folder)}
+                            onDragOver={(e) => handleDragOverFolder(e, folder.id)}
+                            onDragLeave={handleDragLeaveFolder}
+                            onDrop={(e) => handleDropOnFolder(e, folder)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedFolderId(folder.id);
+                            }}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenFolder(folder);
+                            }}
+                            onContextMenu={(e) => handleFolderContextMenu(e, folder)}
+                            className={`transition-colors cursor-pointer group ${
+                              isDragOver
+                                ? 'bg-blue-100/70 border-y-2 border-blue-500'
+                                : isSelected
+                                ? 'bg-blue-50/60 font-semibold'
+                                : 'hover:bg-blue-50/30'
+                            }`}
+                          >
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+                                  <FolderIcon className="w-4 h-4 fill-amber-400 text-amber-500" />
+                                </div>
+                                <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                                  {folder.name}
+                                </span>
+                                {folder.isLocked && <Lock className="w-3 h-3 text-slate-400" />}
                               </div>
-                              <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                                {folder.name}
-                              </span>
-                              {folder.isLocked && <Lock className="w-3 h-3 text-slate-400" />}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-slate-500">Pasta de arquivos</td>
-                          <td className="py-3 px-4 text-slate-500 tabular-nums">{folder.itemCount} itens</td>
-                          <td className="py-3 px-4 text-slate-500">{folder.updatedAt}</td>
-                          <td className="py-3 px-4 text-slate-600">{currentDepartment?.managerName || 'Setor'}</td>
-                          <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-2">
-                              {canManageFolderPermissions && (
+                            </td>
+                            <td className="py-3 px-4 text-slate-500">Pasta de arquivos</td>
+                            <td className="py-3 px-4 text-slate-500 tabular-nums">{folder.itemCount} itens</td>
+                            <td className="py-3 px-4 text-slate-500">{folder.updatedAt}</td>
+                            <td className="py-3 px-4 text-slate-600">{currentDepartment?.managerName || 'Setor'}</td>
+                            <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-2">
+                                {canManageFolderPermissions && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleOpenFolderConfig(folder, e)}
+                                    className="px-2 py-1 text-[11px] font-medium bg-slate-100 hover:bg-amber-50 hover:text-amber-800 rounded-lg text-slate-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                    title="Propriedades e Permissões"
+                                  >
+                                    <SlidersHorizontal className="w-3 h-3" />
+                                    <span>Propriedades</span>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={(e) => handleOpenFolderConfig(folder, e)}
-                                  className="px-2 py-1 text-[11px] font-medium bg-slate-100 hover:bg-amber-50 hover:text-amber-800 rounded-lg text-slate-600 transition-colors inline-flex items-center gap-1"
-                                  title="Configurar Permissões"
+                                  onClick={() => handleOpenFolder(folder)}
+                                  className="text-blue-600 font-semibold hover:underline cursor-pointer"
                                 >
-                                  <SlidersHorizontal className="w-3 h-3" />
-                                  <span>Permissões</span>
+                                  Abrir
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleOpenFolder(folder)}
-                                className="text-blue-600 font-semibold hover:underline"
-                              >
-                                Abrir
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
 
                       {/* Documents in List Table */}
                       {currentDocs.map((doc) => {
@@ -705,8 +928,10 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                         return (
                           <tr
                             key={doc.id}
+                            draggable={true}
+                            onDragStart={(e) => handleDragStartDocument(e, doc)}
                             onClick={() => handleOpenDocument(doc)}
-                            className="hover:bg-blue-50/30 transition-colors cursor-pointer group"
+                            className="hover:bg-blue-50/30 transition-colors cursor-grab active:cursor-grabbing group"
                           >
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2.5">
@@ -725,50 +950,41 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                             <td className="py-3 px-4 text-slate-500">{doc.updatedAt}</td>
                             <td className="py-3 px-4 text-slate-600">{doc.ownerName}</td>
                             <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => onToggleFavorite(doc.id)}
-                                  className={`p-1 rounded-lg transition-colors ${
+                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                                     doc.isFavorite ? 'text-amber-500' : 'text-slate-300 hover:text-slate-500'
                                   }`}
                                   title="Favoritar"
                                 >
-                                  <Star className={`w-4 h-4 ${doc.isFavorite ? 'fill-amber-400' : ''}`} />
+                                  <Star className={`w-3.5 h-3.5 ${doc.isFavorite ? 'fill-amber-400' : ''}`} />
                                 </button>
                                 <button
                                   type="button"
                                   onClick={(e) => handleTriggerDownload(doc, e)}
-                                  className={`p-1 rounded-lg transition-colors ${
+                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                                     canDownload
                                       ? 'hover:bg-slate-100 text-slate-400 hover:text-blue-600'
-                                      : 'text-slate-200 hover:text-rose-500'
+                                      : 'text-slate-200'
                                   }`}
-                                  title={canDownload ? 'Baixar Cópia' : 'Download Bloqueado (Sem Permissão)'}
+                                  title="Download"
                                 >
-                                  <Download className="w-4 h-4" />
+                                  <Download className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleOpenDocument(doc)}
-                                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors"
-                                  title="Visualizar"
+                                  className="text-blue-600 font-semibold hover:underline cursor-pointer ml-1"
                                 >
-                                  <Eye className="w-4 h-4" />
+                                  Visualizar
                                 </button>
                               </div>
                             </td>
                           </tr>
                         );
                       })}
-
-                      {currentFolders.length === 0 && currentDocs.length === 0 && (
-                        <tr>
-                          <td colSpan={6} className="py-8 text-center text-slate-400">
-                            Nenhum item nesta pasta.
-                          </td>
-                        </tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
@@ -777,22 +993,21 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           )}
         </div>
 
-        {/* Right Side Column: Atalhos & Meu Setor */}
+        {/* Right Sidebar: Quick Access & Info */}
         <div className="lg:col-span-4 space-y-4">
-          {/* Card 1: Atalhos */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
             <h2 className="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">
-              Atalhos
+              Acesso Rápido
             </h2>
 
-            <div className="mt-2 space-y-1">
+            <div className="mt-3 space-y-1">
               <button
                 type="button"
                 onClick={() => {
-                  const recentDoc = documents[0];
-                  if (recentDoc) handleOpenDocument(recentDoc);
+                  const recent = documents[0];
+                  if (recent) handleOpenDocument(recent);
                 }}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group"
+                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <Clock className="w-4 h-4 text-blue-600" />
@@ -807,7 +1022,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                   const fav = documents.find((d) => d.isFavorite);
                   if (fav) handleOpenDocument(fav);
                 }}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group"
+                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <Star className="w-4 h-4 text-amber-500" />
@@ -822,23 +1037,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                   const shared = documents.find((d) => d.isShared);
                   if (shared) handleOpenDocument(shared);
                 }}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group"
+                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-blue-600" />
                   <span className="font-medium">Compartilhados comigo</span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => alert('Controle de Empréstimos e Custódia Física de Documentos: Nenhum registro pendente.')}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <Briefcase className="w-4 h-4 text-blue-600" />
-                  <span className="font-medium">Meus Empréstimos</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
               </button>
@@ -847,17 +1050,14 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
           {/* Card 2: Meu Setor */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-            <h2 className="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">
-              Meu Setor
-            </h2>
-
+            <h2 className="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Meu Setor</h2>
             <div className="mt-3 p-3.5 bg-blue-50/60 rounded-xl border border-blue-100 flex items-center gap-3.5">
               <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
                 <Building className="w-5 h-5" />
               </div>
               <div>
                 <span className="text-xs font-bold text-slate-900 block">
-                  {currentUser.departmentName || 'Comercial'}
+                  {currentUser.departmentName || 'Geral'}
                 </span>
                 <span className="text-[11px] text-slate-500">
                   {currentUser.role === 'MANAGER' ? 'Gestor da área' : 'Colaborador'}
@@ -868,7 +1068,160 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         </div>
       </div>
 
-      {/* Folder Configuration Modal (Collaborator Permissions) */}
+      {/* FLOATING CONTEXT MENU */}
+      {contextMenu.isOpen && (
+        <div
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+          className="fixed z-50 w-52 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xl py-1.5 text-xs text-slate-700 animate-in fade-in zoom-in-95 duration-100"
+        >
+          {contextMenu.type === 'folder' && contextMenu.folder ? (
+            /* CONTEXT MENU ON TOP OF A FOLDER */
+            <>
+              <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate border-b border-slate-100">
+                📁 {contextMenu.folder.name}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenFolder(contextMenu.folder!);
+                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                <FolderOpen className="w-4 h-4 text-blue-600" />
+                <span className="font-medium">Abrir Pasta</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenCreateFolderModal(contextMenu.folder!.departmentId, contextMenu.folder!.id);
+                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                <FolderPlus className="w-4 h-4 text-emerald-600" />
+                <span>Nova Subpasta</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode(viewMode === 'grid' ? 'list' : 'grid');
+                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                {viewMode === 'grid' ? <ListIcon className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
+                <span>{viewMode === 'grid' ? 'Modo Lista' : 'Modo Grade'}</span>
+              </button>
+
+              <div className="my-1 border-t border-slate-100" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmFolder(contextMenu.folder!);
+                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Excluir Pasta</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenFolderConfig(contextMenu.folder!);
+                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-amber-50 text-amber-800 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
+              >
+                <SlidersHorizontal className="w-4 h-4 text-amber-600" />
+                <span className="font-semibold">Propriedades & Acessos</span>
+              </button>
+            </>
+          ) : (
+            /* CONTEXT MENU OUTSIDE A FOLDER (BLANK AREA) */
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenCreateFolderModal(currentDeptId || undefined, currentFolderId || undefined);
+                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                <FolderPlus className="w-4 h-4 text-blue-600" />
+                <span className="font-medium">Nova Pasta</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode(viewMode === 'grid' ? 'list' : 'grid');
+                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                {viewMode === 'grid' ? <ListIcon className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
+                <span>Alternar Visualização ({viewMode === 'grid' ? 'Lista' : 'Grade'})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedFolderId(null);
+                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer text-slate-500"
+              >
+                <ArrowRight className="w-4 h-4" />
+                <span>Atualizar Conteúdo</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* DELETE FOLDER CONFIRMATION MODAL */}
+      {deleteConfirmFolder && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-4 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-bold text-slate-900">Excluir Pasta?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Tem certeza que deseja excluir permanentemente a pasta <strong>{deleteConfirmFolder.name}</strong>?
+                Os arquivos e subitens vinculados a ela serão removidos.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmFolder(null)}
+                className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteFolderConfirmed}
+                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20"
+              >
+                Sim, Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Folder Configuration Modal (Propriedades & Configuração de quem pode acessar) */}
       <FolderConfigModal
         isOpen={configFolderModalData.isOpen}
         onClose={() => setConfigFolderModalData({ isOpen: false, folder: null })}

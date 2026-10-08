@@ -345,8 +345,10 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                       <option value="EMPLOYEE">Colaborador (Funcionário)</option>
                       <option value="MANAGER">Gestor de Área</option>
                       <option value="DIRECTOR">Diretoria</option>
-                      <option value="DEVELOPER">Desenvolvedor (Admin)</option>
                     </select>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      O papel Desenvolvedor é restrito e definido via DEVELOPER_EMAILS no .env.
+                    </p>
                   </div>
                 ) : (
                   <div>

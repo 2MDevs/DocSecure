@@ -44,6 +44,7 @@ import { DevicesManagement } from './components/devices/DevicesManagement';
 import { AuditLogsView } from './components/audit/AuditLogsView';
 import { SystemView } from './components/system/SystemView';
 import { SecuritySettings } from './components/settings/SecuritySettings';
+import { IntegrationsView } from './components/settings/IntegrationsView';
 import { MobileAppFrame } from './components/mobile/MobileAppFrame';
 import { Database, RefreshCw, AlertCircle } from 'lucide-react';
 
@@ -102,6 +103,7 @@ export default function App() {
   const [uploadFolderId, setUploadFolderId] = useState<string | undefined>();
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
   const [createFolderDeptId, setCreateFolderDeptId] = useState<string | undefined>();
+  const [createFolderParentId, setCreateFolderParentId] = useState<string | null>(null);
 
   // 403 Forbidden Access Denied Modal State
   const [accessDeniedState, setAccessDeniedState] = useState<{
@@ -120,27 +122,40 @@ export default function App() {
       setIsLoadingInitialData(true);
       const data = await apiClient.getBootstrapData();
       if (data) {
-        if (data.users && data.users.length > 0) setUsers(data.users);
-        if (data.departments && data.departments.length > 0) setDepartments(data.departments);
-        if (data.folders && data.folders.length > 0) setFolders(data.folders);
-        if (data.documents && data.documents.length > 0) setDocuments(data.documents);
-        if (data.devices && data.devices.length > 0) setDevices(data.devices);
-        if (data.auditLogs && data.auditLogs.length > 0) setAuditLogs(data.auditLogs);
-        if (data.apiKeys && data.apiKeys.length > 0) setApiKeys(data.apiKeys);
-        if (data.webhooks && data.webhooks.length > 0) setWebhooks(data.webhooks);
+        if (data.currentUser) setCurrentUser(data.currentUser);
+        if (Array.isArray(data.users) && data.users.length > 0) setUsers(data.users);
+        if (Array.isArray(data.departments) && data.departments.length > 0) setDepartments(data.departments);
+        if (Array.isArray(data.folders)) setFolders(data.folders);
+        if (Array.isArray(data.documents)) setDocuments(data.documents);
+        if (Array.isArray(data.devices)) setDevices(data.devices);
+        if (Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs);
+        if (Array.isArray(data.apiKeys)) setApiKeys(data.apiKeys);
+        if (Array.isArray(data.webhooks)) setWebhooks(data.webhooks);
         if (data.dbStatus) setDbStatus(data.dbStatus);
       }
       setApiSyncError(null);
     } catch (err: any) {
       console.warn('[API Sync Notice] Inicializando dados locais resilientes com backend:', err.message);
-      // Keep resilient state operational
     } finally {
       setIsLoadingInitialData(false);
     }
   }, []);
 
+  // Verificar se o usuário já possui sessão ativa (cookie HttpOnly via /api/auth/me)
   useEffect(() => {
-    loadBootstrapData();
+    const checkActiveSession = async () => {
+      try {
+        const res = await apiClient.getMe();
+        if (res && res.user) {
+          setCurrentUser(res.user);
+          await loadBootstrapData();
+        }
+      } catch {
+        setCurrentUser(null);
+        setIsLoadingInitialData(false);
+      }
+    };
+    checkActiveSession();
   }, [loadBootstrapData]);
 
   // Helper: Append immutable audit log & persist via HTTP
@@ -162,16 +177,6 @@ export default function App() {
     }
   };
 
-  // Login handler
-  const handleLoginAttempt = (user: User) => {
-    if (user.twoFactorEnabled) {
-      setPendingUser2FA(user);
-      setTwoFactorError(undefined);
-      return;
-    }
-    completeLogin(user);
-  };
-
   // Complete Login
   const completeLogin = (user: User) => {
     setCurrentUser(user);
@@ -183,6 +188,7 @@ export default function App() {
       setActiveTab('my_documents');
     }
 
+    loadBootstrapData();
     logSecurityEvent(user, 'LOGIN', 'Sessão Web Segura', `Login efetuado com sucesso por ${user.name}.`, 'SUCCESS');
   };
 
@@ -212,7 +218,10 @@ export default function App() {
   };
 
   // Logout handler
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await apiClient.logout();
+    } catch {}
     if (currentUser) {
       logSecurityEvent(currentUser, 'LOGOUT', 'Sessão Web', 'Sessão encerrada pelo usuário.', 'SUCCESS');
     }
@@ -357,6 +366,7 @@ export default function App() {
     departmentId: string;
     isLocked: boolean;
     description: string;
+    parentId?: string | null;
   }) => {
     const dept = departments.find((d) => d.id === data.departmentId);
     const newFolder: Folder = {
@@ -364,7 +374,7 @@ export default function App() {
       name: data.name,
       departmentId: data.departmentId,
       departmentName: dept?.name || 'Geral',
-      parentId: null,
+      parentId: data.parentId || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toLocaleDateString('pt-BR'),
       isLocked: data.isLocked,
@@ -381,6 +391,81 @@ export default function App() {
     }
 
     logSecurityEvent(currentUser, 'FOLDER_CREATED', data.name, `Pasta criada no setor ${dept?.name}.`, 'SUCCESS');
+  };
+
+  // Delete Folder Handler (Persisted to PostgreSQL)
+  const handleDeleteFolder = async (folderId: string) => {
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder) return;
+
+    setFolders((prev) => prev.filter((f) => f.id !== folderId && f.parentId !== folderId));
+    setDocuments((prev) => prev.filter((d) => d.folderId !== folderId));
+    try {
+      await apiClient.deleteFolder(folderId);
+    } catch (e) {
+      console.warn('[Delete Folder Persist]', e);
+    }
+    logSecurityEvent(currentUser, 'FOLDER_DELETED', folder.name, `Pasta ${folder.name} removida.`, 'SUCCESS');
+  };
+
+  // Move Document Handler (Persisted to PostgreSQL)
+  const handleMoveDocument = async (docId: string, targetFolderId: string) => {
+    const targetFolder = folders.find((f) => f.id === targetFolderId);
+    const doc = documents.find((d) => d.id === docId);
+    if (!doc || !targetFolder) return;
+
+    setDocuments((prev) =>
+      prev.map((d) =>
+        d.id === docId
+          ? {
+              ...d,
+              folderId: targetFolderId,
+              departmentId: targetFolder.departmentId,
+              departmentName: targetFolder.departmentName,
+            }
+          : d
+      )
+    );
+    try {
+      await apiClient.updateDocument(docId, {
+        folderId: targetFolderId,
+        departmentId: targetFolder.departmentId,
+        departmentName: targetFolder.departmentName,
+      });
+    } catch (e) {
+      console.warn('[Move Document Persist]', e);
+    }
+    logSecurityEvent(
+      currentUser,
+      'DOCUMENT_MOVED',
+      doc.name,
+      `Documento movido para a pasta ${targetFolder.name}.`,
+      'SUCCESS'
+    );
+  };
+
+  // Move Folder Handler (Persisted to PostgreSQL)
+  const handleMoveFolder = async (folderId: string, targetFolderId: string) => {
+    if (folderId === targetFolderId) return;
+    const targetFolder = folders.find((f) => f.id === targetFolderId);
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder || !targetFolder) return;
+
+    setFolders((prev) =>
+      prev.map((f) => (f.id === folderId ? { ...f, parentId: targetFolderId } : f))
+    );
+    try {
+      await apiClient.updateFolder(folderId, { parentId: targetFolderId });
+    } catch (e) {
+      console.warn('[Move Folder Persist]', e);
+    }
+    logSecurityEvent(
+      currentUser,
+      'FOLDER_MOVED',
+      folder.name,
+      `Pasta ${folder.name} movida para dentro de ${targetFolder.name}.`,
+      'SUCCESS'
+    );
   };
 
   // Toggle Favorite (Persisted to PostgreSQL)
@@ -803,6 +888,13 @@ export default function App() {
         activeTab={activeTab}
         onSelectTab={(tab) => {
           if (
+            tab === 'integrations' &&
+            currentUser.role !== 'DEVELOPER'
+          ) {
+            triggerAccessDenied('Área exclusiva de Desenvolvedores de Infraestrutura.', tab);
+            return;
+          }
+          if (
             ['dev_dashboard', 'sectors'].includes(tab) &&
             currentUser.role !== 'DEVELOPER' &&
             currentUser.role !== 'DIRECTOR'
@@ -881,8 +973,9 @@ export default function App() {
                 setUploadFolderId(folderId);
                 setIsUploadModalOpen(true);
               }}
-              onOpenCreateFolderModal={(deptId) => {
+              onOpenCreateFolderModal={(deptId, parentId) => {
                 setCreateFolderDeptId(deptId);
+                setCreateFolderParentId(parentId || null);
                 setIsCreateFolderModalOpen(true);
               }}
               onAccessDenied={triggerAccessDenied}
@@ -890,6 +983,9 @@ export default function App() {
               onDeleteDocument={handleDeleteDocument}
               onUpdateUserPermissions={handleUpdatePermissions}
               onUpdateFolder={handleUpdateFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onMoveDocument={handleMoveDocument}
+              onMoveFolder={handleMoveFolder}
             />
           )}
 
@@ -964,6 +1060,8 @@ export default function App() {
 
           {activeTab === 'settings' && <SecuritySettings currentUser={currentUser} />}
 
+          {activeTab === 'integrations' && <IntegrationsView currentUser={currentUser} />}
+
           {['shared', 'favorites', 'trash'].includes(activeTab) && (
             <DocumentsExplorer
               currentUser={currentUser}
@@ -980,12 +1078,19 @@ export default function App() {
               onOpenDocument={(doc) => setViewingDocument(doc)}
               onDownloadDocument={handleDownloadDocument}
               onOpenUploadModal={() => setIsUploadModalOpen(true)}
-              onOpenCreateFolderModal={() => setIsCreateFolderModalOpen(true)}
+              onOpenCreateFolderModal={(deptId, parentId) => {
+                setCreateFolderDeptId(deptId);
+                setCreateFolderParentId(parentId || null);
+                setIsCreateFolderModalOpen(true);
+              }}
               onAccessDenied={triggerAccessDenied}
               onToggleFavorite={handleToggleFavorite}
               onDeleteDocument={handleDeleteDocument}
               onUpdateUserPermissions={handleUpdatePermissions}
               onUpdateFolder={handleUpdateFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onMoveDocument={handleMoveDocument}
+              onMoveFolder={handleMoveFolder}
             />
           )}
         </main>
@@ -1038,6 +1143,7 @@ export default function App() {
         onClose={() => setIsCreateFolderModalOpen(false)}
         departments={departments}
         currentDepartmentId={createFolderDeptId}
+        parentFolderId={createFolderParentId}
         onCreateFolder={handleCreateFolder}
       />
 

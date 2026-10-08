@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Server,
   Code2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { DocSecureLogo } from '../common/DocSecureLogo';
 import { User } from '../../types';
@@ -29,6 +30,7 @@ export type NavigationTab =
   | 'storage'
   | 'audit_logs'
   | 'system'
+  | 'integrations'
   | 'settings'
   | 'my_documents'
   | 'shared'
@@ -165,6 +167,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               >
                 <Server className="w-4 h-4 shrink-0" />
                 <span>Sistema & Infra</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectTab('integrations')}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  activeTab === 'integrations'
+                    ? 'bg-[#2563eb] text-white shadow-md shadow-blue-600/20'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <SlidersHorizontal className="w-4 h-4 shrink-0" />
+                <span>Integração</span>
               </button>
             </>
           ) : (

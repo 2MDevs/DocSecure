@@ -14,8 +14,6 @@ import {
   RefreshCw,
   Loader2,
   CheckCircle2,
-  AlertCircle,
-  Laptop,
 } from 'lucide-react';
 import { DocSecureLogo } from '../common/DocSecureLogo';
 import { User as UserType } from '../../types';
@@ -30,18 +28,17 @@ interface LoginViewProps {
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   // Step 1 State: Credentials
-  const [emailOrUsername, setEmailOrUsername] = useState('marcosmonteiro.devs@gmail.com');
-  const [password, setPassword] = useState('+62726798');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
   // Step 2 State: 2FA Verification
   const [step, setStep] = useState<'LOGIN' | '2FA'>('LOGIN');
-  const [twoFactorUserId, setTwoFactorUserId] = useState<string>('');
+  const [challengeToken, setChallengeToken] = useState<string>('');
   const [maskedEmail, setMaskedEmail] = useState<string>('');
   const [twoFactorCode, setTwoFactorCode] = useState<string>('');
   const [trustDevice, setTrustDevice] = useState<boolean>(true);
-  const [devCodePreview, setDevCodePreview] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState<number>(0);
 
   // General States
@@ -58,58 +55,30 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     return () => clearInterval(interval);
   }, [resendCooldown]);
 
-  // Retrieve or create device fingerprint
-  const getDeviceDetails = () => {
-    let token = localStorage.getItem('docsecure_device_token');
-    if (!token) {
-      token = 'dcs_dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
-    }
-    const userAgent = navigator.userAgent;
-    let browser = 'Chrome/Safari';
-    if (userAgent.includes('Firefox')) browser = 'Firefox';
-    else if (userAgent.includes('Edg')) browser = 'Edge';
-    else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) browser = 'Safari';
-
-    let os = 'Linux / VPS';
-    if (userAgent.includes('Win')) os = 'Windows';
-    else if (userAgent.includes('Mac')) os = 'macOS';
-    else if (userAgent.includes('Android')) os = 'Android';
-    else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) os = 'iOS';
-
-    return {
-      deviceToken: token,
-      deviceName: `${browser} em ${os}`,
-      browser,
-      os,
-    };
-  };
-
   // STEP 1: Handle Initial Credentials Submit
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessNotice(null);
 
-    if (!emailOrUsername.trim() || !password.trim()) {
+    if (!emailOrUsername.trim() || !password) {
       setErrorMessage('Por favor, informe o usuário ou e-mail e a senha.');
       return;
     }
 
     try {
       setIsLoading(true);
-      const deviceInfo = getDeviceDetails();
-      const res = await apiClient.login(emailOrUsername.trim(), password.trim(), deviceInfo);
+      const res = await apiClient.login(emailOrUsername.trim(), password);
 
       if (res.require2FA) {
-        // Unrecognized/Untrusted device -> Switch to 2FA screen
-        setTwoFactorUserId(res.userId || '');
-        setMaskedEmail(res.maskedEmail || res.email || emailOrUsername);
-        setDevCodePreview(res.previewCode || null);
+        // Dispositivo não reconhecido -> Solicita código de e-mail (2FA)
+        setChallengeToken(res.challengeToken || '');
+        setMaskedEmail(res.maskedEmail || 'seu e-mail');
         setTwoFactorCode('');
         setStep('2FA');
         setResendCooldown(60);
       } else if (res.user) {
-        // Trusted device -> Direct login
+        // Dispositivo confiável -> Acesso liberado
         onLoginSuccess(res.user);
       } else {
         setErrorMessage('Usuário ou senha inválidos');
@@ -140,25 +109,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
     try {
       setIsLoading(true);
-      const deviceInfo = getDeviceDetails();
       const res = await apiClient.verify2FA({
-        userId: twoFactorUserId,
+        challengeToken,
         code: cleanCode,
         trustDevice,
-        deviceToken: deviceInfo.deviceToken,
-        deviceName: deviceInfo.deviceName,
-        os: deviceInfo.os,
-        browser: deviceInfo.browser,
       });
 
       if (res && res.user) {
-        if (res.deviceToken && trustDevice) {
-          localStorage.setItem('docsecure_device_token', res.deviceToken);
-        }
-        setSuccessNotice('Dispositivo verificado com sucesso! Carregando sistema...');
+        setSuccessNotice('Código verificado com sucesso! Carregando sistema...');
         setTimeout(() => {
           onLoginSuccess(res.user);
-        }, 600);
+        }, 500);
       } else {
         setErrorMessage('Código de verificação incorreto ou expirado.');
       }
@@ -171,19 +132,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
   // Handle Resend 2FA Code
   const handleResendCode = async () => {
-    if (resendCooldown > 0 || !twoFactorUserId) return;
+    if (resendCooldown > 0 || !challengeToken) return;
     try {
       setIsLoading(true);
       setErrorMessage(null);
-      const res = await apiClient.resend2FA(twoFactorUserId);
-      if (res.previewCode) {
-        setDevCodePreview(res.previewCode);
-      }
+      await apiClient.resend2FA(challengeToken);
       setResendCooldown(60);
       setSuccessNotice('Novo código de verificação enviado para o seu e-mail!');
       setTimeout(() => setSuccessNotice(null), 5000);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Falha ao reenviar código.');
+      setErrorMessage(err.message || 'Falha ao reenviar código. Tente novamente.');
     } finally {
       setIsLoading(false);
     }
@@ -272,6 +230,27 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 <p className="text-sm text-slate-400 mt-1.5">
                   Digite suas credenciais de usuário para acessar a plataforma.
                 </p>
+
+                {/* Preview Test Badge */}
+                <div className="mt-4 p-3 bg-blue-950/40 border border-blue-500/30 rounded-xl flex items-center justify-between text-xs text-blue-200">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span><strong>Acesso Preview / Teste:</strong> <code className="bg-blue-900/50 px-1 py-0.5 rounded text-blue-100 font-mono">admin</code> / <code className="bg-blue-900/50 px-1 py-0.5 rounded text-blue-100 font-mono">admin</code></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailOrUsername('admin');
+                      setPassword('admin');
+                    }}
+                    className="px-2.5 py-1 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    Preencher
+                  </button>
+                </div>
               </div>
 
               {/* Error Alert */}
@@ -299,7 +278,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       disabled={isLoading}
                       value={emailOrUsername}
                       onChange={(e) => setEmailOrUsername(e.target.value)}
-                      placeholder="ex: marcosmonteiro.devs@gmail.com"
+                      placeholder="admin ou seu e-mail"
                       className="w-full pl-10 pr-4 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
                     />
                   </div>
@@ -320,7 +299,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       disabled={isLoading}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Digite sua senha"
+                      placeholder="admin ou sua senha"
                       className="w-full pl-10 pr-11 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-mono disabled:opacity-50"
                     />
                     <button
@@ -348,7 +327,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <button
                     type="button"
                     onClick={() =>
-                      alert('Para redefinição de credenciais, entre em contato com o administrador de infraestrutura.')
+                      alert('Para redefinição de credenciais, utilize o e-mail de recuperação ou solicite ao administrador.')
                     }
                     className="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
                   >
@@ -409,31 +388,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   </span>
                 </p>
               </div>
-
-              {/* Dev Simulation Code Banner */}
-              {devCodePreview && (
-                <div className="mt-4 p-3 bg-blue-950/60 border border-blue-800/80 rounded-xl text-xs text-blue-200 flex items-start gap-2.5">
-                  <Mail className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
-                  <div className="flex-1">
-                    <span className="font-semibold text-blue-300 block">
-                      Código 2FA enviado para a caixa postal:
-                    </span>
-                    <span className="text-base font-mono font-bold tracking-widest text-emerald-400 select-all">
-                      {devCodePreview}
-                    </span>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">
-                      (Válido por 10 minutos)
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setTwoFactorCode(devCodePreview)}
-                    className="text-[11px] px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg cursor-pointer transition-colors"
-                  >
-                    Preencher
-                  </button>
-                </div>
-              )}
 
               {/* Error Alert */}
               {errorMessage && (

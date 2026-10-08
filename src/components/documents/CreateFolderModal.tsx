@@ -7,7 +7,8 @@ interface CreateFolderModalProps {
   onClose: () => void;
   departments: Department[];
   currentDepartmentId?: string;
-  onCreateFolder: (data: { name: string; departmentId: string; isLocked: boolean; description: string }) => void;
+  parentFolderId?: string | null;
+  onCreateFolder: (data: { name: string; departmentId: string; isLocked: boolean; description: string; parentId?: string | null }) => void;
 }
 
 export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
@@ -15,6 +16,7 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
   onClose,
   departments,
   currentDepartmentId,
+  parentFolderId,
   onCreateFolder,
 }) => {
   const [folderName, setFolderName] = useState('');
@@ -33,6 +35,7 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
       departmentId,
       isLocked,
       description,
+      parentId: parentFolderId || null,
     });
     onClose();
   };

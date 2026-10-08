@@ -36,6 +36,7 @@ export interface User {
   failedLoginAttempts: number;
   twoFactorEnabled: boolean;
   twoFactorSecret?: string;
+  mustChangePassword?: boolean;
   createdAt: string;
   lastLoginAt?: string;
   permittedFolderIds: string[];
