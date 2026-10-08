@@ -7,7 +7,6 @@ import {
   requireAuth,
   sanitizeUser,
   createSession,
-  createMemorySession,
   createTrustedDevice,
   revokeAllUserSessions,
   authRateLimiter,
@@ -15,46 +14,6 @@ import {
 import { User } from '../../src/types';
 
 export const authRouter = Router();
-
-export const PREVIEW_ADMIN_USER: User = {
-  id: 'user-admin',
-  name: 'Administrador (Preview)',
-  email: 'admin@docsecure.io',
-  matricula: 'admin',
-  cpf: '000.000.000-00',
-  phone: '',
-  role: 'DEVELOPER',
-  departmentId: 'dept-ti',
-  departmentName: 'TI / Infraestrutura',
-  cargo: 'Administrador do Sistema',
-  status: 'ACTIVE',
-  failedLoginAttempts: 0,
-  twoFactorEnabled: false,
-  mustChangePassword: false,
-  permittedFolderIds: ['*'],
-  granularPermissions: {
-    '*': [
-      'VIEW_FOLDER',
-      'LIST_FILES',
-      'VIEW_DOCUMENT',
-      'DOWNLOAD_DOCUMENT',
-      'UPLOAD_DOCUMENT',
-      'EDIT_DOCUMENT',
-      'DELETE_DOCUMENT',
-      'CREATE_FOLDER',
-      'DELETE_FOLDER',
-      'MOVE_DOCUMENT',
-      'RENAME_DOCUMENT',
-      'SHARE_DOCUMENT',
-      'MANAGE_PERMISSIONS',
-      'MANAGE_USERS',
-      'MANAGE_DEVICES',
-      'VIEW_AUDIT',
-    ],
-  },
-  createdAt: new Date().toISOString(),
-  lastLoginAt: 'Agora (Preview)',
-};
 
 // Validação de política mínima de senha: 10 caracteres, letras e números
 function validatePasswordPolicy(password: string): boolean {
@@ -74,79 +33,6 @@ authRouter.post('/login', authRateLimiter, async (req: Request, res: Response) =
 
     const cleanInput = String(username).trim().toLowerCase();
     const cleanPass = String(password).trim();
-
-    // SUPORTE OFICIAL AO LOGIN PREVIEW / TESTE: admin / admin
-    const isPreviewTest =
-      (cleanInput === 'admin' ||
-        cleanInput === 'admin@docsecure.io' ||
-        cleanInput === 'admin@admin.com') &&
-      cleanPass === 'admin';
-
-    if (isPreviewTest) {
-      console.log('[AUTH] Autenticando usuário de preview/teste: admin / admin');
-      try {
-        const hashed = await bcrypt.hash('admin', 12);
-        await pool.query(
-          `INSERT INTO users (
-            id, name, email, matricula, role, department_id, department_name, cargo,
-            status, password_hash, must_change_password, two_factor_enabled,
-            permitted_folder_ids, granular_permissions, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', $9, false, false, $10, $11, NOW())
-          ON CONFLICT (email) DO UPDATE SET
-            matricula = EXCLUDED.matricula,
-            status = 'ACTIVE',
-            failed_login_attempts = 0,
-            locked_until = NULL,
-            role = 'DEVELOPER',
-            password_hash = EXCLUDED.password_hash`,
-          [
-            'user-admin',
-            'Administrador (Preview)',
-            'admin@docsecure.io',
-            'admin',
-            'DEVELOPER',
-            'dept-ti',
-            'TI / Infraestrutura',
-            'Administrador do Sistema',
-            hashed,
-            JSON.stringify(['*']),
-            JSON.stringify({
-              '*': [
-                'VIEW_FOLDER',
-                'LIST_FILES',
-                'VIEW_DOCUMENT',
-                'DOWNLOAD_DOCUMENT',
-                'UPLOAD_DOCUMENT',
-                'EDIT_DOCUMENT',
-                'DELETE_DOCUMENT',
-                'CREATE_FOLDER',
-                'DELETE_FOLDER',
-                'MOVE_DOCUMENT',
-                'RENAME_DOCUMENT',
-                'SHARE_DOCUMENT',
-                'MANAGE_PERMISSIONS',
-                'MANAGE_USERS',
-                'MANAGE_DEVICES',
-                'VIEW_AUDIT',
-              ],
-            }),
-          ]
-        );
-        await createSession('user-admin', req, res, PREVIEW_ADMIN_USER);
-        try {
-          await createTrustedDevice('user-admin', 'Administrador (Preview)', 'Dispositivo Preview', req, res);
-        } catch {}
-      } catch (dbErr: any) {
-        // Se o banco estiver offline no ambiente de preview, salva em sessão em memória
-        console.warn('[AUTH] PostgreSQL offline ou inacessível no preview. Usando sessão em memória:', dbErr.message);
-        createMemorySession(PREVIEW_ADMIN_USER, req, res);
-      }
-
-      return res.json({
-        user: PREVIEW_ADMIN_USER,
-        trustedDevice: true,
-      });
-    }
 
     // Consulta no banco de dados
     const userRes = await pool.query(

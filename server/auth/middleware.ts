@@ -40,35 +40,8 @@ export function sanitizeUser(row: any): User {
   } as User;
 }
 
-export const memorySessions = new Map<string, { user: User; expiresAt: Date; sessionId: string }>();
-
-export function createMemorySession(user: User, req: Request, res: Response) {
-  const token = crypto.randomBytes(32).toString('hex');
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-  const sessionId = 'sess_mem_' + crypto.randomBytes(16).toString('hex');
-  const ttlHours = parseInt(process.env.SESSION_TTL_HOURS || '8', 10);
-  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
-
-  memorySessions.set(tokenHash, {
-    user,
-    expiresAt,
-    sessionId,
-  });
-
-  const isHttps = process.env.APP_URL?.startsWith('https') || process.env.NODE_ENV === 'production';
-  res.cookie('dcs_session', token, {
-    httpOnly: true,
-    secure: isHttps,
-    sameSite: 'lax',
-    maxAge: ttlHours * 60 * 60 * 1000,
-    path: '/',
-  });
-
-  return { sessionId, token };
-}
-
 // Cria uma sessão segura com cookie HttpOnly de 8 horas
-export async function createSession(userId: string, req: Request, res: Response, fallbackUser?: User) {
+export async function createSession(userId: string, req: Request, res: Response) {
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const sessionId = 'sess_' + crypto.randomBytes(16).toString('hex');
@@ -78,21 +51,11 @@ export async function createSession(userId: string, req: Request, res: Response,
   const ttlHours = parseInt(process.env.SESSION_TTL_HOURS || '8', 10);
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
-  try {
-    await pool.query(
-      `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at, last_seen_at, ip, user_agent)
-       VALUES ($1, $2, $3, NOW(), $4, NOW(), $5, $6)`,
-      [sessionId, userId, tokenHash, expiresAt, ip, userAgent]
-    );
-  } catch (err: any) {
-    if (fallbackUser) {
-      memorySessions.set(tokenHash, {
-        user: fallbackUser,
-        expiresAt,
-        sessionId,
-      });
-    }
-  }
+  await pool.query(
+    `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at, last_seen_at, ip, user_agent)
+     VALUES ($1, $2, $3, NOW(), $4, NOW(), $5, $6)`,
+    [sessionId, userId, tokenHash, expiresAt, ip, userAgent]
+  );
 
   const isHttps = process.env.APP_URL?.startsWith('https') || process.env.NODE_ENV === 'production';
 
@@ -174,18 +137,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    // 1. Checagem em memória (suporte a preview/teste e sessões resilientes)
-    const memSession = memorySessions.get(tokenHash);
-    if (memSession) {
-      if (memSession.expiresAt.getTime() > Date.now()) {
-        (req as any).user = memSession.user;
-        (req as any).sessionId = memSession.sessionId;
-        return next();
-      } else {
-        memorySessions.delete(tokenHash);
-      }
-    }
-
     let result;
     try {
       result = await pool.query(
@@ -197,9 +148,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         [tokenHash]
       );
     } catch (dbErr: any) {
-      console.warn('[AUTH] Verificação no banco falhou:', dbErr.message);
-      res.clearCookie('dcs_session', { path: '/' });
-      return res.status(401).json({ error: 'Sessão inválida ou banco temporariamente offline.' });
+      console.error('[AUTH] Falha ao consultar banco de dados para sessão:', dbErr.message);
+      return res.status(503).json({ error: 'Banco de dados indisponível. Serviço temporariamente fora do ar.' });
     }
 
     if (!result || result.rows.length === 0) {

@@ -9,28 +9,18 @@ const { Pool } = pg;
 const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) {
-  const errMsg = '[DB CRITICAL] A variável de ambiente DATABASE_URL não está definida no .env!';
+  const errMsg = '[DB CRITICAL] A variável de ambiente DATABASE_URL não está definida no .env! O servidor não pode ser iniciado sem banco de dados.';
   console.error(errMsg);
-  if (process.env.NODE_ENV === 'production') {
-    process.exit(1);
-  }
+  throw new Error(errMsg);
 }
 
 // Pass connectionString directly to Pool to seamlessly support special characters (+, @, #, etc.)
-export const pool = new Pool(
-  databaseUrl
-    ? {
-        connectionString: databaseUrl,
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-      }
-    : {
-        host: 'localhost',
-        port: 5432,
-        database: 'docsecure_db',
-      }
-);
+export const pool = new Pool({
+  connectionString: databaseUrl,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
 
 let isPostgresHealthy = false;
 let lastLatency = 0;
@@ -297,62 +287,23 @@ export async function initDatabase(): Promise<void> {
       console.log('[DB Migration] Migração de senhas para bcrypt concluída.');
     }
 
-    // 4. Initial Administrator Bootstrap:
-    // Cria ou garante o usuário administrador de preview/teste: admin / admin
-    const hashedAdminPass = await bcrypt.hash('admin', 12);
-    await client.query(
-      `INSERT INTO users (
-        id, name, email, matricula, role, department_id, department_name, cargo,
-        status, password_hash, must_change_password, two_factor_enabled,
-        permitted_folder_ids, granular_permissions, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', $9, false, false, $10, $11, NOW())
-      ON CONFLICT (email) DO UPDATE SET
-        matricula = EXCLUDED.matricula,
-        status = 'ACTIVE',
-        role = 'DEVELOPER',
-        password_hash = EXCLUDED.password_hash`,
-      [
-        'user-admin',
-        'Administrador (Preview)',
-        'admin@docsecure.io',
-        'admin',
-        'DEVELOPER',
-        'dept-ti',
-        'TI / Infraestrutura',
-        'Administrador do Sistema',
-        hashedAdminPass,
-        JSON.stringify(['*']),
-        JSON.stringify({
-          '*': [
-            'VIEW_FOLDER',
-            'LIST_FILES',
-            'VIEW_DOCUMENT',
-            'DOWNLOAD_DOCUMENT',
-            'UPLOAD_DOCUMENT',
-            'EDIT_DOCUMENT',
-            'DELETE_DOCUMENT',
-            'CREATE_FOLDER',
-            'DELETE_FOLDER',
-            'MOVE_DOCUMENT',
-            'RENAME_DOCUMENT',
-            'SHARE_DOCUMENT',
-            'MANAGE_PERMISSIONS',
-            'MANAGE_USERS',
-            'MANAGE_DEVICES',
-            'VIEW_AUDIT',
-          ],
-        }),
-      ]
-    );
+    // 4. Migração de Segurança: Expurgar usuário fixo de preview/teste caso exista
+    await client.query(`
+      DELETE FROM sessions WHERE user_id = 'user-admin' OR user_id IN (SELECT id FROM users WHERE LOWER(email) = 'admin@docsecure.io');
+      DELETE FROM devices WHERE user_id = 'user-admin' OR user_id IN (SELECT id FROM users WHERE LOWER(email) = 'admin@docsecure.io');
+      DELETE FROM users WHERE id = 'user-admin' OR LOWER(email) = 'admin@docsecure.io';
+    `);
 
-    const { rows: usersCountRow } = await client.query('SELECT count(*) FROM users');
-    const totalUsers = parseInt(usersCountRow[0].count, 10);
-
+    // 5. Administrador Inicial do .env (Apenas se não existir nenhum usuário com papel ADMIN ou DEVELOPER)
     const adminEmail = process.env.ADMIN_EMAIL;
     const adminPass = process.env.ADMIN_INITIAL_PASSWORD;
 
-    if (adminEmail && adminPass) {
-      console.log(`[DB Bootstrap] Configurando administrador corporativo (.env: ${adminEmail})...`);
+    const { rows: existingAdmins } = await client.query(
+      "SELECT id FROM users WHERE UPPER(role) IN ('ADMIN', 'DEVELOPER') LIMIT 1"
+    );
+
+    if (existingAdmins.length === 0 && adminEmail && adminPass) {
+      console.log(`[DB Bootstrap] Nenhum ADMIN/DEVELOPER encontrado. Cadastrando administrador corporativo inicial (.env: ${adminEmail})...`);
       const hashedPass = await bcrypt.hash(adminPass, 12);
       await client.query(
         `INSERT INTO users (
@@ -360,8 +311,7 @@ export async function initDatabase(): Promise<void> {
           status, password_hash, must_change_password, two_factor_enabled,
           permitted_folder_ids, granular_permissions, created_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', $9, true, true, $10, $11, NOW())
-        ON CONFLICT (email) DO UPDATE SET
-          password_hash = EXCLUDED.password_hash`,
+        ON CONFLICT DO NOTHING`,
         [
           'user-admin-env',
           'Administrador Corporativo',
@@ -370,7 +320,7 @@ export async function initDatabase(): Promise<void> {
           'DEVELOPER',
           'dept-ti',
           'TI / Infraestrutura',
-          'Administrador de Infraestrutura',
+          'Administrador do Sistema',
           hashedPass,
           JSON.stringify(['*']),
           JSON.stringify({
@@ -397,8 +347,8 @@ export async function initDatabase(): Promise<void> {
       );
     }
 
-    // 5. Atribuir papel 'DEVELOPER' para e-mails definidos em DEVELOPER_EMAILS
-    const devEmails = (process.env.DEVELOPER_EMAILS || 'marcosmonteiro.devs@gmail.com,admin@docsecure.io')
+    // 6. Atribuir papel 'DEVELOPER' para e-mails definidos em DEVELOPER_EMAILS (sem valor padrão)
+    const devEmails = (process.env.DEVELOPER_EMAILS || '')
       .split(',')
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
@@ -431,14 +381,14 @@ export async function getDbStatus(): Promise<DbStatus> {
   let latencyMs = lastLatency;
   let databaseName = 'docsecure_db';
   let host = 'localhost';
-  let port = 3030;
+  let port = 5432;
 
   if (databaseUrl) {
     try {
       const parsed = new URL(databaseUrl.replace('postgresql://', 'http://').replace('postgres://', 'http://'));
       databaseName = parsed.pathname.replace('/', '') || 'docsecure_db';
       host = parsed.hostname || 'localhost';
-      port = parsed.port ? parseInt(parsed.port, 10) : 3030;
+      port = parsed.port ? parseInt(parsed.port, 10) : 5432;
     } catch {}
   }
 

@@ -5,8 +5,6 @@ import { requireAuth } from '../auth/middleware';
 
 export const foldersRouter = Router();
 
-const memoryFolders: any[] = [];
-
 foldersRouter.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -42,8 +40,8 @@ foldersRouter.get('/', requireAuth, async (req: Request, res: Response) => {
       }))
     );
   } catch (err: any) {
-    // Retorna pastas em memória se o banco estiver offline
-    return res.json(memoryFolders);
+    console.error('[FOLDERS GET ERROR]', err);
+    return res.status(503).json({ error: 'Erro ao listar pastas do banco de dados.' });
   }
 });
 
@@ -55,32 +53,14 @@ foldersRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     }
 
     const folderId = 'folder-' + crypto.randomBytes(8).toString('hex');
-    try {
-      await pool.query(
-        `INSERT INTO folders (id, name, department_id, department_name, parent_id, description, is_locked, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-        [folderId, name, departmentId, departmentName || 'Geral', parentId || null, description || '', isLocked || false]
-      );
+    await pool.query(
+      `INSERT INTO folders (id, name, department_id, department_name, parent_id, description, is_locked, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+      [folderId, name, departmentId, departmentName || 'Geral', parentId || null, description || '', isLocked || false]
+    );
 
-      const { rows } = await pool.query('SELECT * FROM folders WHERE id = $1', [folderId]);
-      return res.status(201).json(rows[0]);
-    } catch {
-      const newFolder = {
-        id: folderId,
-        name,
-        departmentId,
-        departmentName: departmentName || 'Geral',
-        parentId: parentId || null,
-        description: description || '',
-        isLocked: isLocked || false,
-        itemCount: 0,
-        tags: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      memoryFolders.push(newFolder);
-      return res.status(201).json(newFolder);
-    }
+    const { rows } = await pool.query('SELECT * FROM folders WHERE id = $1', [folderId]);
+    return res.status(201).json(rows[0]);
   } catch (err: any) {
     console.error('[FOLDERS CREATE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao criar pasta.' });
@@ -107,17 +87,7 @@ foldersRouter.put('/:id', requireAuth, async (req: Request, res: Response) => {
     const { rows } = await pool.query('SELECT * FROM folders WHERE id = $1', [id]);
     return res.json(rows[0]);
   } catch (err: any) {
-    const { name, description, isLocked, tags, parentId } = req.body;
-    const mem = memoryFolders.find((f) => f.id === req.params.id);
-    if (mem) {
-      if (name !== undefined) mem.name = name;
-      if (description !== undefined) mem.description = description;
-      if (isLocked !== undefined) mem.isLocked = isLocked;
-      if (tags !== undefined) mem.tags = tags;
-      if (parentId !== undefined) mem.parentId = parentId;
-      mem.updatedAt = new Date().toISOString();
-      return res.json(mem);
-    }
+    console.error('[FOLDERS UPDATE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao atualizar pasta.' });
   }
 });
@@ -128,11 +98,7 @@ foldersRouter.delete('/:id', requireAuth, async (req: Request, res: Response) =>
     await pool.query('DELETE FROM folders WHERE id = $1', [id]);
     return res.json({ success: true, deletedId: id });
   } catch (err: any) {
-    const idx = memoryFolders.findIndex((f) => f.id === req.params.id);
-    if (idx > -1) {
-      memoryFolders.splice(idx, 1);
-      return res.json({ success: true, deletedId: req.params.id });
-    }
+    console.error('[FOLDERS DELETE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao excluir pasta.' });
   }
 });

@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from '@google/genai';
 import { pool } from '../db';
-import { requireAuth, requireRole, memorySessions } from '../auth/middleware';
+import { requireAuth, requireRole } from '../auth/middleware';
 import {
   getAllSettingsSummary,
   saveSetting,
@@ -30,18 +30,7 @@ function isRecentlyAuthenticated(req: Request): boolean {
   if (!cacheKey) return false;
 
   const lastAuth = reauthCache.get(cacheKey);
-  if (!lastAuth) {
-    // Se a sessão foi criada há menos de 10 minutos, considera autenticado
-    const mem = memorySessions.get(tokenHash);
-    if (mem) {
-      // Se a sessão expirará em mais de 7 horas e 50 minutos (ou seja, criada há menos de 10 min de um ttl de 8h)
-      const sessionAgeMs = Date.now() - (mem.expiresAt.getTime() - 8 * 3600 * 1000);
-      if (sessionAgeMs < 10 * 60 * 1000) {
-        return true;
-      }
-    }
-    return false;
-  }
+  if (!lastAuth) return false;
 
   // 10 minutos = 600.000 ms
   return Date.now() - lastAuth < 10 * 60 * 1000;
@@ -78,19 +67,9 @@ integrationsRouter.post('/verify-password', async (req: Request, res: Response) 
       return res.status(400).json({ error: 'Informe a sua senha atual.' });
     }
 
-    // Se usuário preview/admin
-    if (user.matricula === 'admin' && password === 'admin') {
-      setReauthenticated(req);
-      return res.json({ success: true, message: 'Identidade confirmada com sucesso.' });
-    }
-
     // Buscar hash no banco
     const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [user.id]);
     if (rows.length === 0 || !rows[0].password_hash) {
-      if (password === 'admin') {
-        setReauthenticated(req);
-        return res.json({ success: true, message: 'Identidade confirmada com sucesso.' });
-      }
       return res.status(401).json({ error: 'Usuário sem senha cadastrada.' });
     }
 
@@ -123,8 +102,6 @@ integrationsRouter.post('/settings', async (req: Request, res: Response) => {
       if (rows.length > 0 && rows[0].password_hash) {
         const isValid = await bcrypt.compare(passToCheck, rows[0].password_hash);
         if (isValid) setReauthenticated(req);
-      } else if (passToCheck === 'admin') {
-        setReauthenticated(req);
       }
     }
 

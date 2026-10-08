@@ -106,31 +106,8 @@ export const INITIAL_DEPARTMENTS: Department[] = [
   },
 ];
 
-// Usuário oficial de Preview / Teste: admin / admin
-export const INITIAL_USERS: User[] = [
-  {
-    id: 'user-admin',
-    name: 'Administrador (Preview)',
-    email: 'admin@docsecure.io',
-    matricula: 'admin',
-    cpf: '000.000.000-00',
-    phone: '',
-    role: 'DEVELOPER', // Acesso total com privilégios máximos RBAC
-    departmentId: 'dept-ti',
-    departmentName: 'TI / Infraestrutura',
-    cargo: 'Administrador do Sistema',
-    status: 'ACTIVE',
-    failedLoginAttempts: 0,
-    twoFactorEnabled: false,
-    mustChangePassword: false,
-    createdAt: new Date().toISOString(),
-    lastLoginAt: 'Agora (Preview)',
-    permittedFolderIds: ['*'],
-    granularPermissions: {
-      '*': ALL_PERMISSIONS,
-    },
-  },
-];
+// Nenhum usuário mockado no frontend (autenticação e usuários carregados exclusivamente via API/banco)
+export const INITIAL_USERS: User[] = [];
 
 // Ambiente totalmente limpo para teste (sem pastas mockadas)
 export const INITIAL_FOLDERS: Folder[] = [];

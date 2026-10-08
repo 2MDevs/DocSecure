@@ -14,9 +14,9 @@ cp .env.example .env
 
 | Variável | Descrição | Exemplo |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | String de conexão direta do PostgreSQL na VPS | `postgresql://docsecure_user:SENHA@localhost:3030/docsecure_db?schema=public` |
+| `DATABASE_URL` | String de conexão direta do PostgreSQL na VPS | `postgresql://docsecure_user:SENHA@localhost:5433/docsecure_db?schema=public` |
 | `SETTINGS_ENCRYPTION_KEY` | Chave de 32 bytes em base64 para criptografar segredos AES-256-GCM | *(Veja como gerar abaixo)* |
-| `DEVELOPER_EMAILS` | Lista de e-mails com permissão exclusiva de Desenvolvedor | `marcosmonteiro.devs@gmail.com,admin@docsecure.io` |
+| `DEVELOPER_EMAILS` | Lista de e-mails com permissão exclusiva de Desenvolvedor | `marcosmonteiro.devs@gmail.com` |
 | `PORT` | Porta de escuta da aplicação Express | `3000` |
 | `NODE_ENV` | Modo de execução (`production` ou `development`) | `production` |
 | `APP_URL` | URL pública onde o sistema está hospedado | `https://docsecure.suaempresa.com.br` |
@@ -85,7 +85,7 @@ Execute os seguintes testes para validar a segurança e funcionalidade:
    - Verifique que o item "Integração" **não aparece** no menu lateral;
    - Tente fazer uma requisição manual `GET /api/integrations/settings`: o backend retornará estritamente **403 Forbidden**.
 2. **Configuração e Teste de Envio SMTP:**
-   - Acesse com o usuário Desenvolvedor (`marcosmonteiro.devs@gmail.com` ou login preview `admin` / `admin`);
+   - Acesse com o usuário Desenvolvedor (configurado via `ADMIN_EMAIL` / `DEVELOPER_EMAILS`);
    - Acesse a tela **Integração** e preencha as credenciais do seu servidor SMTP;
    - Clique em **"Salvar Alterações"**;
    - Clique no botão **"Enviar e-mail de teste"**: o sistema envia o e-mail para o seu endereço e exibe a confirmação de sucesso ou o erro do servidor SMTP (sem expor sua senha).

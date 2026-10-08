@@ -6,8 +6,6 @@ import { requireAuth } from '../auth/middleware';
 
 export const documentsRouter = Router();
 
-const memoryDocuments: any[] = [];
-
 // Configuração do Multer com limite de tamanho configurável
 const maxUploadMb = parseInt(process.env.MAX_UPLOAD_MB || '50', 10);
 const upload = multer({
@@ -62,7 +60,8 @@ documentsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
       }))
     );
   } catch (err: any) {
-    return res.json(memoryDocuments);
+    console.error('[DOCUMENTS GET ERROR]', err);
+    return res.status(503).json({ error: 'Erro ao listar documentos do banco de dados.' });
   }
 });
 

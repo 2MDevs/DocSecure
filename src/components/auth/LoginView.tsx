@@ -230,27 +230,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 <p className="text-sm text-slate-400 mt-1.5">
                   Digite suas credenciais de usuário para acessar a plataforma.
                 </p>
-
-                {/* Preview Test Badge */}
-                <div className="mt-4 p-3 bg-blue-950/40 border border-blue-500/30 rounded-xl flex items-center justify-between text-xs text-blue-200">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </span>
-                    <span><strong>Acesso Preview / Teste:</strong> <code className="bg-blue-900/50 px-1 py-0.5 rounded text-blue-100 font-mono">admin</code> / <code className="bg-blue-900/50 px-1 py-0.5 rounded text-blue-100 font-mono">admin</code></span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailOrUsername('admin');
-                      setPassword('admin');
-                    }}
-                    className="px-2.5 py-1 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
-                  >
-                    Preencher
-                  </button>
-                </div>
               </div>
 
               {/* Error Alert */}
@@ -278,7 +257,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       disabled={isLoading}
                       value={emailOrUsername}
                       onChange={(e) => setEmailOrUsername(e.target.value)}
-                      placeholder="admin ou seu e-mail"
+                      placeholder="seu.email@empresa.com.br ou matrícula"
                       className="w-full pl-10 pr-4 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
                     />
                   </div>
@@ -299,7 +278,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       disabled={isLoading}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="admin ou sua senha"
+                      placeholder="••••••••••••"
                       className="w-full pl-10 pr-11 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-mono disabled:opacity-50"
                     />
                     <button
