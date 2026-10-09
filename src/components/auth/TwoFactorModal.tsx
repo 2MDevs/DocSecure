@@ -70,8 +70,8 @@ export const TwoFactorModal: React.FC<TwoFactorModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-[#0f172a] text-white rounded-2xl max-w-md w-full p-7 shadow-2xl border border-slate-700 relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="bg-[#0f172a] text-white rounded-t-3xl sm:rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-700 relative overflow-hidden max-h-[90dvh] overflow-y-auto">
         {/* Glow accent */}
         <div className="absolute top-0 right-0 w-40 h-40 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
 

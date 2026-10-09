@@ -840,7 +840,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
               ) : (
                 /* Enhanced Unified Windows Explorer List View Table */
                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-                  <table className="w-full text-xs text-left">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left min-w-[640px] md:min-w-0">
                     <thead>
                       <tr className="text-slate-400 border-b border-slate-100 bg-slate-50/60 font-semibold">
                         <th className="py-3 px-4 font-medium">Nome</th>
@@ -998,6 +999,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                     </tbody>
                   </table>
                 </div>
+              </div>
               )}
             </div>
           )}

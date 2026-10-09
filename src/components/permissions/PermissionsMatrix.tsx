@@ -123,7 +123,7 @@ export const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({
         <button
           type="button"
           onClick={handleSave}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center gap-2 transition-all cursor-pointer"
+          className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center justify-center gap-2 transition-all cursor-pointer min-h-[44px]"
         >
           <Save className="w-4 h-4" />
           <span>{isSaved ? 'Permissões Salvas!' : 'Salvar Alterações'}</span>
@@ -131,15 +131,15 @@ export const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({
       </div>
 
       {/* Selector Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* User Selection Sidebar */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6">
+        {/* User Selection Sidebar / Accordion */}
         <div className="md:col-span-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <span className="text-xs font-bold text-slate-900">1. Selecione o Colaborador</span>
             <span className="text-[11px] text-slate-400">{availableUsers.length} usuários</span>
           </div>
 
-          <div className="space-y-1 max-h-96 overflow-y-auto pr-1">
+          <div className="space-y-1 max-h-60 sm:max-h-96 overflow-y-auto pr-1">
             {availableUsers.map((u) => (
               <button
                 key={u.id}
@@ -149,7 +149,7 @@ export const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({
                   setLocalPermissions({});
                   setIsSaved(false);
                 }}
-                className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${
+                className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all min-h-[44px] cursor-pointer ${
                   selectedUserId === u.id
                     ? 'bg-blue-50 border border-blue-200 text-blue-900'
                     : 'hover:bg-slate-50 border border-transparent text-slate-700'
@@ -185,7 +185,7 @@ export const PermissionsMatrix: React.FC<PermissionsMatrixProps> = ({
                     setSelectedFolderId(f.id);
                     setIsSaved(false);
                   }}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-medium inline-flex items-center gap-2 transition-all whitespace-nowrap ${
+                  className={`px-3.5 py-2 rounded-xl text-xs font-medium inline-flex items-center gap-2 transition-all whitespace-nowrap min-h-[40px] cursor-pointer ${
                     selectedFolderId === f.id
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'

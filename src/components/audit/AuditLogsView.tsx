@@ -133,8 +133,57 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ auditLogs, current
         </div>
       </div>
 
-      {/* Audit Log Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      {/* Audit Log Mobile Cards (< md) */}
+      <div className="md:hidden space-y-3">
+        {filteredLogs.length === 0 ? (
+          <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-xs text-slate-500">
+            Nenhum evento de auditoria encontrado.
+          </div>
+        ) : (
+          filteredLogs.map((log) => (
+            <div
+              key={log.id}
+              className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-2.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="font-bold text-slate-900 block text-xs">{log.userName}</span>
+                  <span className="text-[10px] text-slate-400">{log.department} • {log.timestamp}</span>
+                </div>
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                    log.result === 'SUCCESS'
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : log.result === 'BLOCKED'
+                      ? 'bg-rose-50 text-rose-700'
+                      : 'bg-amber-50 text-amber-700'
+                  }`}
+                >
+                  {log.result}
+                </span>
+              </div>
+
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1 text-xs">
+                <div className="font-semibold text-slate-800">{log.action}</div>
+                {log.resourceName && (
+                  <div className="text-[11px] text-slate-600 truncate">
+                    Recurso: <strong>{log.resourceName}</strong>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500 leading-relaxed">{log.details}</p>
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100 font-mono">
+                <span className="truncate max-w-[180px]">{log.ipAddress} • {log.deviceInfo}</span>
+                <span className="bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{log.hash}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Audit Log Desktop Table (hidden on mobile, visible on md+) */}
+      <div className="hidden md:block bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead>

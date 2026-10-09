@@ -256,7 +256,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         </div>
 
         {/* Right Form Area */}
-        <div className="lg:col-span-7 p-8 sm:p-10 lg:p-12 flex flex-col justify-between bg-[#0b1426]">
+        <div className="lg:col-span-7 p-5 sm:p-10 lg:p-12 flex flex-col justify-between bg-[#0b1426]">
           {step === 'LOGIN' ? (
             /* STEP 1: CREDENTIALS FORM */
             <div>
@@ -309,7 +309,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         if (sessionExpiredNotice) onClearSessionExpiredNotice?.();
                       }}
                       placeholder="seu.email@empresa.com.br ou matrícula"
-                      className="w-full pl-10 pr-4 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
+                      className="w-full pl-10 pr-4 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-base sm:text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -333,7 +333,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         if (sessionExpiredNotice) onClearSessionExpiredNotice?.();
                       }}
                       placeholder="••••••••••••"
-                      className="w-full pl-10 pr-11 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-mono disabled:opacity-50"
+                      className="w-full pl-10 pr-11 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-base sm:text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-mono disabled:opacity-50"
                     />
                     <button
                       type="button"

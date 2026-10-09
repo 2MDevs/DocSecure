@@ -203,7 +203,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
         </div>
 
         {/* Right Form Area */}
-        <div className="lg:col-span-7 p-8 sm:p-10 lg:p-12 flex flex-col justify-between bg-[#0b1426]">
+        <div className="lg:col-span-7 p-5 sm:p-10 lg:p-12 flex flex-col justify-between bg-[#0b1426]">
           {isSuccess ? (
             /* SUCCESS STATE */
             <div className="my-auto text-center py-6 animate-in fade-in zoom-in-95 duration-300">
@@ -310,7 +310,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
                         setErrorMessage(null);
                       }}
                       placeholder="Mínimo 10 caracteres (letras e números)"
-                      className="w-full py-3 pl-4 pr-11 bg-[#08101e] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      className="w-full py-3 pl-4 pr-11 bg-[#08101e] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-base sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     />
                     <button
                       type="button"
@@ -337,7 +337,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
                         setErrorMessage(null);
                       }}
                       placeholder="Repita a nova senha"
-                      className="w-full py-3 pl-4 pr-11 bg-[#08101e] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      className="w-full py-3 pl-4 pr-11 bg-[#08101e] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-base sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     />
                     <button
                       type="button"

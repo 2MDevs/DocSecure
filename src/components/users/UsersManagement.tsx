@@ -162,8 +162,103 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
         )}
       </div>
 
-      {/* Users Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      {/* Users Responsive List / Table */}
+      {/* Mobile Card List (< md) */}
+      <div className="md:hidden space-y-3">
+        {filteredUsers.length === 0 ? (
+          <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-xs text-slate-500">
+            Nenhum usuário encontrado.
+          </div>
+        ) : (
+          filteredUsers.map((u) => (
+            <div
+              key={u.id}
+              className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar name={u.name} avatarUrl={u.avatar} size="sm" />
+                  <div className="min-w-0">
+                    <span className="font-bold text-slate-900 block truncate text-sm">{u.name}</span>
+                    <span className="text-[11px] text-slate-400 block truncate">
+                      {u.email} • Matrícula: {u.matricula}
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                    u.status === 'ACTIVE'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                  }`}
+                >
+                  {u.status === 'ACTIVE' ? 'Ativo' : 'Bloqueado'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-slate-100">
+                <div>
+                  <span className="text-slate-400 block">Setor & Cargo</span>
+                  <span className="font-semibold text-slate-800">{u.departmentName}</span>
+                  <span className="text-slate-500 block">{u.cargo}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Perfil RBAC</span>
+                  <span className="font-semibold text-blue-700">{u.role}</span>
+                  <div className="mt-0.5">
+                    {u.twoFactorEnabled ? (
+                      <span className="text-emerald-600 font-medium text-[10px] inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> 2FA Ativo
+                      </span>
+                    ) : (
+                      <span className="text-amber-600 font-medium text-[10px] inline-flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> 2FA Pendente
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => onToggleUserStatus(u.id)}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors min-h-[44px] ${
+                    u.status === 'ACTIVE'
+                      ? 'border-rose-200 text-rose-600 bg-rose-50/50 hover:bg-rose-100'
+                      : 'border-emerald-200 text-emerald-600 bg-emerald-50/50 hover:bg-emerald-100'
+                  }`}
+                >
+                  {u.status === 'ACTIVE' ? (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      <span>Bloquear</span>
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-4 h-4" />
+                      <span>Desbloquear</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onReset2FA(u.id)}
+                  className="py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
+                  title="Redefinir Credencial 2FA"
+                >
+                  <KeyRound className="w-4 h-4 text-slate-500" />
+                  <span>Reset 2FA</span>
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop Users Table (hidden on mobile, visible on md+) */}
+      <div className="hidden md:block bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead>
@@ -272,8 +367,8 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
 
       {/* Modal: Cadastrar Novo Usuário / Colaborador / Gestor */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">

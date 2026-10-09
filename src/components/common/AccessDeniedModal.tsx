@@ -19,8 +19,8 @@ export const AccessDeniedModal: React.FC<AccessDeniedModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-rose-100 relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-md w-full p-6 shadow-2xl border border-rose-100 relative overflow-hidden max-h-[90dvh] overflow-y-auto">
         {/* Top security banner accent */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-500 via-red-500 to-amber-500" />
 

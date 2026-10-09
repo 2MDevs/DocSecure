@@ -212,7 +212,34 @@ export const DeveloperDashboard: React.FC<DeveloperDashboardProps> = ({
             </button>
           </div>
 
-          <div className="overflow-x-auto mt-2">
+          {/* Mobile Card List (< sm) */}
+          <div className="sm:hidden space-y-2 mt-2">
+            {recentAuditLogs.slice(0, 4).map((log) => (
+              <div key={log.id} className="p-3 bg-slate-50/70 rounded-xl border border-slate-100 text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-900">{log.userName}</span>
+                  <span className="text-[10px] text-slate-400 tabular-nums">{log.timestamp}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>
+                    {log.action === 'LOGIN'
+                      ? 'Login'
+                      : log.action === 'DOCUMENT_VIEWED'
+                      ? 'Acesso a documento'
+                      : log.action === 'PERMISSIONS_MODIFIED'
+                      ? 'Alterou permissões'
+                      : log.action === 'DOCUMENT_DOWNLOADED'
+                      ? 'Download de documento'
+                      : log.action}
+                  </span>
+                  <span className="font-medium text-slate-600">{log.department}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop / Tablet Table (sm+) */}
+          <div className="hidden sm:block overflow-x-auto mt-2">
             <table className="w-full text-xs text-left">
               <thead>
                 <tr className="text-slate-400 font-semibold border-b border-slate-100">

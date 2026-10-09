@@ -52,8 +52,8 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   const canDownload = downloadPermissionCheck.allowed;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl w-full max-w-4xl h-full sm:h-auto sm:max-h-[92dvh] flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Top Bar matching mobile #6 & desktop specs */}
         <div className="px-5 py-3.5 bg-[#0a1222] border-b border-slate-800 flex items-center justify-between text-white select-none">
           <div className="flex items-center gap-3 truncate">

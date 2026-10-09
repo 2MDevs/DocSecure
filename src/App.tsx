@@ -33,7 +33,9 @@ import { SetPasswordPage } from './pages/SetPasswordPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { DeviceApprovalModal } from './components/auth/DeviceApprovalModal';
 import { AccessDeniedModal } from './components/common/AccessDeniedModal';
-import { DesktopSidebar, NavigationTab } from './components/layout/DesktopSidebar';
+import { AppShell } from './components/layout/AppShell';
+import { NavigationTab } from './components/layout/Sidebar';
+import { DesktopSidebar } from './components/layout/DesktopSidebar';
 import { DesktopHeader } from './components/layout/DesktopHeader';
 import { DeveloperDashboard } from './components/dashboard/DeveloperDashboard';
 import { DocumentsExplorer } from './components/documents/DocumentsExplorer';
@@ -83,6 +85,23 @@ export const TAB_TO_PATH: Record<NavigationTab, string> = {
   system: '/sistema',
   settings: '/seguranca',
   integrations: '/integracao',
+};
+
+export const TAB_TO_TITLE: Record<NavigationTab, string> = {
+  dev_dashboard: 'Painel do Desenvolvedor',
+  my_documents: 'Meus Documentos',
+  favorites: 'Documentos Favoritos',
+  shared: 'Documentos Compartilhados',
+  trash: 'Lixeira',
+  users: 'Gestão de Usuários',
+  sectors: 'Gestão de Setores',
+  permissions: 'Matriz de Permissões',
+  devices: 'Dispositivos Autorizados',
+  storage: 'Armazenamento & Quota',
+  audit_logs: 'Auditoria Corporativa',
+  system: 'Status do Sistema',
+  settings: 'Segurança & Configurações',
+  integrations: 'Integração & SMTP',
 };
 
 export function getTabFromPath(pathname: string): NavigationTab {
@@ -1154,21 +1173,28 @@ export default function App() {
     );
   }
 
-  // DESKTOP LAYOUT (Default 1440px+ full-screen enterprise layout)
+  // RESPONSIVE UNIFIED APP SHELL (Mobile-first with drawer & bottom nav, full desktop on lg+)
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex">
-      {/* Dark Navy Sidebar */}
-      <DesktopSidebar
-        currentUser={currentUser}
-        activeTab={activeTab}
-        onSelectTab={(tab) => navigateToTab(tab)}
-        onLogout={handleLogout}
-      />
-
-      {/* Main Workspace Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
-        {/* Banner Fixo: Modo de Configuração Inicial (Rule 4) */}
-        {initialSetupMode && currentUser.role === 'DEVELOPER' && (
+    <AppShell
+      currentUser={currentUser}
+      activeTab={activeTab}
+      onSelectTab={(tab) => navigateToTab(tab)}
+      onLogout={handleLogout}
+      availableUsers={users}
+      onSwitchUser={import.meta.env.DEV ? handleSwitchUser : undefined}
+      onOpenDevices={() => navigate('/dispositivos')}
+      onOpenSecurity={() => navigate('/seguranca')}
+      onOpenUpload={() => setIsUploadModalOpen(true)}
+      searchTerm={globalSearchTerm}
+      onSearchChange={setGlobalSearchTerm}
+      showSearchBar={activeTab === 'my_documents' || activeTab === 'audit_logs'}
+      notifications={notifications}
+      isMobileFrameActive={isMobileSimulator}
+      onToggleMobileFrame={() => setIsMobileSimulator(!isMobileSimulator)}
+      dbStatus={dbStatus}
+      currentTitle={TAB_TO_TITLE[activeTab] || 'DocSecure'}
+      initialSetupBanner={
+        initialSetupMode && currentUser.role === 'DEVELOPER' ? (
           <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-md border-b border-amber-600 sticky top-0 z-50 shrink-0">
             <div className="flex items-center gap-2.5">
               <span className="flex h-2.5 w-2.5 relative shrink-0">
@@ -1187,27 +1213,10 @@ export default function App() {
               Configurar Integração
             </button>
           </div>
-        )}
-
-        {/* Desktop Header with Live Database Indicator */}
-        <DesktopHeader
-          currentUser={currentUser}
-          availableUsers={users}
-          onSwitchUser={import.meta.env.DEV ? handleSwitchUser : undefined}
-          onLogout={handleLogout}
-          onOpenDevices={() => navigate('/dispositivos')}
-          onOpenSecurity={() => navigate('/seguranca')}
-          searchTerm={globalSearchTerm}
-          onSearchChange={setGlobalSearchTerm}
-          showSearchBar={activeTab === 'my_documents' || activeTab === 'audit_logs'}
-          notifications={notifications}
-          isMobileFrameActive={isMobileSimulator}
-          onToggleMobileFrame={() => setIsMobileSimulator(!isMobileSimulator)}
-          dbStatus={dbStatus}
-        />
-
-        {/* Connection Notice if any */}
-        {apiSyncError && (
+        ) : null
+      }
+      apiSyncErrorBanner={
+        apiSyncError ? (
           <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between text-xs text-amber-800">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -1221,10 +1230,9 @@ export default function App() {
               Reconectar
             </button>
           </div>
-        )}
-
-        {/* Dynamic Main View Router */}
-        <main className="flex-1 pb-12">
+        ) : null
+      }
+    >
           {activeTab === 'dev_dashboard' && (
             <DeveloperDashboard
               usersCount={users.length}
@@ -1378,8 +1386,6 @@ export default function App() {
               onMoveFolder={handleMoveFolder}
             />
           )}
-        </main>
-      </div>
 
       {/* Document Viewer Modal */}
       <DocumentViewerModal
@@ -1440,6 +1446,6 @@ export default function App() {
         resourceName={accessDeniedState.resourceName}
         requiredRoleOrPermission="RBAC: Permissão Granular Específica"
       />
-    </div>
+    </AppShell>
   );
 }

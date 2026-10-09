@@ -997,8 +997,8 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
 
       {/* RE-AUTHENTICATION MODAL */}
       {isReauthModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-5 sm:p-6 space-y-4 animate-in zoom-in-95 max-h-[90dvh] overflow-y-auto">
             <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
               <Lock className="w-6 h-6" />
             </div>
@@ -1024,7 +1024,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
                   onChange={(e) => setReauthPassword(e.target.value)}
                   placeholder="Digite sua senha"
                   autoFocus
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base sm:text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
 
@@ -1035,14 +1035,14 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
                     setIsReauthModalOpen(false);
                     setReauthPassword('');
                   }}
-                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={reauthLoading}
-                  className="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                  className="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center justify-center gap-2 min-h-[44px]"
                 >
                   {reauthLoading ? (
                     <>
@@ -1058,6 +1058,38 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
           </div>
         </div>
       )}
+
+      {/* Sticky Bottom Save Bar on Mobile (< sm) */}
+      <div className="sm:hidden fixed bottom-14 left-0 right-0 p-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-xl z-30 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={loadSettings}
+          disabled={saving}
+          className="p-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+          title="Recarregar"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSave()}
+          disabled={saving}
+          className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-h-[44px]"
+        >
+          {saving ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Salvando...</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              <span>Salvar Alterações</span>
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 };
