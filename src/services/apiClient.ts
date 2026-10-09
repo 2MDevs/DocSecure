@@ -66,6 +66,8 @@ export interface LoginResponse {
   require2FA?: boolean;
   challengeToken?: string;
   maskedEmail?: string;
+  firstAccess?: boolean;
+  mustChangePassword?: boolean;
   initialSetupMode?: boolean;
 }
 
@@ -77,6 +79,10 @@ const EXEMPT_SESSION_EXPIRED_ROUTES = [
   '/api/auth/login',
   '/api/auth/verify-2fa',
   '/api/auth/me',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/change-password',
+  '/api/auth/resend-2fa',
 ];
 
 export function dispatchSessionExpired(message: string = SESSION_EXPIRED_MESSAGE): void {
@@ -156,8 +162,8 @@ export const apiClient = {
     code: string;
     trustDevice: boolean;
     deviceName?: string;
-  }): Promise<{ user: User }> {
-    return apiRequest<{ user: User }>('/api/auth/verify-2fa', {
+  }): Promise<{ user: User; mustChangePassword?: boolean }> {
+    return apiRequest<{ user: User; mustChangePassword?: boolean }>('/api/auth/verify-2fa', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -169,6 +175,30 @@ export const apiClient = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ challengeToken }),
+    });
+  },
+
+  async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+    return apiRequest<{ success: boolean; message: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    return apiRequest<{ success: boolean; message: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, newPassword }),
+    });
+  },
+
+  async changePassword(newPassword: string, currentPassword?: string): Promise<{ success: boolean; message: string; user?: User }> {
+    return apiRequest<{ success: boolean; message: string; user?: User }>('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword, currentPassword }),
     });
   },
 

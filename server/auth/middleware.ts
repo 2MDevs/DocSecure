@@ -184,6 +184,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     (req as any).user = sanitizeUser(row);
     (req as any).sessionId = row.session_id;
 
+    // Se o usuário precisa trocar a senha obrigatoriamente, bloqueia acesso a rotas de dados
+    if (row.must_change_password) {
+      const isAuthRoute = req.baseUrl === '/api/auth' || req.originalUrl?.startsWith('/api/auth');
+      if (!isAuthRoute) {
+        return res.status(403).json({
+          error: 'Troca de senha obrigatória.',
+          code: 'MUST_CHANGE_PASSWORD',
+        });
+      }
+    }
+
     next();
   } catch (err: any) {
     console.error('[AUTH ERROR] Erro no middleware requireAuth:', err.message);

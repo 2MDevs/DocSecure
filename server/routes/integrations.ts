@@ -12,7 +12,7 @@ import {
   SettingsUpdateSchema,
   DEFAULT_SETTINGS,
 } from '../services/systemSettings';
-import { sendTestEmail, sendPasswordResetEmail } from '../mailer';
+import { sendTestEmail, sendPasswordResetEmail, buildPasswordLink } from '../mailer';
 
 export const integrationsRouter = Router();
 
@@ -393,7 +393,7 @@ integrationsRouter.post('/send-admin-reset', async (req: Request, res: Response)
     );
 
     const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-    const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
+    const resetUrl = buildPasswordLink(resetToken, baseUrl);
 
     const sent = await sendPasswordResetEmail(targetAdminEmail, adminUserName, resetUrl);
     if (!sent) {

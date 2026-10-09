@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { pool } from '../db';
 import { requireAuth, requireRole, sanitizeUser, revokeAllUserSessions } from '../auth/middleware';
-import { sendPasswordResetEmail } from '../mailer';
+import { sendPasswordResetEmail, buildPasswordLink } from '../mailer';
 
 export const usersRouter = Router();
 
@@ -110,7 +110,7 @@ usersRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (
       );
 
       const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-      const resetUrl = `${baseUrl}?reset_token=${resetToken}`;
+      const resetUrl = buildPasswordLink(resetToken, baseUrl);
       sendPasswordResetEmail(cleanEmail, name, resetUrl).catch(console.error);
     }
 

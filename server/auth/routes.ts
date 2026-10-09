@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db';
-import { send2FACode, sendPasswordResetEmail, maskEmail } from '../mailer';
+import { send2FACode, sendPasswordResetEmail, maskEmail, buildPasswordLink } from '../mailer';
 import { isInitialSetupModeActive } from '../services/systemSettings';
 import {
   requireAuth,
@@ -158,7 +158,10 @@ authRouter.post('/login', authRateLimiter, async (req: Request, res: Response) =
       });
     }
 
-    // 3. CHECAGEM DE DISPOSITIVO CONFIÁVEL VIA COOKIE HTTPONLY
+    // 3. IDENTIFICAÇÃO DE PRIMEIRO ACESSO (last_login_at IS NULL)
+    const isFirstAccess = user.last_login_at === null || user.last_login_at === undefined;
+
+    // 4. CHECAGEM DE DISPOSITIVO CONFIÁVEL VIA COOKIE HTTPONLY
     const clientDeviceToken = req.cookies?.docsecure_device_token;
     let isDeviceTrusted = false;
 
@@ -180,18 +183,19 @@ authRouter.post('/login', authRateLimiter, async (req: Request, res: Response) =
       }
     }
 
-    // Se o dispositivo já é confiável, autentica imediatamente
-    if (isDeviceTrusted) {
+    // Primeiro acesso NUNCA pula o código (mesmo que exista dispositivo confiável de outro usuário no navegador)
+    if (isDeviceTrusted && !isFirstAccess) {
       await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
       await createSession(user.id, req, res);
 
       return res.json({
         user: sanitizeUser(user),
         trustedDevice: true,
+        mustChangePassword: Boolean(user.must_change_password),
       });
     }
 
-    // 3. NOVO DISPOSITIVO: EXIGE 2FA VIA E-MAIL
+    // 5. NOVO DISPOSITIVO OU PRIMEIRO ACESSO: EXIGE CÓDIGO 2FA VIA E-MAIL
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const codeHash = crypto.createHash('sha256').update(code).digest('hex');
     const challengeToken = crypto.randomBytes(32).toString('hex');
@@ -209,19 +213,20 @@ authRouter.post('/login', authRateLimiter, async (req: Request, res: Response) =
       [codeHash, expiresAt, challengeToken, expiresAt, user.id]
     );
 
-    // Envio real por e-mail
-    const sent = await send2FACode(user.email, user.name, code);
+    // Envio real por e-mail com contexto de primeiro acesso
+    const sent = await send2FACode(user.email, user.name, code, isFirstAccess);
     if (!sent) {
       return res.status(500).json({
         error: 'Não foi possível enviar o código de verificação para o seu e-mail. Tente novamente mais tarde.',
       });
     }
 
-    // Retorna desafio sem revelar código
+    // Retorna desafio sem revelar código, indicando se é primeiro acesso
     return res.json({
       require2FA: true,
       challengeToken,
       maskedEmail: maskEmail(user.email),
+      firstAccess: isFirstAccess,
     });
   } catch (err: any) {
     console.error('[LOGIN ERROR]', err);
@@ -321,6 +326,7 @@ authRouter.post('/verify-2fa', authRateLimiter, async (req: Request, res: Respon
 
     return res.json({
       user: sanitizeUser(user),
+      mustChangePassword: Boolean(user.must_change_password),
     });
   } catch (err: any) {
     console.error('[VERIFY 2FA ERROR]', err);
@@ -436,7 +442,7 @@ authRouter.post('/forgot-password', authRateLimiter, async (req: Request, res: R
       );
 
       const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-      const resetUrl = `${baseUrl}?reset_token=${resetToken}`;
+      const resetUrl = buildPasswordLink(resetToken, baseUrl);
       await sendPasswordResetEmail(user.email, user.name, resetUrl);
     }
 
@@ -492,6 +498,12 @@ authRouter.post('/reset-password', authRateLimiter, async (req: Request, res: Re
     // Marca token como utilizado
     await pool.query('UPDATE password_resets SET used_at = NOW() WHERE id = $1', [resetRow.id]);
 
+    // Revoga dispositivos confiáveis do usuário após troca ou redefinição de senha
+    await pool.query(
+      `UPDATE devices SET status = 'REVOKED' WHERE user_id = $1`,
+      [resetRow.user_id]
+    );
+
     // Revoga todas as sessões ativas do usuário por segurança
     await revokeAllUserSessions(resetRow.user_id);
 
@@ -502,5 +514,57 @@ authRouter.post('/reset-password', authRateLimiter, async (req: Request, res: Re
   } catch (err: any) {
     console.error('[RESET PASSWORD ERROR]', err);
     return res.status(500).json({ error: 'Erro ao redefinir senha.' });
+  }
+});
+
+// 8. TROCA DE SENHA AUTENTICADA (OBRIGATÓRIA OU VOLUNTÁRIA)
+authRouter.post('/change-password', requireAuth, authRateLimiter, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!newPassword) {
+      return res.status(400).json({ error: 'Nova senha é obrigatória.' });
+    }
+
+    if (!validatePasswordPolicy(newPassword)) {
+      return res.status(400).json({
+        error: 'A senha deve conter no mínimo 10 caracteres, incluindo letras e números.',
+      });
+    }
+
+    const dbUserRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [user.id]);
+    if (dbUserRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    const dbUser = dbUserRes.rows[0];
+
+    // Se senha atual foi informada, valida autenticidade
+    if (currentPassword && dbUser.password_hash) {
+      const isMatch = await bcrypt.compare(currentPassword, dbUser.password_hash);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Senha atual incorreta.' });
+      }
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await pool.query(
+      `UPDATE users SET password_hash = $1, must_change_password = false, failed_login_attempts = 0, locked_until = NULL WHERE id = $2`,
+      [hashed, user.id]
+    );
+
+    // Revoga dispositivos confiáveis após troca de senha
+    await pool.query(`UPDATE devices SET status = 'REVOKED' WHERE user_id = $1`, [user.id]);
+
+    const updatedUserRes = await pool.query('SELECT * FROM users WHERE id = $1', [user.id]);
+
+    return res.json({
+      success: true,
+      message: 'Senha alterada com sucesso!',
+      user: sanitizeUser(updatedUserRes.rows[0]),
+    });
+  } catch (err: any) {
+    console.error('[CHANGE PASSWORD ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao processar alteração de senha.' });
   }
 });

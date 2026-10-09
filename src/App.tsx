@@ -10,8 +10,10 @@ import {
   INITIAL_WEBHOOKS,
   INITIAL_NOTIFICATIONS,
 } from './services/dataStore';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   User,
+  UserRole,
   Department,
   Folder,
   DocumentItem,
@@ -27,6 +29,8 @@ import { apiClient } from './services/apiClient';
 
 // Components
 import { LoginView } from './components/auth/LoginView';
+import { SetPasswordPage } from './pages/SetPasswordPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { DeviceApprovalModal } from './components/auth/DeviceApprovalModal';
 import { AccessDeniedModal } from './components/common/AccessDeniedModal';
 import { DesktopSidebar, NavigationTab } from './components/layout/DesktopSidebar';
@@ -46,6 +50,75 @@ import { SecuritySettings } from './components/settings/SecuritySettings';
 import { IntegrationsView } from './components/settings/IntegrationsView';
 import { MobileAppFrame } from './components/mobile/MobileAppFrame';
 import { Database, RefreshCw, AlertCircle } from 'lucide-react';
+
+export const ROLE_ALLOWED_ROUTES: Record<string, UserRole[]> = {
+  '/painel': ['DEVELOPER'],
+  '/documentos': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
+  '/documentos/favoritos': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
+  '/documentos/compartilhados': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
+  '/documentos/lixeira': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
+  '/usuarios': ['DEVELOPER', 'MANAGER'],
+  '/setores': ['DEVELOPER', 'DIRECTOR'],
+  '/permissoes': ['DEVELOPER', 'MANAGER'],
+  '/dispositivos': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
+  '/armazenamento': ['DEVELOPER', 'DIRECTOR'],
+  '/auditoria': ['DEVELOPER', 'DIRECTOR'],
+  '/sistema': ['DEVELOPER', 'DIRECTOR', 'MANAGER'],
+  '/seguranca': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
+  '/integracao': ['DEVELOPER'],
+};
+
+export const TAB_TO_PATH: Record<NavigationTab, string> = {
+  dev_dashboard: '/painel',
+  my_documents: '/documentos',
+  favorites: '/documentos/favoritos',
+  shared: '/documentos/compartilhados',
+  trash: '/documentos/lixeira',
+  users: '/usuarios',
+  sectors: '/setores',
+  permissions: '/permissoes',
+  devices: '/dispositivos',
+  storage: '/armazenamento',
+  audit_logs: '/auditoria',
+  system: '/sistema',
+  settings: '/seguranca',
+  integrations: '/integracao',
+};
+
+export function getTabFromPath(pathname: string): NavigationTab {
+  switch (pathname) {
+    case '/painel':
+      return 'dev_dashboard';
+    case '/documentos':
+      return 'my_documents';
+    case '/documentos/favoritos':
+      return 'favorites';
+    case '/documentos/compartilhados':
+      return 'shared';
+    case '/documentos/lixeira':
+      return 'trash';
+    case '/usuarios':
+      return 'users';
+    case '/setores':
+      return 'sectors';
+    case '/permissoes':
+      return 'permissions';
+    case '/dispositivos':
+      return 'devices';
+    case '/armazenamento':
+      return 'storage';
+    case '/auditoria':
+      return 'audit_logs';
+    case '/sistema':
+      return 'system';
+    case '/seguranca':
+      return 'settings';
+    case '/integracao':
+      return 'integrations';
+    default:
+      return 'my_documents';
+  }
+}
 
 export default function App() {
   // Authentication State
@@ -90,8 +163,12 @@ export default function App() {
   const [apiSyncError, setApiSyncError] = useState<string | null>(null);
   const [initialSetupMode, setInitialSetupMode] = useState<boolean>(false);
 
-  // Active View & Navigation
-  const [activeTab, setActiveTab] = useState<NavigationTab>('dev_dashboard');
+  // Active View & Navigation via React Router
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const activeTab: NavigationTab = getTabFromPath(location.pathname);
   const [isMobileSimulator, setIsMobileSimulator] = useState<boolean>(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState<string>('');
 
@@ -114,6 +191,33 @@ export default function App() {
     reason: '',
     resourceName: '',
   });
+
+  // Navigate to Tab via URL
+  const navigateToTab = useCallback(
+    (tab: NavigationTab) => {
+      const targetPath = TAB_TO_PATH[tab] || '/documentos';
+      if (currentUser) {
+        const allowedRoles = ROLE_ALLOWED_ROUTES[targetPath];
+        if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
+          logSecurityEvent(
+            currentUser,
+            'DOCUMENT_VIEWED',
+            targetPath,
+            'Acesso não autorizado pelo perfil de usuário.',
+            'DENIED'
+          );
+          setAccessDeniedState({
+            isOpen: true,
+            reason: `Acesso negado: Seu perfil (${currentUser.role}) não possui permissão para acessar esta área.`,
+            resourceName: targetPath,
+          });
+          return;
+        }
+      }
+      navigate(targetPath);
+    },
+    [currentUser, navigate]
+  );
 
   // Fetch initial data from PostgreSQL REST API on startup
   const loadBootstrapData = useCallback(async () => {
@@ -178,27 +282,38 @@ export default function App() {
   };
 
   // Sessão expirada: limpa estados e retorna para tela de login com aviso
-  const handleSessionExpired = useCallback((customMsg?: string) => {
-    setCurrentUser(null);
-    setSessionExpiredNotice(
-      customMsg || 'Sua sessão expirou por inatividade. Entre novamente para continuar.'
-    );
-    // Limpa dados em memória carregados da sessão anterior
-    setUsers(INITIAL_USERS);
-    setDepartments(INITIAL_DEPARTMENTS);
-    setFolders(INITIAL_FOLDERS);
-    setDocuments(INITIAL_DOCUMENTS);
-    setDevices(INITIAL_DEVICES);
-    setAuditLogs(INITIAL_AUDIT_LOGS);
-    setApiKeys(INITIAL_API_KEYS);
-    setWebhooks(INITIAL_WEBHOOKS);
-  }, []);
+  const handleSessionExpired = useCallback(
+    (customMsg?: string) => {
+      setCurrentUser(null);
+      setSessionExpiredNotice(
+        customMsg || 'Sua sessão expirou por inatividade. Entre novamente para continuar.'
+      );
+      // Limpa dados em memória carregados da sessão anterior
+      setUsers(INITIAL_USERS);
+      setDepartments(INITIAL_DEPARTMENTS);
+      setFolders(INITIAL_FOLDERS);
+      setDocuments(INITIAL_DOCUMENTS);
+      setDevices(INITIAL_DEVICES);
+      setAuditLogs(INITIAL_AUDIT_LOGS);
+      setApiKeys(INITIAL_API_KEYS);
+      setWebhooks(INITIAL_WEBHOOKS);
+
+      const redirectPath =
+        location.pathname !== '/login' ? location.pathname + location.search : '';
+      const target = redirectPath
+        ? `/login?redirect=${encodeURIComponent(redirectPath)}`
+        : '/login';
+      navigate(target);
+    },
+    [location.pathname, location.search, navigate]
+  );
 
   // Interceptador global do evento de sessão expirada disparado pelo apiClient
   useEffect(() => {
     const onSessionExpired = (e: Event) => {
       const detail = (e as CustomEvent)?.detail;
-      const msg = detail?.message || 'Sua sessão expirou por inatividade. Entre novamente para continuar.';
+      const msg =
+        detail?.message || 'Sua sessão expirou por inatividade. Entre novamente para continuar.';
       handleSessionExpired(msg);
     };
 
@@ -247,8 +362,86 @@ export default function App() {
     };
   }, [currentUser, checkSessionAlive]);
 
+  // EFEITOS DE ROTEAMENTO (Parte 1, 2 e 3)
+  // 1. Compatibilidade com links antigos de redefinição de senha (?reset_token= ou /reset-password)
+  useEffect(() => {
+    const token = searchParams.get('token') || searchParams.get('reset_token');
+    if (location.pathname === '/reset-password' || searchParams.has('reset_token')) {
+      navigate(`/definir-senha?token=${token || ''}`, { replace: true });
+    }
+  }, [location.pathname, searchParams, navigate]);
+
+  // 2. Redirecionamento da raiz /
+  useEffect(() => {
+    if (currentUser && location.pathname === '/') {
+      const homePath =
+        initialSetupMode && currentUser.role === 'DEVELOPER'
+          ? '/integracao'
+          : currentUser.role === 'DEVELOPER'
+          ? '/painel'
+          : '/documentos';
+      navigate(homePath, { replace: true });
+    }
+  }, [currentUser, location.pathname, initialSetupMode, navigate]);
+
+  // 3. /login com sessão ativa redireciona para a tela inicial
+  useEffect(() => {
+    if (currentUser && location.pathname === '/login') {
+      const redirectParam = searchParams.get('redirect');
+      const homePath =
+        initialSetupMode && currentUser.role === 'DEVELOPER'
+          ? '/integracao'
+          : currentUser.role === 'DEVELOPER'
+          ? '/painel'
+          : '/documentos';
+      navigate(redirectParam && redirectParam.startsWith('/') ? redirectParam : homePath, {
+        replace: true,
+      });
+    }
+  }, [currentUser, location.pathname, searchParams, initialSetupMode, navigate]);
+
+  // 4. Troca obrigatória de senha (mustChangePassword === true)
+  useEffect(() => {
+    if (currentUser?.mustChangePassword && location.pathname !== '/definir-senha') {
+      navigate('/definir-senha?troca_obrigatoria=true', { replace: true });
+    }
+  }, [currentUser, location.pathname, navigate]);
+
+  // 5. Proteção de rotas não autenticadas
+  useEffect(() => {
+    if (isLoadingInitialData) return;
+    if (!currentUser) {
+      if (
+        location.pathname !== '/login' &&
+        location.pathname !== '/definir-senha' &&
+        location.pathname !== '/reset-password'
+      ) {
+        const redirectParam = location.pathname + location.search;
+        navigate(`/login?redirect=${encodeURIComponent(redirectParam)}`, { replace: true });
+      }
+    }
+  }, [currentUser, isLoadingInitialData, location.pathname, location.search, navigate]);
+
+  // 6. Proteção de rotas por perfil de usuário (RBAC)
+  useEffect(() => {
+    if (!currentUser) return;
+    const path = location.pathname;
+    if (['/login', '/definir-senha', '/', '/reset-password'].includes(path)) return;
+
+    const allowedRoles = ROLE_ALLOWED_ROUTES[path];
+    if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
+      setAccessDeniedState({
+        isOpen: true,
+        reason: `Acesso negado: Seu perfil (${currentUser.role}) não possui permissão para acessar esta área.`,
+        resourceName: path,
+      });
+      const homePath = currentUser.role === 'DEVELOPER' ? '/painel' : '/documentos';
+      navigate(homePath, { replace: true });
+    }
+  }, [currentUser, location.pathname, navigate]);
+
   // Complete Login
-  const completeLogin = (user: User, isSetupMode?: boolean) => {
+  const completeLogin = (user: User, isSetupMode?: boolean, mustChangePassword?: boolean) => {
     setCurrentUser(user);
     setSessionExpiredNotice(null);
 
@@ -256,14 +449,28 @@ export default function App() {
       setInitialSetupMode(Boolean(isSetupMode));
     }
 
-    if (user.role === 'DEVELOPER') {
-      setActiveTab(isSetupMode ? 'integrations' : 'dev_dashboard');
-    } else {
-      setActiveTab('my_documents');
+    loadBootstrapData();
+    logSecurityEvent(
+      user,
+      'LOGIN',
+      'Sessão Web Segura',
+      `Login efetuado com sucesso por ${user.name}.`,
+      'SUCCESS'
+    );
+
+    if (mustChangePassword || user.mustChangePassword) {
+      navigate('/definir-senha?troca_obrigatoria=true');
+      return;
     }
 
-    loadBootstrapData();
-    logSecurityEvent(user, 'LOGIN', 'Sessão Web Segura', `Login efetuado com sucesso por ${user.name}.`, 'SUCCESS');
+    const redirectParam = searchParams.get('redirect');
+    if (redirectParam && redirectParam.startsWith('/')) {
+      navigate(redirectParam);
+    } else if (user.role === 'DEVELOPER') {
+      navigate(isSetupMode ? '/integracao' : '/painel');
+    } else {
+      navigate('/documentos');
+    }
   };
 
   // Logout handler
@@ -275,6 +482,7 @@ export default function App() {
       logSecurityEvent(currentUser, 'LOGOUT', 'Sessão Web', 'Sessão encerrada pelo usuário.', 'SUCCESS');
     }
     setCurrentUser(null);
+    navigate('/login');
   };
 
   // Switch user role simulation (restrito exclusivamente a ambiente DEV)
@@ -282,12 +490,14 @@ export default function App() {
     if (!import.meta.env.DEV) return;
     const freshUser = users.find((u) => u.id === newUser.id) || newUser;
     setCurrentUser(freshUser);
-    if (freshUser.role === 'DEVELOPER') {
-      setActiveTab('dev_dashboard');
-    } else {
-      setActiveTab('my_documents');
-    }
-    logSecurityEvent(freshUser, 'LOGIN', 'Simulação de Perfil', `Perfil alternado para ${freshUser.name} (${freshUser.role}).`, 'SUCCESS');
+    navigate(freshUser.role === 'DEVELOPER' ? '/painel' : '/documentos');
+    logSecurityEvent(
+      freshUser,
+      'LOGIN',
+      'Simulação de Perfil',
+      `Perfil alternado para ${freshUser.name} (${freshUser.role}).`,
+      'SUCCESS'
+    );
   };
 
   // Access Denied Trigger (403 Forbidden)
@@ -830,6 +1040,20 @@ export default function App() {
     }
   };
 
+  // Rota com prioridade sobre a sessão: /definir-senha abre mesmo que já exista alguém logado
+  if (location.pathname === '/definir-senha') {
+    return (
+      <SetPasswordPage
+        currentUser={currentUser}
+        onPasswordChangeSuccess={(updatedUser) => {
+          setCurrentUser(updatedUser);
+          const home = updatedUser.role === 'DEVELOPER' ? '/painel' : '/documentos';
+          navigate(home);
+        }}
+      />
+    );
+  }
+
   // If initial load in progress, display clean enterprise splash
   if (isLoadingInitialData && !currentUser) {
     return (
@@ -883,6 +1107,15 @@ export default function App() {
     );
   }
 
+  // Se a rota acessada não for reconhecida, exibe 404 Página não encontrada
+  const isKnownRoute =
+    Object.keys(ROLE_ALLOWED_ROUTES).includes(location.pathname) ||
+    ['/', '/login', '/definir-senha', '/reset-password'].includes(location.pathname);
+
+  if (!isKnownRoute) {
+    return <NotFoundPage currentUser={currentUser} />;
+  }
+
   // If Mobile Simulator Mode is toggled
   if (isMobileSimulator) {
     return (
@@ -928,24 +1161,7 @@ export default function App() {
       <DesktopSidebar
         currentUser={currentUser}
         activeTab={activeTab}
-        onSelectTab={(tab) => {
-          if (
-            tab === 'integrations' &&
-            currentUser.role !== 'DEVELOPER'
-          ) {
-            triggerAccessDenied('Área exclusiva de Desenvolvedores de Infraestrutura.', tab);
-            return;
-          }
-          if (
-            ['dev_dashboard', 'sectors'].includes(tab) &&
-            currentUser.role !== 'DEVELOPER' &&
-            currentUser.role !== 'DIRECTOR'
-          ) {
-            triggerAccessDenied('Área exclusiva de administradores de sistema (Desenvolvedor).', tab);
-            return;
-          }
-          setActiveTab(tab);
-        }}
+        onSelectTab={(tab) => navigateToTab(tab)}
         onLogout={handleLogout}
       />
 
@@ -965,7 +1181,7 @@ export default function App() {
             </div>
             <button
               type="button"
-              onClick={() => setActiveTab('integrations')}
+              onClick={() => navigate('/integracao')}
               className="ml-4 px-3 py-1 bg-slate-950 hover:bg-slate-850 text-amber-300 hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-sm"
             >
               Configurar Integração
@@ -979,8 +1195,8 @@ export default function App() {
           availableUsers={users}
           onSwitchUser={import.meta.env.DEV ? handleSwitchUser : undefined}
           onLogout={handleLogout}
-          onOpenDevices={() => setActiveTab('devices')}
-          onOpenSecurity={() => setActiveTab('settings')}
+          onOpenDevices={() => navigate('/dispositivos')}
+          onOpenSecurity={() => navigate('/seguranca')}
           searchTerm={globalSearchTerm}
           onSearchChange={setGlobalSearchTerm}
           showSearchBar={activeTab === 'my_documents' || activeTab === 'audit_logs'}
@@ -1016,9 +1232,9 @@ export default function App() {
               sectorsCount={departments.length}
               auditLogsCount={auditLogs.length}
               recentAuditLogs={auditLogs}
-              onNavigate={(tab) => setActiveTab(tab)}
-              onOpenCreateUser={() => setActiveTab('users')}
-              onOpenCreateSector={() => setActiveTab('sectors')}
+              onNavigate={(tab) => navigateToTab(tab)}
+              onOpenCreateUser={() => navigate('/usuarios')}
+              onOpenCreateSector={() => navigate('/setores')}
             />
           )}
 
