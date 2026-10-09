@@ -17,6 +17,7 @@ import { devicesRouter } from './server/routes/devices';
 import { apiKeysRouter, webhooksRouter } from './server/routes/apiKeys';
 import { systemRouter } from './server/routes/system';
 import { integrationsRouter } from './server/routes/integrations';
+import { systemUpdateRouter } from './server/routes/systemUpdate';
 
 dotenv.config();
 
@@ -65,6 +66,7 @@ app.use('/api/api-keys', apiKeysRouter);
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/system', systemRouter);
 app.use('/api/integrations', integrationsRouter);
+app.use('/api/system-update', systemUpdateRouter);
 app.use('/api', systemRouter); // Permite acesso a /api/bootstrap
 
 // 5. Middleware Global de Tratamento de Erros

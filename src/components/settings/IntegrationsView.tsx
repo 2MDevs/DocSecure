@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { User } from '../../types';
 import { apiClient } from '../../services/apiClient';
+import { SystemUpdatePanel } from './SystemUpdatePanel';
 
 interface SettingItem {
   key: string;
@@ -869,6 +870,9 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
           </div>
         </div>
       </div>
+
+      {/* SECTION: ATUALIZAÇÃO DO SISTEMA (GITHUB → VPS) */}
+      <SystemUpdatePanel />
 
       {/* SECTION: VARIÁVEIS EXCLUSIVAS DO .ENV (SOMENTE LEITURA) */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">

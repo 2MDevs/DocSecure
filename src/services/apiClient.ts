@@ -49,6 +49,32 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+export interface SystemUpdateCommit {
+  commit: string;
+  short: string;
+  message: string;
+  date: string;
+}
+
+export interface SystemUpdateStatus {
+  installed: boolean;
+  branch: string;
+  current: SystemUpdateCommit | null;
+  latest: SystemUpdateCommit | null;
+  updateAvailable: boolean;
+  running: boolean;
+  status: {
+    state: 'running' | 'success' | 'failed' | 'up_to_date';
+    message: string;
+    requestedBy?: string;
+    startedAt?: string;
+    finishedAt?: string;
+    fromCommit?: string;
+    toCommit?: string;
+  } | null;
+  log: string;
+}
+
 export interface LoginResponse {
   user?: User;
   trustedDevice?: boolean;
@@ -463,6 +489,22 @@ export const apiClient = {
     const res = await fetch('/api/integrations/test-gemini', {
       method: 'POST',
       credentials: 'include',
+    });
+    return handleResponse<{ success: boolean; message: string }>(res);
+  },
+
+  // Atualização do sistema pelo painel (Exclusivo Desenvolvedor)
+  async getSystemUpdateStatus(): Promise<SystemUpdateStatus> {
+    const res = await fetch('/api/system-update/status', { credentials: 'include', cache: 'no-store' });
+    return handleResponse<SystemUpdateStatus>(res);
+  },
+
+  async startSystemUpdate(password: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch('/api/system-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ password }),
     });
     return handleResponse<{ success: boolean; message: string }>(res);
   },
