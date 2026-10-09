@@ -264,8 +264,21 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_last_sent TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_challenge_token VARCHAR(64);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_challenge_expires TIMESTAMPTZ;
+
+      -- Migrações idempotentes para a tabela devices (compatibilidade com schemas legados)
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_token_hash VARCHAR(64);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS fingerprint_hash VARCHAR(255);
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS trusted_until TIMESTAMPTZ;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_access_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS is_current BOOLEAN DEFAULT false;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_type VARCHAR(50) DEFAULT 'desktop';
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'TRUSTED';
+
+      -- Remover NOT NULL de colunas que podem ter sido criadas como NOT NULL em versões antigas
+      ALTER TABLE devices ALTER COLUMN fingerprint_hash DROP NOT NULL;
+      ALTER TABLE devices ALTER COLUMN device_token_hash DROP NOT NULL;
+      ALTER TABLE devices ALTER COLUMN trusted_until DROP NOT NULL;
     `);
 
     // 3. Criação de Índices após garantir a existência das colunas

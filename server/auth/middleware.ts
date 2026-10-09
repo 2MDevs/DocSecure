@@ -96,13 +96,34 @@ export async function createTrustedDevice(
   else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) browser = 'Safari';
 
   const trustedUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const fingerprintHash = crypto
+    .createHash('sha256')
+    .update(`${userAgent}::${userId}::${ip}`)
+    .digest('hex');
+
+  let deviceType = 'desktop';
+  if (os === 'Android' || os === 'iOS') {
+    deviceType = 'mobile';
+  }
 
   await pool.query(
     `INSERT INTO devices (
       id, user_id, user_name, device_name, device_type, os, browser,
-      ip_address, last_access_at, status, device_token_hash, registered_at, trusted_until, is_current
-    ) VALUES ($1, $2, $3, $4, 'desktop', $5, $6, $7, NOW(), 'TRUSTED', $8, NOW(), $9, true)`,
-    [devId, userId, userName, deviceName || `${browser} em ${os}`, os, browser, ip, deviceTokenHash, trustedUntil]
+      ip_address, last_access_at, status, device_token_hash, fingerprint_hash, registered_at, trusted_until, is_current
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), 'TRUSTED', $9, $10, NOW(), $11, true)`,
+    [
+      devId,
+      userId,
+      userName,
+      deviceName || `${browser} em ${os}`,
+      deviceType,
+      os,
+      browser,
+      ip,
+      deviceTokenHash,
+      fingerprintHash,
+      trustedUntil,
+    ]
   );
 
   const isHttps = process.env.APP_URL?.startsWith('https') || process.env.NODE_ENV === 'production';

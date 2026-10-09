@@ -286,7 +286,20 @@ authRouter.post('/verify-2fa', authRateLimiter, async (req: Request, res: Respon
       return res.status(400).json({ error: 'Código de verificação incorreto.' });
     }
 
-    // Código validado com sucesso: limpa estado de 2FA
+    // 1. Se o usuário solicitou confiar no dispositivo, tenta registrar de forma resiliente
+    // Se o registro do dispositivo falhar, registra no log e continua o login sem confiar no dispositivo
+    if (trustDevice) {
+      try {
+        await createTrustedDevice(user.id, user.name, deviceName, req, res);
+      } catch (devErr: any) {
+        console.error('[TRUSTED DEVICE REGISTRATION WARNING] Falha ao registrar dispositivo confiável, continuando login sem 500:', devErr);
+      }
+    }
+
+    // 2. Cria sessão autenticada em cookie HttpOnly (dcs_session)
+    await createSession(user.id, req, res);
+
+    // 3. Só limpa o código 2FA e token de desafio após o dispositivo e a sessão serem criados com sucesso
     await pool.query(
       `UPDATE users SET
         email_2fa_code_hash = NULL,
@@ -299,30 +312,26 @@ authRouter.post('/verify-2fa', authRateLimiter, async (req: Request, res: Respon
       [user.id]
     );
 
-    // Se o usuário solicitou confiar no dispositivo
-    if (trustDevice) {
-      await createTrustedDevice(user.id, user.name, deviceName, req, res);
-    }
-
-    // Cria sessão autenticada em cookie HttpOnly
-    await createSession(user.id, req, res);
-
-    // Registra log de auditoria
+    // 4. Registra log de auditoria
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1';
-    await pool.query(
-      `INSERT INTO audit_logs (id, timestamp, user_id, user_name, role, department, action, resource_name, details, ip_address, device_info, result, hash)
-       VALUES ($1, NOW(), $2, $3, $4, $5, 'TWO_FACTOR_VERIFIED', 'Sessão Web Segura', '2FA validado com sucesso por e-mail.', $6, $7, 'SUCCESS', $8)`,
-      [
-        'audit_' + crypto.randomBytes(8).toString('hex'),
-        user.id,
-        user.name,
-        user.role,
-        user.department_name,
-        ip,
-        req.headers['user-agent'] || 'Navegador Web',
-        crypto.randomBytes(16).toString('hex'),
-      ]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO audit_logs (id, timestamp, user_id, user_name, role, department, action, resource_name, details, ip_address, device_info, result, hash)
+         VALUES ($1, NOW(), $2, $3, $4, $5, 'TWO_FACTOR_VERIFIED', 'Sessão Web Segura', '2FA validado com sucesso por e-mail.', $6, $7, 'SUCCESS', $8)`,
+        [
+          'audit_' + crypto.randomBytes(8).toString('hex'),
+          user.id,
+          user.name,
+          user.role,
+          user.department_name,
+          ip,
+          req.headers['user-agent'] || 'Navegador Web',
+          crypto.randomBytes(16).toString('hex'),
+        ]
+      );
+    } catch (auditErr: any) {
+      console.warn('[AUDIT LOG WARNING] Falha não bloqueante ao registrar auditoria de login:', auditErr);
+    }
 
     return res.json({
       user: sanitizeUser(user),
