@@ -97,7 +97,28 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
 
       {/* Grid of Sector & Quota Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {departments.map((dept) => {
+        {departments.length === 0 ? (
+          <div className="col-span-full bg-white p-12 rounded-2xl border border-dashed border-slate-300 text-center flex flex-col items-center justify-center">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3.5">
+              <HardDrive className="w-7 h-7" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800">Nenhum setor ou quota cadastrada</h3>
+            <p className="text-xs text-slate-500 max-w-md mt-1.5 leading-relaxed">
+              Os setores organizacionais e quotas de armazenamento foram zerados para implantação limpa. Conforme novos setores forem cadastrados, os dados de armazenamento e limites serão refletidos em tempo real.
+            </p>
+            {currentUser.role === 'DEVELOPER' && (
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="mt-4 px-4 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Cadastrar Primeiro Setor</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          departments.map((dept) => {
           const usedFormatted = formatBytes(dept.storageUsedBytes || 0, 2);
           const limitFormatted = formatBytes(dept.storageLimitBytes || 536870912000, 0);
           const percentUsed = Math.min(
@@ -207,7 +228,7 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
               )}
             </div>
           );
-        })}
+        }))}
       </div>
 
       {/* Modal: Novo Setor */}

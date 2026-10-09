@@ -30,81 +30,8 @@ export const ALL_PERMISSIONS: PermissionType[] = [
   'VIEW_AUDIT',
 ];
 
-// Setores organizacionais limpos (sem arquivos ou mock data)
-export const INITIAL_DEPARTMENTS: Department[] = [
-  {
-    id: 'dept-ti',
-    name: 'TI / Infraestrutura',
-    code: 'TI',
-    iconName: 'Server',
-    color: '#06b6d4',
-    storageLimitBytes: 500 * 1024 * 1024 * 1024,
-    storageUsedBytes: 0,
-    description: 'Gestão de infraestrutura, servidores, segurança e acessos.',
-    isLocked: false,
-    itemCount: 0,
-  },
-  {
-    id: 'dept-financeiro',
-    name: 'Financeiro',
-    code: 'FIN',
-    iconName: 'DollarSign',
-    color: '#3b82f6',
-    storageLimitBytes: 500 * 1024 * 1024 * 1024,
-    storageUsedBytes: 0,
-    description: 'Gestão contábil, fiscal, contas a pagar/receber e orçamentos.',
-    isLocked: false,
-    itemCount: 0,
-  },
-  {
-    id: 'dept-rh',
-    name: 'Recursos Humanos',
-    code: 'RH',
-    iconName: 'Users',
-    color: '#8b5cf6',
-    storageLimitBytes: 300 * 1024 * 1024 * 1024,
-    storageUsedBytes: 0,
-    description: 'Recursos Humanos, admissões, folha de pagamento e benefícios.',
-    isLocked: false,
-    itemCount: 0,
-  },
-  {
-    id: 'dept-comercial',
-    name: 'Comercial',
-    code: 'COM',
-    iconName: 'Briefcase',
-    color: '#10b981',
-    storageLimitBytes: 400 * 1024 * 1024 * 1024,
-    storageUsedBytes: 0,
-    description: 'Contratos comerciais, propostas, clientes e pipeline de vendas.',
-    isLocked: false,
-    itemCount: 0,
-  },
-  {
-    id: 'dept-marketing',
-    name: 'Marketing',
-    code: 'MKT',
-    iconName: 'Megaphone',
-    color: '#ec4899',
-    storageLimitBytes: 250 * 1024 * 1024 * 1024,
-    storageUsedBytes: 0,
-    description: 'Campanhas, ativos de marca, peças publicitárias e relatórios.',
-    isLocked: false,
-    itemCount: 0,
-  },
-  {
-    id: 'dept-juridico',
-    name: 'Jurídico',
-    code: 'JUR',
-    iconName: 'Scale',
-    color: '#f59e0b',
-    storageLimitBytes: 350 * 1024 * 1024 * 1024,
-    storageUsedBytes: 0,
-    description: 'Contratos jurídicos, procurações, compliance e regulatório.',
-    isLocked: false,
-    itemCount: 0,
-  },
-];
+// Setores organizacionais zerados (cadastrados manualmente no ambiente de produção)
+export const INITIAL_DEPARTMENTS: Department[] = [];
 
 // Nenhum usuário mockado no frontend (autenticação e usuários carregados exclusivamente via API/banco)
 export const INITIAL_USERS: User[] = [];

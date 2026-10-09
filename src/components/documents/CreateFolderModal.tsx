@@ -83,11 +83,15 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
               onChange={(e) => setDepartmentId(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500"
             >
-              {departments.map((dept) => (
-                <option key={dept.id} value={dept.id}>
-                  {dept.name}
-                </option>
-              ))}
+              {departments.length === 0 ? (
+                <option value="">Nenhum setor cadastrado (Crie um setor antes)</option>
+              ) : (
+                departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 

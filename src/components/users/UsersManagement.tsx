@@ -371,11 +371,15 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                     onChange={(e) => setNewDeptId(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-75"
                   >
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
+                    {departments.length === 0 ? (
+                      <option value="">Geral (Sem setor cadastrado)</option>
+                    ) : (
+                      departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
               </div>

@@ -47,80 +47,8 @@ departmentsRouter.get('/', requireAuth, async (_req: Request, res: Response) => 
     const list = await getDepartmentsWithRealStorage();
     return res.json(list);
   } catch (err: any) {
-    return res.json([
-      {
-        id: 'dept-ti',
-        name: 'TI / Infraestrutura',
-        code: 'TI',
-        iconName: 'Server',
-        color: '#06b6d4',
-        storageLimitBytes: 500 * 1024 * 1024 * 1024,
-        storageUsedBytes: 0,
-        description: 'Gestão de infraestrutura, servidores, segurança e acessos.',
-        isLocked: false,
-        itemCount: 0,
-      },
-      {
-        id: 'dept-financeiro',
-        name: 'Financeiro',
-        code: 'FIN',
-        iconName: 'DollarSign',
-        color: '#3b82f6',
-        storageLimitBytes: 500 * 1024 * 1024 * 1024,
-        storageUsedBytes: 0,
-        description: 'Gestão contábil, fiscal, contas a pagar/receber e orçamentos.',
-        isLocked: false,
-        itemCount: 0,
-      },
-      {
-        id: 'dept-rh',
-        name: 'Recursos Humanos',
-        code: 'RH',
-        iconName: 'Users',
-        color: '#8b5cf6',
-        storageLimitBytes: 300 * 1024 * 1024 * 1024,
-        storageUsedBytes: 0,
-        description: 'Recursos Humanos, admissões, folha de pagamento e benefícios.',
-        isLocked: false,
-        itemCount: 0,
-      },
-      {
-        id: 'dept-comercial',
-        name: 'Comercial',
-        code: 'COM',
-        iconName: 'Briefcase',
-        color: '#10b981',
-        storageLimitBytes: 400 * 1024 * 1024 * 1024,
-        storageUsedBytes: 0,
-        description: 'Contratos comerciais, propostas, clientes e pipeline de vendas.',
-        isLocked: false,
-        itemCount: 0,
-      },
-      {
-        id: 'dept-marketing',
-        name: 'Marketing',
-        code: 'MKT',
-        iconName: 'Megaphone',
-        color: '#ec4899',
-        storageLimitBytes: 250 * 1024 * 1024 * 1024,
-        storageUsedBytes: 0,
-        description: 'Campanhas, ativos de marca, peças publicitárias e relatórios.',
-        isLocked: false,
-        itemCount: 0,
-      },
-      {
-        id: 'dept-juridico',
-        name: 'Jurídico',
-        code: 'JUR',
-        iconName: 'Scale',
-        color: '#f59e0b',
-        storageLimitBytes: 350 * 1024 * 1024 * 1024,
-        storageUsedBytes: 0,
-        description: 'Contratos jurídicos, procurações, compliance e regulatório.',
-        isLocked: false,
-        itemCount: 0,
-      },
-    ]);
+    console.error('[DEPARTMENTS GET ERROR]', err);
+    return res.status(503).json({ error: 'Erro ao consultar setores no banco de dados.' });
   }
 });
 

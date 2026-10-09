@@ -565,7 +565,17 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
           {/* Root View: Grid or List of Departments */}
           {isAtRoot &&
-            (viewMode === 'grid' ? (
+            (visibleDepartments.length === 0 ? (
+              <div className="bg-white p-12 rounded-2xl border border-dashed border-slate-300 text-center flex flex-col items-center justify-center">
+                <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mb-3">
+                  <FolderIcon className="w-7 h-7 fill-amber-400 text-amber-500" />
+                </div>
+                <h3 className="text-base font-bold text-slate-800">Nenhum setor corporativo cadastrado</h3>
+                <p className="text-xs text-slate-500 max-w-md mt-1.5 leading-relaxed">
+                  Os setores foram zerados para implantação em produção. Cadastre os setores da organização na aba &quot;Setores&quot; para organizar pastas e documentos.
+                </p>
+              </div>
+            ) : viewMode === 'grid' ? (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {visibleDepartments.map((dept) => (
                   <button

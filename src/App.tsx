@@ -124,8 +124,8 @@ export default function App() {
       const data = await apiClient.getBootstrapData();
       if (data) {
         if (data.currentUser) setCurrentUser(data.currentUser);
-        if (Array.isArray(data.users) && data.users.length > 0) setUsers(data.users);
-        if (Array.isArray(data.departments) && data.departments.length > 0) setDepartments(data.departments);
+        if (Array.isArray(data.users)) setUsers(data.users);
+        if (Array.isArray(data.departments)) setDepartments(data.departments);
         if (Array.isArray(data.folders)) setFolders(data.folders);
         if (Array.isArray(data.documents)) setDocuments(data.documents);
         if (Array.isArray(data.devices)) setDevices(data.devices);
@@ -1066,7 +1066,7 @@ export default function App() {
               users={users}
               currentUser={currentUser}
               onUpdateDepartment={handleUpdateDepartment}
-              onCreateDepartment={() => {}}
+              onCreateDepartment={handleCreateDepartment}
             />
           )}
 

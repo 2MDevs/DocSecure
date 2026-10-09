@@ -291,11 +291,12 @@ export async function initDatabase(): Promise<void> {
       console.log('[DB Migration] Migração de senhas para bcrypt concluída.');
     }
 
-    // 4. Migração de Segurança: Expurgar usuário fixo de preview/teste caso exista
+    // 4. Migração de Segurança: Expurgar usuário fixo de preview/teste e setores de demonstração caso existam
     await client.query(`
       DELETE FROM sessions WHERE user_id = 'user-admin' OR user_id IN (SELECT id FROM users WHERE LOWER(email) = 'admin@docsecure.io');
       DELETE FROM devices WHERE user_id = 'user-admin' OR user_id IN (SELECT id FROM users WHERE LOWER(email) = 'admin@docsecure.io');
       DELETE FROM users WHERE id = 'user-admin' OR LOWER(email) = 'admin@docsecure.io';
+      DELETE FROM departments WHERE id IN ('dept-ti', 'dept-financeiro', 'dept-rh', 'dept-comercial', 'dept-marketing', 'dept-juridico');
     `);
 
     // 5. Administrador Inicial do .env (Apenas se não existir nenhum usuário com papel ADMIN ou DEVELOPER)
@@ -322,8 +323,8 @@ export async function initDatabase(): Promise<void> {
           adminEmail.trim().toLowerCase(),
           'DEV-001',
           'DEVELOPER',
-          'dept-ti',
-          'TI / Infraestrutura',
+          'geral',
+          'Geral',
           'Administrador do Sistema',
           hashedPass,
           JSON.stringify(['*']),
