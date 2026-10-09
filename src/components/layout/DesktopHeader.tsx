@@ -19,7 +19,7 @@ import { User as UserType, SystemNotification } from '../../types';
 interface DesktopHeaderProps {
   currentUser: UserType;
   availableUsers: UserType[];
-  onSwitchUser: (user: UserType) => void;
+  onSwitchUser?: (user: UserType) => void;
   onLogout: () => void;
   onOpenDevices: () => void;
   onOpenSecurity: () => void;
@@ -219,33 +219,38 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
                 </div>
               </div>
 
-              {/* Quick Switch Profiles */}
-              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Alternar Perfil (Simulação)
-              </div>
-              <div className="space-y-0.5 mb-2">
-                {availableUsers.map((u) => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => {
-                      onSwitchUser(u);
-                      setIsProfileOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
-                      u.id === currentUser.id
-                        ? 'bg-blue-50 text-blue-700 font-semibold'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <Avatar name={u.name} avatarUrl={u.avatar} size="xs" />
-                      <span className="truncate">{u.name} ({u.role.slice(0, 3)})</span>
-                    </div>
-                    {u.id === currentUser.id && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
-                  </button>
-                ))}
-              </div>
+              {/* Quick Switch Profiles (Restrito exclusivamente a ambiente DEV) */}
+              {import.meta.env.DEV && onSwitchUser && (
+                <>
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 flex items-center justify-between">
+                    <span>Alternar Perfil (Simulação)</span>
+                    <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-mono font-bold">DEV</span>
+                  </div>
+                  <div className="space-y-0.5 mb-2">
+                    {availableUsers.map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => {
+                          onSwitchUser(u);
+                          setIsProfileOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                          u.id === currentUser.id
+                            ? 'bg-blue-50 text-blue-700 font-semibold'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <Avatar name={u.name} avatarUrl={u.avatar} size="xs" />
+                          <span className="truncate">{u.name} ({u.role.slice(0, 3)})</span>
+                        </div>
+                        {u.id === currentUser.id && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               <div className="border-t border-slate-100 pt-1 space-y-0.5">
                 <button

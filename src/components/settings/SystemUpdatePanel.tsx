@@ -42,7 +42,15 @@ export const SystemUpdatePanel: React.FC = () => {
       return res;
     } catch (err: any) {
       // Durante o reinício o servidor fica fora do ar por alguns segundos: ignorar no modo silencioso
-      if (!silent) setLoadError(err.message || 'Falha ao consultar a versão do sistema.');
+      if (!silent) {
+        const isSessionExpired =
+          err?.message?.includes('expirou') ||
+          err?.message?.includes('401') ||
+          err?.message?.includes('Sessão ausente');
+        setLoadError(
+          isSessionExpired ? 'Sua sessão expirou. Entre novamente.' : err.message || 'Falha ao consultar a versão do sistema.'
+        );
+      }
       return null;
     } finally {
       if (!silent) setChecking(false);
@@ -111,7 +119,13 @@ export const SystemUpdatePanel: React.FC = () => {
           : prev
       );
     } catch (err: any) {
-      setSubmitError(err.message || 'Não foi possível iniciar a atualização.');
+      const isSessionExpired =
+        err?.message?.includes('expirou') ||
+        err?.message?.includes('401') ||
+        err?.message?.includes('Sessão ausente');
+      setSubmitError(
+        isSessionExpired ? 'Sua sessão expirou. Entre novamente.' : err.message || 'Não foi possível iniciar a atualização.'
+      );
     } finally {
       setSubmitting(false);
     }

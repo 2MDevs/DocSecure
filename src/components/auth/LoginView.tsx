@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Loader2,
   CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { DocSecureLogo } from '../common/DocSecureLogo';
 import { User as UserType } from '../../types';
@@ -24,9 +25,15 @@ interface LoginViewProps {
   availableUsers?: UserType[];
   onTriggerLockoutNotice?: () => void;
   onRequestDeviceApproval?: (user: UserType) => void;
+  sessionExpiredNotice?: string | null;
+  onClearSessionExpiredNotice?: () => void;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
+export const LoginView: React.FC<LoginViewProps> = ({
+  onLoginSuccess,
+  sessionExpiredNotice,
+  onClearSessionExpiredNotice,
+}) => {
   // Step 1 State: Credentials
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -58,6 +65,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   // STEP 1: Handle Initial Credentials Submit
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    onClearSessionExpiredNotice?.();
     setErrorMessage(null);
     setSuccessNotice(null);
 
@@ -232,6 +240,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 </p>
               </div>
 
+              {/* Session Expired Notice */}
+              {sessionExpiredNotice && (
+                <div className="mt-5 p-3.5 bg-amber-950/70 border border-amber-600/80 rounded-xl text-xs text-amber-200 flex items-start gap-2.5 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="leading-relaxed font-semibold">{sessionExpiredNotice}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Error Alert */}
               {errorMessage && (
                 <div className="mt-5 p-3.5 bg-rose-950/60 border border-rose-800/80 rounded-xl text-xs text-rose-300 flex items-start gap-2.5 animate-in fade-in">
@@ -256,7 +274,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       required
                       disabled={isLoading}
                       value={emailOrUsername}
-                      onChange={(e) => setEmailOrUsername(e.target.value)}
+                      onChange={(e) => {
+                        setEmailOrUsername(e.target.value);
+                        if (sessionExpiredNotice) onClearSessionExpiredNotice?.();
+                      }}
                       placeholder="seu.email@empresa.com.br ou matrícula"
                       className="w-full pl-10 pr-4 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
                     />
@@ -277,7 +298,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       required
                       disabled={isLoading}
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (sessionExpiredNotice) onClearSessionExpiredNotice?.();
+                      }}
                       placeholder="••••••••••••"
                       className="w-full pl-10 pr-11 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-mono disabled:opacity-50"
                     />

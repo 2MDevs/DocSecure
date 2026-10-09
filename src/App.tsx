@@ -27,7 +27,6 @@ import { apiClient } from './services/apiClient';
 
 // Components
 import { LoginView } from './components/auth/LoginView';
-import { TwoFactorModal } from './components/auth/TwoFactorModal';
 import { DeviceApprovalModal } from './components/auth/DeviceApprovalModal';
 import { AccessDeniedModal } from './components/common/AccessDeniedModal';
 import { DesktopSidebar, NavigationTab } from './components/layout/DesktopSidebar';
@@ -51,8 +50,7 @@ import { Database, RefreshCw, AlertCircle } from 'lucide-react';
 export default function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [pendingUser2FA, setPendingUser2FA] = useState<User | null>(null);
-  const [twoFactorError, setTwoFactorError] = useState<string | undefined>();
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState<string | null>(null);
   const [pendingDeviceUser, setPendingDeviceUser] = useState<User | null>(null);
 
   // Core Data Stores (Hydrated from PostgreSQL / API)
@@ -179,10 +177,80 @@ export default function App() {
     }
   };
 
+  // Sessão expirada: limpa estados e retorna para tela de login com aviso
+  const handleSessionExpired = useCallback((customMsg?: string) => {
+    setCurrentUser(null);
+    setSessionExpiredNotice(
+      customMsg || 'Sua sessão expirou por inatividade. Entre novamente para continuar.'
+    );
+    // Limpa dados em memória carregados da sessão anterior
+    setUsers(INITIAL_USERS);
+    setDepartments(INITIAL_DEPARTMENTS);
+    setFolders(INITIAL_FOLDERS);
+    setDocuments(INITIAL_DOCUMENTS);
+    setDevices(INITIAL_DEVICES);
+    setAuditLogs(INITIAL_AUDIT_LOGS);
+    setApiKeys(INITIAL_API_KEYS);
+    setWebhooks(INITIAL_WEBHOOKS);
+  }, []);
+
+  // Interceptador global do evento de sessão expirada disparado pelo apiClient
+  useEffect(() => {
+    const onSessionExpired = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      const msg = detail?.message || 'Sua sessão expirou por inatividade. Entre novamente para continuar.';
+      handleSessionExpired(msg);
+    };
+
+    window.addEventListener('docsecure:session-expired', onSessionExpired);
+    return () => {
+      window.removeEventListener('docsecure:session-expired', onSessionExpired);
+    };
+  }, [handleSessionExpired]);
+
+  // Verificação periódica (~5 min) e ao voltar para a aba ativa (visibilitychange)
+  const checkSessionAlive = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const res = await apiClient.getMe();
+      if (!res || !res.user) {
+        handleSessionExpired();
+      }
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (
+        msg.includes('401') ||
+        msg.includes('Sessão') ||
+        msg.includes('autenticado') ||
+        msg.includes('expirou')
+      ) {
+        handleSessionExpired('Sua sessão expirou por inatividade. Entre novamente para continuar.');
+      }
+    }
+  }, [currentUser, handleSessionExpired]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkSessionAlive();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const interval = setInterval(checkSessionAlive, 5 * 60 * 1000); // A cada ~5 minutos
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [currentUser, checkSessionAlive]);
+
   // Complete Login
   const completeLogin = (user: User, isSetupMode?: boolean) => {
     setCurrentUser(user);
-    setPendingUser2FA(null);
+    setSessionExpiredNotice(null);
 
     if (isSetupMode !== undefined) {
       setInitialSetupMode(Boolean(isSetupMode));
@@ -198,31 +266,6 @@ export default function App() {
     logSecurityEvent(user, 'LOGIN', 'Sessão Web Segura', `Login efetuado com sucesso por ${user.name}.`, 'SUCCESS');
   };
 
-  // 2FA Verification handler
-  const handleVerify2FA = (code: string) => {
-    if (!pendingUser2FA) return;
-
-    if (code === '123456' || code.length === 6 || code.startsWith('BACKUP')) {
-      logSecurityEvent(
-        pendingUser2FA,
-        'TWO_FACTOR_VERIFIED',
-        'TOTP Authenticator',
-        'Validação 2FA realizada com sucesso.',
-        'SUCCESS'
-      );
-      completeLogin(pendingUser2FA);
-    } else {
-      setTwoFactorError('Código de autenticação inválido. Tente novamente.');
-      logSecurityEvent(
-        pendingUser2FA,
-        'LOGIN_FAILED',
-        'TOTP Authenticator',
-        'Tentativa com código 2FA incorreto.',
-        'DENIED'
-      );
-    }
-  };
-
   // Logout handler
   const handleLogout = async () => {
     try {
@@ -234,8 +277,9 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  // Switch user role simulation
+  // Switch user role simulation (restrito exclusivamente a ambiente DEV)
   const handleSwitchUser = (newUser: User) => {
+    if (!import.meta.env.DEV) return;
     const freshUser = users.find((u) => u.id === newUser.id) || newUser;
     setCurrentUser(freshUser);
     if (freshUser.role === 'DEVELOPER') {
@@ -815,16 +859,8 @@ export default function App() {
           onLoginSuccess={completeLogin}
           availableUsers={users}
           onRequestDeviceApproval={(user) => setPendingDeviceUser(user)}
-        />
-
-        {/* 2FA Modal */}
-        <TwoFactorModal
-          isOpen={!!pendingUser2FA}
-          userName={pendingUser2FA?.name || ''}
-          email={pendingUser2FA?.email || ''}
-          error={twoFactorError}
-          onVerify={handleVerify2FA}
-          onCancel={() => setPendingUser2FA(null)}
+          sessionExpiredNotice={sessionExpiredNotice}
+          onClearSessionExpiredNotice={() => setSessionExpiredNotice(null)}
         />
 
         {/* Device Approval Modal */}
@@ -941,7 +977,7 @@ export default function App() {
         <DesktopHeader
           currentUser={currentUser}
           availableUsers={users}
-          onSwitchUser={handleSwitchUser}
+          onSwitchUser={import.meta.env.DEV ? handleSwitchUser : undefined}
           onLogout={handleLogout}
           onOpenDevices={() => setActiveTab('devices')}
           onOpenSecurity={() => setActiveTab('settings')}

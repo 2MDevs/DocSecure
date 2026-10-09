@@ -90,6 +90,46 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
   const [reauthError, setReauthError] = useState<string | null>(null);
   const [reauthLoading, setReauthLoading] = useState(false);
 
+  const SMTP_DRAFT_KEY = 'docsecure_smtp_draft';
+
+  const getSmtpDraft = () => {
+    try {
+      const raw = sessionStorage.getItem(SMTP_DRAFT_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setSmtpDraft = (draft: Record<string, any>) => {
+    try {
+      // Salva somente campos não confidenciais (sem senhas ou tokens)
+      sessionStorage.setItem(SMTP_DRAFT_KEY, JSON.stringify(draft));
+    } catch {}
+  };
+
+  const clearSmtpDraft = () => {
+    try {
+      sessionStorage.removeItem(SMTP_DRAFT_KEY);
+    } catch {}
+  };
+
+  // Salva rascunho de campos não sensíveis para não perder caso a sessão expire
+  useEffect(() => {
+    if (!loading) {
+      setSmtpDraft({
+        smtpHost,
+        smtpPort,
+        smtpSecure,
+        smtpUser,
+        smtpFrom,
+        sessionTtlHours,
+        maxUploadMb,
+        adminEmail,
+      });
+    }
+  }, [smtpHost, smtpPort, smtpSecure, smtpUser, smtpFrom, sessionTtlHours, maxUploadMb, adminEmail, loading]);
+
   // Load settings on mount
   const loadSettings = async () => {
     try {
@@ -104,26 +144,33 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
         setInitialSetupMode(Boolean(res.initialSetupMode));
       }
 
-      // Populate form
+      // Populate form (prioriza rascunho de sessão se o usuário estiver preenchendo)
+      const draft = getSmtpDraft();
       const getVal = (k: string) => res.settings.find((s) => s.key === k)?.value || '';
 
-      setSmtpHost(getVal('SMTP_HOST'));
-      setSmtpPort(getVal('SMTP_PORT') || '587');
-      setSmtpSecure(getVal('SMTP_SECURE') === 'true');
-      setSmtpUser(getVal('SMTP_USER'));
-      setSmtpFrom(getVal('SMTP_FROM') || 'DocSecure <nao-responda@empresa.com.br>');
+      setSmtpHost(draft?.smtpHost !== undefined ? draft.smtpHost : getVal('SMTP_HOST'));
+      setSmtpPort(draft?.smtpPort !== undefined ? draft.smtpPort : (getVal('SMTP_PORT') || '587'));
+      setSmtpSecure(draft?.smtpSecure !== undefined ? Boolean(draft.smtpSecure) : (getVal('SMTP_SECURE') === 'true'));
+      setSmtpUser(draft?.smtpUser !== undefined ? draft.smtpUser : getVal('SMTP_USER'));
+      setSmtpFrom(draft?.smtpFrom !== undefined ? draft.smtpFrom : (getVal('SMTP_FROM') || 'DocSecure <nao-responda@empresa.com.br>'));
 
-      setSessionTtlHours(getVal('SESSION_TTL_HOURS') || '8');
-      setMaxUploadMb(getVal('MAX_UPLOAD_MB') || '25');
+      setSessionTtlHours(draft?.sessionTtlHours !== undefined ? draft.sessionTtlHours : (getVal('SESSION_TTL_HOURS') || '8'));
+      setMaxUploadMb(draft?.maxUploadMb !== undefined ? draft.maxUploadMb : (getVal('MAX_UPLOAD_MB') || '25'));
 
-      setAdminEmail(getVal('ADMIN_EMAIL'));
+      setAdminEmail(draft?.adminEmail !== undefined ? draft.adminEmail : getVal('ADMIN_EMAIL'));
 
       // Clean secret draft inputs
       setSmtpPass('');
       setGeminiApiKey('');
       setRemovedSecrets([]);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Falha ao carregar configurações de integração.');
+      const isSessionExpired =
+        err?.message?.includes('expirou') ||
+        err?.message?.includes('401') ||
+        err?.message?.includes('Sessão ausente');
+      setErrorMessage(
+        isSessionExpired ? 'Sua sessão expirou. Entre novamente.' : err.message || 'Falha ao carregar configurações de integração.'
+      );
     } finally {
       setLoading(false);
     }
@@ -205,12 +252,19 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
         onSetupCompleted?.();
       }
 
+      clearSmtpDraft();
       setSuccessMessage(res.message || 'Configurações salvas e aplicadas em tempo real com sucesso!');
       setIsReauthModalOpen(false);
       setReauthPassword('');
       await loadSettings();
     } catch (err: any) {
-      if (err.message && err.message.includes('confirme sua senha')) {
+      const isSessionExpired =
+        err?.message?.includes('expirou') ||
+        err?.message?.includes('401') ||
+        err?.message?.includes('Sessão ausente');
+      if (isSessionExpired) {
+        setErrorMessage('Sua sessão expirou. Entre novamente.');
+      } else if (err.message && err.message.includes('confirme sua senha')) {
         setIsReauthModalOpen(true);
       } else {
         setErrorMessage(err.message || 'Erro ao salvar configurações.');
@@ -236,7 +290,11 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
       setIsReauthModalOpen(false);
       await handleSave(reauthPassword);
     } catch (err: any) {
-      setReauthError(err.message || 'Senha incorreta.');
+      const isSessionExpired =
+        err?.message?.includes('expirou') ||
+        err?.message?.includes('401') ||
+        err?.message?.includes('Sessão ausente');
+      setReauthError(isSessionExpired ? 'Sua sessão expirou. Entre novamente.' : err.message || 'Senha incorreta.');
     } finally {
       setReauthLoading(false);
     }
@@ -254,7 +312,14 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
         onSetupCompleted?.();
       }
     } catch (err: any) {
-      setSmtpTestResult({ success: false, message: err.message || 'Falha no teste SMTP.' });
+      const isSessionExpired =
+        err?.message?.includes('expirou') ||
+        err?.message?.includes('401') ||
+        err?.message?.includes('Sessão ausente');
+      setSmtpTestResult({
+        success: false,
+        message: isSessionExpired ? 'Sua sessão expirou. Entre novamente.' : err.message || 'Falha no teste SMTP.',
+      });
     } finally {
       setSmtpTestLoading(false);
     }
@@ -268,7 +333,14 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
       const res = await apiClient.testGeminiConnection();
       setGeminiTestResult(res);
     } catch (err: any) {
-      setGeminiTestResult({ success: false, message: err.message || 'Falha no teste da API Gemini.' });
+      const isSessionExpired =
+        err?.message?.includes('expirou') ||
+        err?.message?.includes('401') ||
+        err?.message?.includes('Sessão ausente');
+      setGeminiTestResult({
+        success: false,
+        message: isSessionExpired ? 'Sua sessão expirou. Entre novamente.' : err.message || 'Falha no teste da API Gemini.',
+      });
     } finally {
       setGeminiTestLoading(false);
     }
@@ -282,7 +354,14 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
       const res = await apiClient.sendAdminPasswordReset();
       setAdminResetResult(res);
     } catch (err: any) {
-      setAdminResetResult({ success: false, message: err.message || 'Falha ao despachar link de redefinição.' });
+      const isSessionExpired =
+        err?.message?.includes('expirou') ||
+        err?.message?.includes('401') ||
+        err?.message?.includes('Sessão ausente');
+      setAdminResetResult({
+        success: false,
+        message: isSessionExpired ? 'Sua sessão expirou. Entre novamente.' : err.message || 'Falha ao despachar link de redefinição.',
+      });
     } finally {
       setAdminResetLoading(false);
     }

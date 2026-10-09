@@ -34,21 +34,6 @@ export interface BootstrapData {
   };
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const errorBody = await res.text();
-    let errorMsg = `HTTP ${res.status} ${res.statusText}`;
-    try {
-      const parsed = JSON.parse(errorBody);
-      if (parsed.error) errorMsg = parsed.error;
-    } catch {
-      if (errorBody) errorMsg = errorBody;
-    }
-    throw new Error(errorMsg);
-  }
-  return res.json();
-}
-
 export interface SystemUpdateCommit {
   commit: string;
   short: string;
@@ -84,16 +69,86 @@ export interface LoginResponse {
   initialSetupMode?: boolean;
 }
 
+export const SESSION_EXPIRED_EVENT = 'docsecure:session-expired';
+export const SESSION_EXPIRED_MESSAGE = 'Sua sessão expirou. Entre novamente.';
+
+// Rotas isentas de disparar o evento de sessão expirada global
+const EXEMPT_SESSION_EXPIRED_ROUTES = [
+  '/api/auth/login',
+  '/api/auth/verify-2fa',
+  '/api/auth/me',
+];
+
+export function dispatchSessionExpired(message: string = SESSION_EXPIRED_MESSAGE): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent(SESSION_EXPIRED_EVENT, {
+        detail: { message },
+      })
+    );
+  }
+}
+
+/**
+ * Helper central de requisição para todas as chamadas do apiClient.
+ * Intercepta erros 401 de forma centralizada e notifica a aplicação via evento global.
+ */
+export async function apiRequest<T = any>(url: string, init?: RequestInit): Promise<T> {
+  const options: RequestInit = {
+    credentials: 'include',
+    ...init,
+  };
+
+  const res = await fetch(url, options);
+
+  if (res.status === 401) {
+    const isExempt = EXEMPT_SESSION_EXPIRED_ROUTES.some(
+      (exemptRoute) => url === exemptRoute || url.startsWith(`${exemptRoute}?`)
+    );
+    if (!isExempt) {
+      dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
+      throw new Error(SESSION_EXPIRED_MESSAGE);
+    }
+  }
+
+  if (!res.ok) {
+    const errorBody = await res.text();
+    let errorMsg = `HTTP ${res.status} ${res.statusText}`;
+    try {
+      const parsed = JSON.parse(errorBody);
+      if (parsed.error) errorMsg = parsed.error;
+      else if (parsed.message) errorMsg = parsed.message;
+    } catch {
+      if (errorBody) errorMsg = errorBody;
+    }
+    throw new Error(errorMsg);
+  }
+
+  if (res.status === 204) {
+    return undefined as unknown as T;
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return res.json();
+  }
+
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text as unknown as T;
+  }
+}
+
 export const apiClient = {
   // Autenticação & Sessão
   async login(username: string, password: string): Promise<LoginResponse> {
-    const res = await fetch('/api/auth/login', {
+    return apiRequest<LoginResponse>('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ username, password }),
     });
-    return handleResponse<LoginResponse>(res);
   },
 
   async verify2FA(payload: {
@@ -102,129 +157,100 @@ export const apiClient = {
     trustDevice: boolean;
     deviceName?: string;
   }): Promise<{ user: User }> {
-    const res = await fetch('/api/auth/verify-2fa', {
+    return apiRequest<{ user: User }>('/api/auth/verify-2fa', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(payload),
     });
-    return handleResponse<{ user: User }>(res);
   },
 
   async resend2FA(challengeToken: string): Promise<{ success: boolean; maskedEmail?: string }> {
-    const res = await fetch('/api/auth/resend-2fa', {
+    return apiRequest<{ success: boolean; maskedEmail?: string }>('/api/auth/resend-2fa', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ challengeToken }),
     });
-    return handleResponse<{ success: boolean; maskedEmail?: string }>(res);
   },
 
   async getMe(): Promise<{ user: User }> {
-    const res = await fetch('/api/auth/me', {
-      credentials: 'include',
-    });
-    return handleResponse<{ user: User }>(res);
+    return apiRequest<{ user: User }>('/api/auth/me');
   },
 
   async logout(): Promise<void> {
-    await fetch('/api/auth/logout', {
+    return apiRequest<void>('/api/auth/logout', {
       method: 'POST',
-      credentials: 'include',
     });
   },
 
   // Bootstrap (Dados da sessão e da organização)
   async getBootstrapData(): Promise<BootstrapData> {
-    const res = await fetch('/api/bootstrap', {
-      credentials: 'include',
-    });
-    return handleResponse<BootstrapData>(res);
+    return apiRequest<BootstrapData>('/api/bootstrap');
   },
 
   // Status do Sistema e Hardware
-  async getSystemStatus() {
-    const res = await fetch('/api/system/status', {
-      credentials: 'include',
-    });
-    return handleResponse<{ db: any; server: any }>(res);
+  async getSystemStatus(): Promise<{ db: any; server: any }> {
+    return apiRequest<{ db: any; server: any }>('/api/system/status');
   },
 
   // Usuários
   async getUsers(): Promise<User[]> {
-    const res = await fetch('/api/users', { credentials: 'include' });
-    return handleResponse<User[]>(res);
+    return apiRequest<User[]>('/api/users');
   },
 
   async createUser(userData: Partial<User> & { initialPassword?: string }): Promise<User> {
-    const res = await fetch('/api/users', {
+    return apiRequest<User>('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(userData),
     });
-    return handleResponse<User>(res);
   },
 
   async updateUser(id: string, updates: Partial<User> & { password?: string }): Promise<User> {
-    const res = await fetch(`/api/users/${id}`, {
+    return apiRequest<User>(`/api/users/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(updates),
     });
-    return handleResponse<User>(res);
   },
 
   async updateUserPermissions(userId: string, folderId: string, permissions: PermissionType[]): Promise<User> {
-    const res = await fetch(`/api/users/${userId}/permissions`, {
+    return apiRequest<User>(`/api/users/${userId}/permissions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ folderId, permissions }),
     });
-    return handleResponse<User>(res);
   },
 
   async deleteUser(id: string): Promise<void> {
-    const res = await fetch(`/api/users/${id}`, {
+    return apiRequest<void>(`/api/users/${id}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
-    return handleResponse<void>(res);
   },
 
   // Departamentos / Setores
   async getDepartments(): Promise<Department[]> {
-    const res = await fetch('/api/departments', { credentials: 'include' });
-    return handleResponse<Department[]>(res);
+    return apiRequest<Department[]>('/api/departments');
   },
 
   async createDepartment(deptData: Partial<Department>): Promise<Department> {
-    const res = await fetch('/api/departments', {
+    return apiRequest<Department>('/api/departments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(deptData),
     });
-    return handleResponse<Department>(res);
   },
 
   async updateDepartment(id: string, updates: Partial<Department>): Promise<Department> {
-    const res = await fetch(`/api/departments/${id}`, {
+    return apiRequest<Department>(`/api/departments/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(updates),
     });
-    return handleResponse<Department>(res);
   },
 
   // Pastas
   async getFolders(): Promise<Folder[]> {
-    const res = await fetch('/api/folders', { credentials: 'include' });
-    return handleResponse<Folder[]>(res);
+    return apiRequest<Folder[]>('/api/folders');
   },
 
   async createFolder(folderData: {
@@ -235,63 +261,50 @@ export const apiClient = {
     isLocked?: boolean;
     description?: string;
   }): Promise<Folder> {
-    const res = await fetch('/api/folders', {
+    return apiRequest<Folder>('/api/folders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(folderData),
     });
-    return handleResponse<Folder>(res);
   },
 
   async updateFolder(id: string, updates: Partial<Folder>): Promise<Folder> {
-    const res = await fetch(`/api/folders/${id}`, {
+    return apiRequest<Folder>(`/api/folders/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(updates),
     });
-    return handleResponse<Folder>(res);
   },
 
   async deleteFolder(id: string): Promise<void> {
-    const res = await fetch(`/api/folders/${id}`, {
+    return apiRequest<void>(`/api/folders/${id}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
-    return handleResponse<void>(res);
   },
 
   // Documentos
   async getDocuments(): Promise<DocumentItem[]> {
-    const res = await fetch('/api/documents', { credentials: 'include' });
-    return handleResponse<DocumentItem[]>(res);
+    return apiRequest<DocumentItem[]>('/api/documents');
   },
 
   async uploadDocument(docData: Partial<DocumentItem>): Promise<DocumentItem> {
-    const res = await fetch('/api/documents', {
+    return apiRequest<DocumentItem>('/api/documents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(docData),
     });
-    return handleResponse<DocumentItem>(res);
   },
 
   async toggleFavoriteDocument(id: string): Promise<DocumentItem> {
-    const res = await fetch(`/api/documents/${id}/favorite`, {
+    return apiRequest<DocumentItem>(`/api/documents/${id}/favorite`, {
       method: 'POST',
-      credentials: 'include',
     });
-    return handleResponse<DocumentItem>(res);
   },
 
   async deleteDocument(id: string): Promise<void> {
-    const res = await fetch(`/api/documents/${id}`, {
+    return apiRequest<void>(`/api/documents/${id}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
-    return handleResponse<void>(res);
   },
 
   async uploadFile(file: File, folderId: string, departmentId: string, departmentName: string): Promise<DocumentItem> {
@@ -301,18 +314,15 @@ export const apiClient = {
     formData.append('departmentId', departmentId);
     formData.append('departmentName', departmentName);
 
-    const res = await fetch('/api/documents/upload', {
+    return apiRequest<DocumentItem>('/api/documents/upload', {
       method: 'POST',
-      credentials: 'include',
       body: formData,
     });
-    return handleResponse<DocumentItem>(res);
   },
 
   // Auditoria
   async getAuditLogs(): Promise<AuditLog[]> {
-    const res = await fetch('/api/audit-logs', { credentials: 'include' });
-    return handleResponse<AuditLog[]>(res);
+    return apiRequest<AuditLog[]>('/api/audit-logs');
   },
 
   async recordAuditLog(entry: {
@@ -322,111 +332,88 @@ export const apiClient = {
     details: string;
     result: string;
   }): Promise<AuditLog> {
-    const res = await fetch('/api/audit-logs', {
+    return apiRequest<AuditLog>('/api/audit-logs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(entry),
     });
-    return handleResponse<AuditLog>(res);
   },
 
   // Dispositivos
   async getDevices(): Promise<Device[]> {
-    const res = await fetch('/api/devices', { credentials: 'include' });
-    return handleResponse<Device[]>(res);
+    return apiRequest<Device[]>('/api/devices');
   },
 
   async updateDeviceStatus(id: string, status: 'TRUSTED' | 'BLOCKED'): Promise<void> {
-    const res = await fetch(`/api/devices/${id}/status`, {
+    return apiRequest<void>(`/api/devices/${id}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ status }),
     });
-    return handleResponse<void>(res);
   },
 
   async revokeDevice(id: string): Promise<void> {
-    const res = await fetch(`/api/devices/${id}/revoke`, {
+    return apiRequest<void>(`/api/devices/${id}/revoke`, {
       method: 'POST',
-      credentials: 'include',
     });
-    return handleResponse<void>(res);
   },
 
   async deleteDevice(id: string): Promise<void> {
-    const res = await fetch(`/api/devices/${id}`, {
+    return apiRequest<void>(`/api/devices/${id}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
-    return handleResponse<void>(res);
   },
 
   // Chaves de API & Webhooks
   async getApiKeys(): Promise<ApiKey[]> {
-    const res = await fetch('/api/api-keys', { credentials: 'include' });
-    return handleResponse<ApiKey[]>(res);
+    return apiRequest<ApiKey[]>('/api/api-keys');
   },
 
   async createApiKey(name: string, scopes: string[], createdBy?: string): Promise<ApiKey & { fullKey?: string }> {
-    const res = await fetch('/api/api-keys', {
+    return apiRequest<ApiKey & { fullKey?: string }>('/api/api-keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ name, scopes, createdBy }),
     });
-    return handleResponse<ApiKey & { fullKey?: string }>(res);
   },
 
   async revokeApiKey(id: string): Promise<void> {
-    const res = await fetch(`/api/api-keys/${id}/revoke`, {
+    return apiRequest<void>(`/api/api-keys/${id}/revoke`, {
       method: 'POST',
-      credentials: 'include',
     });
-    return handleResponse<void>(res);
   },
 
   async deleteApiKey(id: string): Promise<void> {
-    const res = await fetch(`/api/api-keys/${id}`, {
+    return apiRequest<void>(`/api/api-keys/${id}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
-    return handleResponse<void>(res);
   },
 
   async getWebhooks(): Promise<WebhookConfig[]> {
-    const res = await fetch('/api/webhooks', { credentials: 'include' });
-    return handleResponse<WebhookConfig[]>(res);
+    return apiRequest<WebhookConfig[]>('/api/webhooks');
   },
 
   async createWebhook(name: string, url: string, events: string[]): Promise<WebhookConfig> {
-    const res = await fetch('/api/webhooks', {
+    return apiRequest<WebhookConfig>('/api/webhooks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ name, url, events }),
     });
-    return handleResponse<WebhookConfig>(res);
   },
 
   async deleteWebhook(id: string): Promise<void> {
-    const res = await fetch(`/api/webhooks/${id}`, {
+    return apiRequest<void>(`/api/webhooks/${id}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
-    return handleResponse<void>(res);
   },
 
   // Documentos: Mover / Atualizar
   async updateDocument(id: string, updates: Partial<DocumentItem>): Promise<DocumentItem> {
-    const res = await fetch('/api/documents', {
+    return apiRequest<DocumentItem>('/api/documents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ id, ...updates }),
     });
-    return handleResponse<DocumentItem>(res);
   },
 
   // Integração (Exclusivo Desenvolvedor)
@@ -444,20 +431,15 @@ export const apiClient = {
     adminStatus: { exists: boolean; createdAt?: string; email?: string };
     initialSetupMode?: boolean;
   }> {
-    const res = await fetch('/api/integrations/settings', {
-      credentials: 'include',
-    });
-    return handleResponse<any>(res);
+    return apiRequest<any>('/api/integrations/settings');
   },
 
   async verifyIntegrationPassword(password: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch('/api/integrations/verify-password', {
+    return apiRequest<{ success: boolean; message: string }>('/api/integrations/verify-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ password }),
     });
-    return handleResponse<{ success: boolean; message: string }>(res);
   },
 
   async saveIntegrationSettings(
@@ -468,52 +450,43 @@ export const apiClient = {
     if (password) {
       headers['x-reauth-password'] = password;
     }
-    const res = await fetch('/api/integrations/settings', {
+    return apiRequest<any>('/api/integrations/settings', {
       method: 'POST',
       headers,
-      credentials: 'include',
       body: JSON.stringify(settings),
     });
-    return handleResponse<any>(res);
   },
 
   async testSmtpConnection(): Promise<{ success: boolean; message: string }> {
-    const res = await fetch('/api/integrations/test-smtp', {
+    return apiRequest<{ success: boolean; message: string }>('/api/integrations/test-smtp', {
       method: 'POST',
-      credentials: 'include',
     });
-    return handleResponse<{ success: boolean; message: string }>(res);
   },
 
   async testGeminiConnection(): Promise<{ success: boolean; message: string }> {
-    const res = await fetch('/api/integrations/test-gemini', {
+    return apiRequest<{ success: boolean; message: string }>('/api/integrations/test-gemini', {
       method: 'POST',
-      credentials: 'include',
     });
-    return handleResponse<{ success: boolean; message: string }>(res);
   },
 
   // Atualização do sistema pelo painel (Exclusivo Desenvolvedor)
   async getSystemUpdateStatus(): Promise<SystemUpdateStatus> {
-    const res = await fetch('/api/system-update/status', { credentials: 'include', cache: 'no-store' });
-    return handleResponse<SystemUpdateStatus>(res);
+    return apiRequest<SystemUpdateStatus>('/api/system-update/status', {
+      cache: 'no-store',
+    });
   },
 
   async startSystemUpdate(password: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch('/api/system-update', {
+    return apiRequest<{ success: boolean; message: string }>('/api/system-update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ password }),
     });
-    return handleResponse<{ success: boolean; message: string }>(res);
   },
 
   async sendAdminPasswordReset(): Promise<{ success: boolean; message: string }> {
-    const res = await fetch('/api/integrations/send-admin-reset', {
+    return apiRequest<{ success: boolean; message: string }>('/api/integrations/send-admin-reset', {
       method: 'POST',
-      credentials: 'include',
     });
-    return handleResponse<{ success: boolean; message: string }>(res);
   },
 };
