@@ -19,6 +19,7 @@ import {
   Copy,
   Loader2,
   Pencil,
+  Trash2,
 } from 'lucide-react';
 import { User, UserRole, UserStatus, Department } from '../../types';
 import { Avatar } from '../common/Avatar';
@@ -35,6 +36,7 @@ interface UsersManagementProps {
   onCreateUser: (userData: Partial<User>) => Promise<UserAccessResult>;
   onResendAccess: (userId: string) => Promise<UserAccessResult>;
   onUpdateUser: (userId: string, updates: Partial<User>) => Promise<void>;
+  onDeleteUser: (userId: string) => Promise<void>;
   onToggleUserStatus: (userId: string) => void;
   onReset2FA: (userId: string) => void;
 }
@@ -46,6 +48,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
   onCreateUser,
   onResendAccess,
   onUpdateUser,
+  onDeleteUser,
   onToggleUserStatus,
   onReset2FA,
 }) => {
@@ -133,6 +136,26 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
       setEditError(err?.message || 'Não foi possível salvar as alterações.');
     } finally {
       setIsSavingEdit(false);
+    }
+  };
+
+  // Exclusão de usuário
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const canDeleteTarget = (u: User) => canEditTarget(u) && u.id !== currentUser.id;
+
+  const handleConfirmDelete = async () => {
+    if (!deletingUser || isDeleting) return;
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+      await onDeleteUser(deletingUser.id);
+      setDeletingUser(null);
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Não foi possível excluir o usuário.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -384,6 +407,20 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                   </button>
                 )}
 
+                {canDeleteTarget(u) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeletingUser(u);
+                    }}
+                    className="py-2 px-3 rounded-xl text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50/50 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
+                    title="Excluir usuário"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+
                 {canManageAccess && u.id !== currentUser.id && (
                   <button
                     type="button"
@@ -511,6 +548,20 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                           title="Editar usuário (função, perfil e setor)"
                         >
                           <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      {canDeleteTarget(u) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeletingUser(u);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 border border-slate-200 hover:bg-rose-50 transition-colors"
+                          title="Excluir usuário"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
 
@@ -846,6 +897,46 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Excluir Usuário */}
+      {deletingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-bold text-slate-900">Excluir usuário?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                <strong>{deletingUser.name}</strong> ({deletingUser.email}) perderá o acesso imediatamente e a conta será
+                apagada. Os documentos que ele enviou continuam no sistema. Esta ação não pode ser desfeita. Se quiser apenas
+                suspender o acesso, use <strong>Bloquear</strong>.
+              </p>
+            </div>
+            {deleteError && (
+              <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800">{deleteError}</div>
+            )}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setDeletingUser(null)}
+                className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Excluir
+              </button>
+            </div>
           </div>
         </div>
       )}

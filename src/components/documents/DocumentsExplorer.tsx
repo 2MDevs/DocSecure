@@ -1,31 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Folder as FolderIcon,
-  FileText,
-  FileSpreadsheet,
   Lock,
   Plus,
-  LayoutGrid,
-  List as ListIcon,
   ChevronRight,
-  Clock,
-  Star,
-  Users,
-  Briefcase,
-  Building,
+  ChevronDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  Search,
   Download,
-  Eye,
   Trash2,
-  FileCode,
-  ShieldCheck,
+  Star,
   SlidersHorizontal,
   FolderPlus,
-  FolderOpen,
-  ArrowRight,
-  Info,
-  Layers,
-  Sparkles,
+  Upload,
+  ArrowUpDown,
+  LayoutGrid,
+  List as ListIcon,
+  PanelRight,
+  Home,
+  HardDrive,
   AlertTriangle,
+  ExternalLink,
+  Image as ImageIcon,
+  Check,
 } from 'lucide-react';
 import { Department, Folder, DocumentItem, User, PermissionType } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
@@ -52,6 +51,142 @@ interface DocumentsExplorerProps {
   onMoveFolder?: (folderId: string, targetFolderId: string) => void;
 }
 
+type ViewMode = 'large' | 'medium' | 'details';
+type SortKey = 'name' | 'date' | 'type' | 'size';
+type Location = { deptId: string | null; folderId: string | null };
+type Item =
+  | { kind: 'dept'; id: string; name: string; dept: Department }
+  | { kind: 'folder'; id: string; name: string; folder: Folder }
+  | { kind: 'doc'; id: string; name: string; doc: DocumentItem };
+
+// ---------------------------------------------------------------------------
+// Utilidades
+// ---------------------------------------------------------------------------
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 KB';
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const value = bytes / Math.pow(1024, i);
+  return `${value.toLocaleString('pt-BR', { maximumFractionDigits: i === 0 ? 0 : value < 10 ? 1 : 0 })} ${units[i]}`;
+}
+
+const formatDate = (value?: string) => {
+  if (!value) return '';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  pdf: 'Documento PDF',
+  doc: 'Documento do Word',
+  docx: 'Documento do Word',
+  xls: 'Planilha do Excel',
+  xlsx: 'Planilha do Excel',
+  csv: 'Arquivo CSV',
+  ppt: 'Apresentação do PowerPoint',
+  pptx: 'Apresentação do PowerPoint',
+  png: 'Imagem PNG',
+  jpg: 'Imagem JPEG',
+  jpeg: 'Imagem JPEG',
+  gif: 'Imagem GIF',
+  webp: 'Imagem WEBP',
+  zip: 'Pasta compactada',
+  rar: 'Arquivo compactado',
+  txt: 'Documento de texto',
+};
+const typeLabel = (ext: string) => TYPE_LABEL[ext?.toLowerCase()] || `Arquivo ${ext?.toUpperCase() || ''}`.trim();
+
+const EXT_COLORS: Record<string, string> = {
+  pdf: '#dc2626',
+  doc: '#2563eb',
+  docx: '#2563eb',
+  xls: '#16a34a',
+  xlsx: '#16a34a',
+  csv: '#15803d',
+  ppt: '#ea580c',
+  pptx: '#ea580c',
+  zip: '#ca8a04',
+  rar: '#ca8a04',
+  txt: '#64748b',
+};
+const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
+/** Ícone de pasta no estilo do Windows */
+const FolderGlyph: React.FC<{ size: number; locked?: boolean; dimmed?: boolean }> = ({ size, locked, dimmed }) => (
+  <div className={`relative ${dimmed ? 'opacity-60' : ''}`} style={{ width: size, height: size }}>
+    <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
+      <path d="M4 14a4 4 0 0 1 4-4h16l6 6h26a4 4 0 0 1 4 4v4H4z" fill="#e0a526" />
+      <path d="M4 22h56v28a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#f8c94a" />
+      <path d="M4 22h56v3H4z" fill="#fbd96b" />
+    </svg>
+    {locked && (
+      <span className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200">
+        <Lock className="text-slate-600" style={{ width: size * 0.22, height: size * 0.22 }} />
+      </span>
+    )}
+  </div>
+);
+
+/** Ícone de unidade (setor) no estilo "Este Computador" */
+const DriveGlyph: React.FC<{ size: number; locked?: boolean }> = ({ size, locked }) => (
+  <div className={`relative ${locked ? 'opacity-60' : ''}`} style={{ width: size, height: size }}>
+    <FolderGlyph size={size} />
+    <HardDrive
+      className="absolute text-amber-900/70"
+      style={{ width: size * 0.32, height: size * 0.32, left: size * 0.34, top: size * 0.44 }}
+    />
+    {locked && (
+      <span className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200">
+        <Lock className="text-rose-600" style={{ width: size * 0.22, height: size * 0.22 }} />
+      </span>
+    )}
+  </div>
+);
+
+/** Ícone de arquivo: folha com canto dobrado e etiqueta da extensão */
+const FileGlyph: React.FC<{ ext: string; size: number }> = ({ ext, size }) => {
+  const e = (ext || '').toLowerCase();
+  if (IMAGE_EXT.includes(e)) {
+    return (
+      <div
+        className="rounded-md bg-gradient-to-br from-sky-100 to-indigo-100 border border-slate-200 flex items-center justify-center"
+        style={{ width: size * 0.82, height: size }}
+      >
+        <ImageIcon className="text-indigo-500" style={{ width: size * 0.45, height: size * 0.45 }} />
+      </div>
+    );
+  }
+  const color = EXT_COLORS[e] || '#475569';
+  const label = (e || 'arq').toUpperCase().slice(0, 4);
+  return (
+    <svg viewBox="0 0 52 64" width={size * 0.82} height={size} aria-hidden="true">
+      <path d="M4 2h30l14 14v44a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="#fff" stroke="#cbd5e1" strokeWidth="2" />
+      <path d="M34 2v12a2 2 0 0 0 2 2h12" fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="2" />
+      <rect x="6" y="34" width="40" height="16" rx="3" fill={color} />
+      <text x="26" y="46" textAnchor="middle" fontSize={label.length > 3 ? 9 : 11} fontWeight="700" fill="#fff" fontFamily="Segoe UI, Arial, sans-serif">
+        {label}
+      </text>
+    </svg>
+  );
+};
+
+const readPref = <T,>(key: string, fallback: T): T => {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? (JSON.parse(v) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const writePref = (key: string, value: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+};
+
+// ---------------------------------------------------------------------------
+// Componente
+// ---------------------------------------------------------------------------
 export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   currentUser,
   departments,
@@ -72,63 +207,188 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   onMoveDocument,
   onMoveFolder,
 }) => {
-  const [currentDeptId, setCurrentDeptId] = useState<string | null>(null);
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [activeDepartmentTab, setActiveDepartmentTab] = useState<'arquivos' | 'permissoes'>('arquivos');
+  const [location, setLocation] = useState<Location>({ deptId: null, folderId: null });
+  const [backStack, setBackStack] = useState<Location[]>([]);
+  const [forwardStack, setForwardStack] = useState<Location[]>([]);
 
-  // Interactive selection & drag-and-drop state
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
-  const [draggingEntity, setDraggingEntity] = useState<{ type: 'document' | 'folder'; id: string; name: string } | null>(null);
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => readPref('ds.explorer.view', 'large'));
+  const [sortKey, setSortKeyState] = useState<SortKey>(() => readPref('ds.explorer.sort', 'name'));
+  const [sortAsc, setSortAscState] = useState<boolean>(() => readPref('ds.explorer.sortAsc', true));
+  const [showDetailsPane, setShowDetailsPaneState] = useState<boolean>(() => readPref('ds.explorer.details', false));
+  const setViewMode = (v: ViewMode) => (setViewModeState(v), writePref('ds.explorer.view', v));
+  const setSort = (k: SortKey) => {
+    const asc = k === sortKey ? !sortAsc : true;
+    setSortKeyState(k);
+    setSortAscState(asc);
+    writePref('ds.explorer.sort', k);
+    writePref('ds.explorer.sortAsc', asc);
+  };
+  const toggleDetailsPane = () => {
+    setShowDetailsPaneState((v) => (writePref('ds.explorer.details', !v), !v));
+  };
 
-  // Folder configuration modal state (Properties & Who Can Access)
-  const [configFolderModalData, setConfigFolderModalData] = useState<{
-    isOpen: boolean;
-    folder: Folder | null;
-  }>({
-    isOpen: false,
-    folder: null,
-  });
-
-  // Delete folder confirmation modal
+  const [localSearch, setLocalSearch] = useState('');
+  const [selected, setSelected] = useState<{ kind: Item['kind']; id: string } | null>(null);
+  const [openMenu, setOpenMenu] = useState<'new' | 'sort' | 'view' | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Item | null } | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [deleteConfirmFolder, setDeleteConfirmFolder] = useState<Folder | null>(null);
-  // Confirmação de exclusão de documento (vai para a lixeira do setor)
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState<DocumentItem | null>(null);
+  const [configFolder, setConfigFolder] = useState<Folder | null>(null);
+  const [accessRevokedNotice, setAccessRevokedNotice] = useState<string | null>(null);
+  const [expandedDeptIds, setExpandedDeptIds] = useState<string[]>([]);
+  const contentRef = useRef<HTMLDivElement>(null);
 
+  const role = currentUser.role;
+  const isAdmin = role === 'DEVELOPER' || role === 'DIRECTOR';
+  const currentDept = departments.find((d) => d.id === location.deptId) || null;
+  const currentFolder = folders.find((f) => f.id === location.folderId) || null;
+  const query = (localSearch || searchTerm || '').trim().toLowerCase();
+
+  // ---------------------------------------------------------------- acesso
+  /** Todos veem todos os setores; só entram onde têm permissão. */
+  const hasDeptAccess = (dept: Department) => {
+    if (isAdmin) return true;
+    if (dept.id === currentUser.departmentId) return true;
+    // Pastas liberadas em outro setor (o servidor só envia as pastas permitidas)
+    return folders.some((f) => f.departmentId === dept.id);
+  };
+  const isManagerOf = (deptId?: string | null) =>
+    isAdmin || (role === 'MANAGER' && !!deptId && currentUser.departmentId === deptId);
   const canDeleteDoc = (doc: DocumentItem) =>
     doc.ownerId === currentUser.id ||
     verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DELETE_DOCUMENT', doc.folderId || undefined).allowed;
+  const canDownloadDoc = (doc: DocumentItem) =>
+    verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DOWNLOAD_DOCUMENT', doc.folderId || undefined).allowed;
 
-  // Floating Context Menu state
-  const [contextMenu, setContextMenu] = useState<{
-    isOpen: boolean;
-    x: number;
-    y: number;
-    type: 'folder' | 'blank';
-    folder?: Folder;
-  }>({
-    isOpen: false,
-    x: 0,
-    y: 0,
-    type: 'blank',
-  });
+  // ---------------------------------------------------------------- tamanhos
+  const { folderSize, folderCount } = useMemo(() => {
+    const children = new Map<string | null, Folder[]>();
+    folders.forEach((f) => {
+      const key = f.parentId || null;
+      children.set(key, [...(children.get(key) || []), f]);
+    });
+    const docBytes = new Map<string, number>();
+    const docCount = new Map<string, number>();
+    documents.forEach((d) => {
+      if (!d.folderId) return;
+      docBytes.set(d.folderId, (docBytes.get(d.folderId) || 0) + (d.sizeBytes || 0));
+      docCount.set(d.folderId, (docCount.get(d.folderId) || 0) + 1);
+    });
+    const size = new Map<string, number>();
+    const count = new Map<string, number>();
+    const visit = (f: Folder, guard: Set<string>): [number, number] => {
+      if (size.has(f.id)) return [size.get(f.id)!, count.get(f.id)!];
+      if (guard.has(f.id)) return [0, 0];
+      guard.add(f.id);
+      let s = docBytes.get(f.id) || 0;
+      let c = (docCount.get(f.id) || 0) + (children.get(f.id)?.length || 0);
+      (children.get(f.id) || []).forEach((child) => {
+        const [cs] = visit(child, guard);
+        s += cs;
+      });
+      size.set(f.id, s);
+      count.set(f.id, c);
+      return [s, c];
+    };
+    folders.forEach((f) => visit(f, new Set()));
+    return { folderSize: size, folderCount: count };
+  }, [folders, documents]);
 
-  const explorerRef = useRef<HTMLDivElement>(null);
-  const [accessRevokedNotice, setAccessRevokedNotice] = useState<string | null>(null);
+  // ---------------------------------------------------------------- navegação
+  const navigate = (next: Location) => {
+    setBackStack((prev) => [...prev, location]);
+    setForwardStack([]);
+    setLocation(next);
+    setSelected(null);
+    setLocalSearch('');
+  };
 
-  // Tempo real: se a pasta ou o setor aberto deixar de estar acessível (bloqueio, permissão
-  // retirada, exclusão), sai dele na hora e avisa o usuário.
-  useEffect(() => {
-    if (currentFolderId && !folders.some((f) => f.id === currentFolderId)) {
-      setCurrentFolderId(null);
-      setSelectedFolderId(null);
-      setAccessRevokedNotice('A pasta que você estava vendo foi bloqueada, excluída ou o seu acesso foi alterado.');
+  const openDept = (dept: Department) => {
+    if (!hasDeptAccess(dept)) {
+      onAccessDenied(
+        `Você não tem permissão para acessar o setor ${dept.name}. Peça liberação ao gestor responsável.`,
+        dept.name
+      );
+      return;
     }
-    if (currentDeptId && !departments.some((d) => d.id === currentDeptId)) {
-      setCurrentDeptId(null);
-      setCurrentFolderId(null);
-      setAccessRevokedNotice('O setor que você estava vendo não está mais disponível para você.');
+    navigate({ deptId: dept.id, folderId: null });
+    setExpandedDeptIds((prev) => (prev.includes(dept.id) ? prev : [...prev, dept.id]));
+  };
+
+  const openFolder = (folder: Folder) => {
+    const perm = verifyPermission(currentUser, 'folder', folder.id, folder.departmentId, 'VIEW_FOLDER');
+    if (!perm.allowed) {
+      onAccessDenied(perm.reason || `Você não tem autorização para abrir a pasta ${folder.name}.`, folder.name);
+      return;
+    }
+    navigate({ deptId: folder.departmentId, folderId: folder.id });
+  };
+
+  const openDoc = (doc: DocumentItem) => {
+    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'VIEW_DOCUMENT', doc.folderId || undefined);
+    if (!perm.allowed) {
+      onAccessDenied(perm.reason || `Você não tem autorização para abrir ${doc.name}.`, doc.name);
+      return;
+    }
+    onOpenDocument(doc);
+  };
+
+  const downloadDoc = (doc: DocumentItem) => {
+    if (!canDownloadDoc(doc)) {
+      onAccessDenied(`A permissão de download do arquivo ${doc.name} não está liberada para você.`, doc.name);
+      return;
+    }
+    onDownloadDocument(doc);
+  };
+
+  const goBack = () => {
+    const prev = backStack[backStack.length - 1];
+    if (!prev) return;
+    setBackStack((s) => s.slice(0, -1));
+    setForwardStack((s) => [location, ...s]);
+    setLocation(prev);
+    setSelected(null);
+  };
+  const goForward = () => {
+    const next = forwardStack[0];
+    if (!next) return;
+    setForwardStack((s) => s.slice(1));
+    setBackStack((s) => [...s, location]);
+    setLocation(next);
+    setSelected(null);
+  };
+  const goUp = () => {
+    if (currentFolder) navigate({ deptId: currentFolder.departmentId, folderId: currentFolder.parentId || null });
+    else if (location.deptId) navigate({ deptId: null, folderId: null });
+  };
+
+  // Caminho completo da pasta atual (Início > Setor > Pasta > Subpasta)
+  const folderPath = useMemo(() => {
+    const path: Folder[] = [];
+    let cursor = currentFolder;
+    const guard = new Set<string>();
+    while (cursor && !guard.has(cursor.id)) {
+      guard.add(cursor.id);
+      path.unshift(cursor);
+      cursor = folders.find((f) => f.id === cursor!.parentId) || null;
+    }
+    return path;
+  }, [currentFolder, folders]);
+
+  // Tempo real: se a pasta/setor aberto deixar de estar acessível, sai dele e avisa
+  useEffect(() => {
+    if (location.folderId && !folders.some((f) => f.id === location.folderId)) {
+      setLocation({ deptId: location.deptId, folderId: null });
+      setSelected(null);
+      setAccessRevokedNotice('A pasta que você estava vendo foi bloqueada, excluída ou o seu acesso foi alterado.');
+    } else if (location.deptId) {
+      const dept = departments.find((d) => d.id === location.deptId);
+      if (!dept || !hasDeptAccess(dept)) {
+        setLocation({ deptId: null, folderId: null });
+        setSelected(null);
+        setAccessRevokedNotice('O setor que você estava vendo não está mais disponível para você.');
+      }
     }
   }, [folders, departments]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -138,1181 +398,811 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     return () => clearTimeout(t);
   }, [accessRevokedNotice]);
 
-  const currentDepartment = departments.find((d) => d.id === currentDeptId);
-  const currentFolder = folders.find((f) => f.id === currentFolderId);
-
-  const isAtRoot = currentDeptId === null;
-
-  const visibleDepartments = departments.filter((d) => {
-    if (!searchTerm) return true;
-    return d.name.toLowerCase().includes(searchTerm.toLowerCase());
-  });
-
-  const currentFolders = folders.filter((f) => {
-    if (searchTerm) {
-      return f.name.toLowerCase().includes(searchTerm.toLowerCase());
+  // ---------------------------------------------------------------- itens da pasta atual
+  const items: Item[] = useMemo(() => {
+    let list: Item[] = [];
+    if (query) {
+      // Pesquisa: dentro do setor atual ou em tudo que o usuário enxerga (Início)
+      const inScope = (deptId: string) => !location.deptId || deptId === location.deptId;
+      list = [
+        ...folders
+          .filter((f) => inScope(f.departmentId) && f.name.toLowerCase().includes(query))
+          .map((f) => ({ kind: 'folder' as const, id: f.id, name: f.name, folder: f })),
+        ...documents
+          .filter(
+            (d) =>
+              inScope(d.departmentId) &&
+              (d.name.toLowerCase().includes(query) || d.tags?.some((t) => t.toLowerCase().includes(query)))
+          )
+          .map((d) => ({ kind: 'doc' as const, id: d.id, name: d.name, doc: d })),
+      ];
+      if (!location.deptId) {
+        list = [
+          ...departments
+            .filter((d) => d.name.toLowerCase().includes(query))
+            .map((d) => ({ kind: 'dept' as const, id: d.id, name: d.name, dept: d })),
+          ...list,
+        ];
+      }
+    } else if (!location.deptId) {
+      list = departments.map((d) => ({ kind: 'dept' as const, id: d.id, name: d.name, dept: d }));
+    } else {
+      list = [
+        ...folders
+          .filter((f) => f.departmentId === location.deptId && (f.parentId || null) === location.folderId)
+          .map((f) => ({ kind: 'folder' as const, id: f.id, name: f.name, folder: f })),
+        ...documents
+          .filter((d) => d.departmentId === location.deptId && (d.folderId || null) === location.folderId)
+          .map((d) => ({ kind: 'doc' as const, id: d.id, name: d.name, doc: d })),
+      ];
     }
-    if (isAtRoot) return false;
-    return f.departmentId === currentDeptId && (currentFolderId ? f.parentId === currentFolderId : f.parentId === null);
-  });
 
-  const currentDocs = documents.filter((doc) => {
-    if (searchTerm) {
-      return (
-        doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        doc.tags?.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
+    const sizeOf = (it: Item) =>
+      it.kind === 'doc' ? it.doc.sizeBytes : it.kind === 'folder' ? folderSize.get(it.id) || 0 : it.dept.storageUsedBytes || 0;
+    const dateOf = (it: Item) =>
+      new Date(it.kind === 'doc' ? it.doc.updatedAt : it.kind === 'folder' ? it.folder.updatedAt : '').getTime() || 0;
+    const typeOf = (it: Item) => (it.kind === 'doc' ? typeLabel(it.doc.extension) : '');
+    const rank = (it: Item) => (it.kind === 'doc' ? 1 : 0); // pastas sempre primeiro, como no Windows
+    const dir = sortAsc ? 1 : -1;
+
+    return [...list].sort((a, b) => {
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      let cmp = 0;
+      if (sortKey === 'size') cmp = sizeOf(a) - sizeOf(b);
+      else if (sortKey === 'date') cmp = dateOf(a) - dateOf(b);
+      else if (sortKey === 'type') cmp = typeOf(a).localeCompare(typeOf(b), 'pt-BR');
+      if (cmp === 0) cmp = a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' });
+      return cmp * dir;
+    });
+  }, [query, location, departments, folders, documents, sortKey, sortAsc, folderSize]);
+
+  const selectedItem = selected ? items.find((i) => i.kind === selected.kind && i.id === selected.id) || null : null;
+  const selectedDoc = selectedItem?.kind === 'doc' ? selectedItem.doc : null;
+  const selectedFolder = selectedItem?.kind === 'folder' ? selectedItem.folder : null;
+
+  const activate = (item: Item) => {
+    if (item.kind === 'dept') openDept(item.dept);
+    else if (item.kind === 'folder') openFolder(item.folder);
+    else openDoc(item.doc);
+  };
+
+  const requestDelete = (item: Item | null) => {
+    if (!item) return;
+    if (item.kind === 'doc') {
+      if (!canDeleteDoc(item.doc)) {
+        onAccessDenied('Você não tem permissão para excluir este arquivo.', item.name);
+        return;
+      }
+      setDeleteConfirmDoc(item.doc);
+    } else if (item.kind === 'folder') {
+      if (!isManagerOf(item.folder.departmentId)) {
+        onAccessDenied('Somente o gestor do setor, a Diretoria ou o Desenvolvedor podem excluir pastas.', item.name);
+        return;
+      }
+      setDeleteConfirmFolder(item.folder);
     }
-    if (isAtRoot) return false;
-    if (currentFolderId) {
-      return doc.folderId === currentFolderId;
+  };
+
+  const openProperties = (folder: Folder) => {
+    if (!isManagerOf(folder.departmentId)) {
+      onAccessDenied('Apenas o gestor do setor e a administração podem alterar propriedades e permissões da pasta.', folder.name);
+      return;
     }
-    // Raiz do setor: somente arquivos que não estão dentro de nenhuma pasta
-    return doc.departmentId === currentDeptId && !doc.folderId;
-  });
+    setConfigFolder(folder);
+  };
 
-  // Check if current user is manager of this area or director/developer
-  const canManageFolderPermissions =
-    currentUser.role === 'DEVELOPER' ||
-    currentUser.role === 'DIRECTOR' ||
-    (currentUser.role === 'MANAGER' && currentUser.departmentId === (currentDeptId || currentFolder?.departmentId));
-
-  // Close context menu on outside click or scroll or escape
+  // ---------------------------------------------------------------- teclado e cliques fora
   useEffect(() => {
-    const handleClose = () => {
-      setContextMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+    const close = () => {
+      setContextMenu(null);
+      setOpenMenu(null);
     };
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      // Com qualquer janela/modal aberta (visualizador, envio, confirmações), o teclado não age no explorador
+      if (document.querySelector('.fixed.inset-0')) return;
       if (e.key === 'Escape') {
-        setContextMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
-        setSelectedFolderId(null);
-      }
-      // 1 clique seleciona + Enter abre a pasta
-      if (e.key === 'Enter' && selectedFolderId) {
-        const target = currentFolders.find((f) => f.id === selectedFolderId);
-        if (target) {
-          handleOpenFolder(target);
-        }
+        close();
+        setSelected(null);
+      } else if (e.key === 'Enter' && selectedItem) {
+        activate(selectedItem);
+      } else if (e.key === 'Delete' && selectedItem) {
+        requestDelete(selectedItem);
+      } else if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        goBack();
+      } else if (e.altKey && e.key === 'ArrowUp') {
+        goUp();
       }
     };
-
-    window.addEventListener('click', handleClose);
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('click', handleClose);
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKey);
     };
-  }, [selectedFolderId, currentFolders]);
+  }); // reavalia a cada render para usar o estado atual
 
-  // Open Folder Config Modal (Propriedades / Configuração de quem pode acessar)
-  const handleOpenFolderConfig = (folder: Folder, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!canManageFolderPermissions) {
-      onAccessDenied('Apenas Gestores de Área e Administradores podem configurar permissões de pastas.', folder.name);
-      return;
-    }
-    setConfigFolderModalData({
-      isOpen: true,
-      folder,
-    });
+  // ---------------------------------------------------------------- arrastar e soltar
+  const onDragStart = (e: React.DragEvent, item: Item) => {
+    if (item.kind === 'dept') return;
+    e.dataTransfer.setData('text/plain', JSON.stringify({ kind: item.kind, id: item.id }));
+    e.dataTransfer.effectAllowed = 'move';
   };
-
-  // Folder navigation with RBAC verification
-  const handleOpenDepartment = (dept: Department) => {
-    const perm = verifyPermission(currentUser, 'department', dept.id, dept.id, 'VIEW_FOLDER');
-    if (!perm.allowed) {
-      onAccessDenied(perm.reason || `Você não possui permissão para acessar o setor ${dept.name}.`, dept.name);
-      return;
-    }
-
-    setCurrentDeptId(dept.id);
-    setCurrentFolderId(null);
-    setSelectedFolderId(null);
-  };
-
-  const handleOpenFolder = (folder: Folder) => {
-    const perm = verifyPermission(currentUser, 'folder', folder.id, folder.departmentId, 'VIEW_FOLDER');
-    if (!perm.allowed) {
-      onAccessDenied(
-        perm.reason || `Acesso negado: Você não possui autorização para abrir a pasta ${folder.name}.`,
-        folder.name
-      );
-      return;
-    }
-
-    setCurrentFolderId(folder.id);
-    setSelectedFolderId(null);
-  };
-
-  const handleOpenDocument = (doc: DocumentItem) => {
-    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'VIEW_DOCUMENT', doc.folderId || undefined);
-    if (!perm.allowed) {
-      onAccessDenied(
-        perm.reason || `Acesso negado: Você não possui autorização para visualizar o documento ${doc.name}.`,
-        doc.name
-      );
-      return;
-    }
-
-    onOpenDocument(doc);
-  };
-
-  const handleTriggerDownload = (doc: DocumentItem, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DOWNLOAD_DOCUMENT', doc.folderId || undefined);
-    if (!perm.allowed) {
-      onAccessDenied(
-        perm.reason || `Acesso negado: A permissão de download para o arquivo ${doc.name} foi revogada pelo Gestor.`,
-        doc.name
-      );
-      return;
-    }
-    onDownloadDocument(doc);
-  };
-
-  // Drag and Drop Handlers
-  const handleDragStartDocument = (e: React.DragEvent, doc: DocumentItem) => {
-    const data = { type: 'document' as const, id: doc.id, name: doc.name };
-    e.dataTransfer.setData('text/plain', JSON.stringify(data));
-    setDraggingEntity(data);
-  };
-
-  const handleDragStartFolder = (e: React.DragEvent, folder: Folder) => {
-    const data = { type: 'folder' as const, id: folder.id, name: folder.name };
-    e.dataTransfer.setData('text/plain', JSON.stringify(data));
-    setDraggingEntity(data);
-  };
-
-  const handleDragOverFolder = (e: React.DragEvent, folderId: string) => {
+  const onDropOnFolder = (e: React.DragEvent, target: Folder) => {
     e.preventDefault();
     e.stopPropagation();
-    if (dragOverFolderId !== folderId) {
-      setDragOverFolderId(folderId);
-    }
-  };
-
-  const handleDragLeaveFolder = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverFolderId(null);
-  };
-
-  const handleDropOnFolder = (e: React.DragEvent, targetFolder: Folder) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverFolderId(null);
-    setDraggingEntity(null);
-
+    setDragOverId(null);
     try {
-      const raw = e.dataTransfer.getData('text/plain');
-      if (!raw) return;
-      const data = JSON.parse(raw) as { type: 'document' | 'folder'; id: string; name: string };
-
-      if (data.type === 'document') {
-        if (onMoveDocument) {
-          onMoveDocument(data.id, targetFolder.id);
-        }
-      } else if (data.type === 'folder') {
-        if (data.id !== targetFolder.id && onMoveFolder) {
-          onMoveFolder(data.id, targetFolder.id);
-        }
-      }
-    } catch (err) {
-      console.warn('[Drag Drop Error]', err);
-    }
+      const data = JSON.parse(e.dataTransfer.getData('text/plain') || '{}');
+      if (data.kind === 'doc' && onMoveDocument) onMoveDocument(data.id, target.id);
+      if (data.kind === 'folder' && data.id !== target.id && onMoveFolder) onMoveFolder(data.id, target.id);
+    } catch {}
   };
 
-  // Context Menu Handlers
-  const handleFolderContextMenu = (e: React.MouseEvent, folder: Folder) => {
+  // ---------------------------------------------------------------- textos auxiliares
+  const locationName = currentFolder?.name || currentDept?.name || 'Início';
+  const itemSize = (it: Item) =>
+    it.kind === 'doc' ? it.doc.sizeBytes : it.kind === 'folder' ? folderSize.get(it.id) || 0 : it.dept.storageUsedBytes || 0;
+  const itemDate = (it: Item) =>
+    it.kind === 'doc' ? formatDate(it.doc.updatedAt) : it.kind === 'folder' ? formatDate(it.folder.updatedAt) : '';
+  const itemType = (it: Item) =>
+    it.kind === 'doc' ? typeLabel(it.doc.extension) : it.kind === 'folder' ? 'Pasta de arquivos' : 'Setor';
+
+  const iconSize = viewMode === 'large' ? 72 : 44;
+
+  const renderIcon = (it: Item, size: number) => {
+    if (it.kind === 'dept') return <DriveGlyph size={size} locked={!hasDeptAccess(it.dept)} />;
+    if (it.kind === 'folder') return <FolderGlyph size={size} locked={it.folder.isLocked} />;
+    return <FileGlyph ext={it.doc.extension} size={size} />;
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, item: Item | null) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedFolderId(folder.id);
-
-    const x = Math.min(e.clientX, window.innerWidth - 220);
-    const y = Math.min(e.clientY, window.innerHeight - 260);
-
+    if (item) setSelected({ kind: item.kind, id: item.id });
+    setOpenMenu(null);
     setContextMenu({
-      isOpen: true,
-      x,
-      y,
-      type: 'folder',
-      folder,
+      x: Math.min(e.clientX, window.innerWidth - 230),
+      y: Math.min(e.clientY, window.innerHeight - 280),
+      item,
     });
   };
 
-  const handleBlankAreaContextMenu = (e: React.MouseEvent) => {
-    // Only open if inside department view
-    if (isAtRoot) return;
-    e.preventDefault();
+  const canCreateHere = !!location.deptId;
+  const toolbarBtn =
+    'h-9 px-2.5 rounded-md text-[13px] text-slate-700 hover:bg-slate-100 disabled:opacity-35 disabled:hover:bg-transparent inline-flex items-center gap-1.5 transition-colors';
 
-    const x = Math.min(e.clientX, window.innerWidth - 220);
-    const y = Math.min(e.clientY, window.innerHeight - 180);
-
-    setContextMenu({
-      isOpen: true,
-      x,
-      y,
-      type: 'blank',
-    });
-  };
-
-  const handleDeleteFolderConfirmed = () => {
-    if (deleteConfirmFolder && onDeleteFolder) {
-      onDeleteFolder(deleteConfirmFolder.id);
-      setDeleteConfirmFolder(null);
-      if (selectedFolderId === deleteConfirmFolder.id) {
-        setSelectedFolderId(null);
-      }
-    }
-  };
-
-  const getFileIcon = (ext: string) => {
-    switch (ext) {
-      case 'xlsx':
-      case 'csv':
-        return (
-          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-            <FileSpreadsheet className="w-4 h-4" />
-          </div>
-        );
-      case 'pdf':
-        return (
-          <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-            <FileText className="w-4 h-4" />
-          </div>
-        );
-      case 'docx':
-        return (
-          <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-            <FileText className="w-4 h-4" />
-          </div>
-        );
-      default:
-        return (
-          <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-            <FileCode className="w-4 h-4" />
-          </div>
-        );
-    }
-  };
-
-  return (
-    <div
-      ref={explorerRef}
-      onContextMenu={handleBlankAreaContextMenu}
-      className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-150 select-none min-h-[600px] relative"
+  const MenuItem: React.FC<{ icon?: React.ReactNode; label: string; onClick: () => void; danger?: boolean; checked?: boolean; disabled?: boolean }> = ({
+    icon,
+    label,
+    onClick,
+    danger,
+    checked,
+    disabled,
+  }) => (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        setContextMenu(null);
+        setOpenMenu(null);
+        onClick();
+      }}
+      className={`w-full px-3 py-1.5 text-left text-[13px] flex items-center gap-2.5 disabled:opacity-40 ${
+        danger ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-100'
+      }`}
     >
-      {accessRevokedNotice && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2 animate-in fade-in">
-          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-          <span className="flex-1">{accessRevokedNotice}</span>
-          <button type="button" onClick={() => setAccessRevokedNotice(null)} className="text-amber-700 hover:text-amber-900 font-semibold">
-            OK
-          </button>
-        </div>
-      )}
+      <span className="w-4 h-4 flex items-center justify-center text-slate-500">{checked ? <Check className="w-3.5 h-3.5" /> : icon}</span>
+      <span>{label}</span>
+    </button>
+  );
 
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Meus Documentos</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Acesse, organize e gerencie pastas e documentos empresariais com controle de permissões.
-          </p>
-        </div>
-
-        {/* Action Buttons & View Mode Toggles */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* If inside a folder and user has permission to manage, show Folder Settings button */}
-          {currentFolder && canManageFolderPermissions && (
+  // ---------------------------------------------------------------- render
+  return (
+    <div className="p-2 sm:p-4 lg:p-6 h-full select-none">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden min-h-[70dvh]">
+        {/* BARRA DE COMANDOS (como a do Explorador do Windows) */}
+        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-200 overflow-x-auto">
+          <div className="relative">
             <button
               type="button"
-              onClick={() => handleOpenFolderConfig(currentFolder)}
-              className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all shadow-2xs"
+              disabled={!canCreateHere}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenu(openMenu === 'new' ? null : 'new');
+              }}
+              className={`${toolbarBtn} font-medium`}
+              title={canCreateHere ? 'Novo' : 'Abra um setor para criar pastas ou enviar arquivos'}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
-              <span>Propriedades da Pasta</span>
+              <Plus className="w-4 h-4 text-blue-600" /> Novo <ChevronDown className="w-3 h-3" />
             </button>
-          )}
+            {openMenu === 'new' && (
+              <div onClick={(e) => e.stopPropagation()} className="absolute z-40 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-xl py-1">
+                <MenuItem
+                  icon={<FolderPlus className="w-4 h-4 text-amber-500" />}
+                  label="Pasta"
+                  onClick={() => onOpenCreateFolderModal(location.deptId || undefined, location.folderId)}
+                />
+                <MenuItem
+                  icon={<Upload className="w-4 h-4 text-blue-600" />}
+                  label="Enviar arquivo"
+                  onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="w-px h-6 bg-slate-200 mx-1" />
 
           <button
             type="button"
-            onClick={() => onOpenUploadModal(currentDeptId || undefined, currentFolderId || undefined)}
-            className="px-4 py-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center gap-1.5 transition-all cursor-pointer"
+            className={toolbarBtn}
+            disabled={!selectedItem}
+            onClick={() => selectedItem && activate(selectedItem)}
+            title="Abrir"
           >
-            <Plus className="w-4 h-4" />
-            <span>Novo Documento</span>
+            <ExternalLink className="w-4 h-4" />
+            <span className="hidden md:inline">Abrir</span>
           </button>
-
           <button
             type="button"
-            onClick={() => onOpenCreateFolderModal(currentDeptId || undefined, currentFolderId || undefined)}
-            className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-medium inline-flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+            className={toolbarBtn}
+            disabled={!selectedDoc}
+            onClick={() => selectedDoc && downloadDoc(selectedDoc)}
+            title="Baixar"
           >
-            <FolderPlus className="w-4 h-4 text-blue-600" />
-            <span>Nova Pasta</span>
+            <Download className="w-4 h-4" />
+            <span className="hidden md:inline">Baixar</span>
+          </button>
+          <button
+            type="button"
+            className={toolbarBtn}
+            disabled={!selectedDoc}
+            onClick={() => selectedDoc && onToggleFavorite(selectedDoc.id)}
+            title="Favoritar"
+          >
+            <Star className={`w-4 h-4 ${selectedDoc?.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
+          </button>
+          <button
+            type="button"
+            className={toolbarBtn}
+            disabled={!selectedFolder || !isManagerOf(selectedFolder?.departmentId)}
+            onClick={() => selectedFolder && openProperties(selectedFolder)}
+            title="Propriedades e permissões da pasta"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span className="hidden lg:inline">Propriedades</span>
+          </button>
+          <button
+            type="button"
+            className={toolbarBtn}
+            disabled={!selectedItem || selectedItem.kind === 'dept'}
+            onClick={() => requestDelete(selectedItem)}
+            title="Excluir (Delete)"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
 
-          {/* Grid / List view toggle icons */}
-          <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
+          <div className="w-px h-6 bg-slate-200 mx-1" />
+
+          <div className="relative">
             <button
               type="button"
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                viewMode === 'grid' ? 'bg-slate-100 text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'
-              }`}
-              title="Visualização em Grade"
+              className={toolbarBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenu(openMenu === 'sort' ? null : 'sort');
+              }}
             >
-              <LayoutGrid className="w-4 h-4" />
+              <ArrowUpDown className="w-4 h-4" />
+              <span className="hidden md:inline">Classificar</span>
+              <ChevronDown className="w-3 h-3" />
             </button>
+            {openMenu === 'sort' && (
+              <div onClick={(e) => e.stopPropagation()} className="absolute z-40 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl py-1">
+                {([
+                  ['name', 'Nome'],
+                  ['date', 'Data de modificação'],
+                  ['type', 'Tipo'],
+                  ['size', 'Tamanho'],
+                ] as [SortKey, string][]).map(([k, label]) => (
+                  <MenuItem key={k} label={label} checked={sortKey === k} onClick={() => setSort(k)} />
+                ))}
+                <div className="border-t border-slate-100 my-1" />
+                <MenuItem
+                  label={sortAsc ? 'Crescente (A→Z)' : 'Decrescente (Z→A)'}
+                  icon={<ArrowUpDown className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setSortAscState(!sortAsc);
+                    writePref('ds.explorer.sortAsc', !sortAsc);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
             <button
               type="button"
-              onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                viewMode === 'list' ? 'bg-slate-100 text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-600'
-              }`}
-              title="Visualização em Lista"
+              className={toolbarBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenu(openMenu === 'view' ? null : 'view');
+              }}
             >
-              <ListIcon className="w-4 h-4" />
+              {viewMode === 'details' ? <ListIcon className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
+              <span className="hidden md:inline">Visualizar</span>
+              <ChevronDown className="w-3 h-3" />
             </button>
+            {openMenu === 'view' && (
+              <div onClick={(e) => e.stopPropagation()} className="absolute z-40 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-xl py-1">
+                <MenuItem label="Ícones grandes" checked={viewMode === 'large'} onClick={() => setViewMode('large')} />
+                <MenuItem label="Ícones médios" checked={viewMode === 'medium'} onClick={() => setViewMode('medium')} />
+                <MenuItem label="Detalhes" checked={viewMode === 'details'} onClick={() => setViewMode('details')} />
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={toggleDetailsPane}
+            className={`${toolbarBtn} hidden md:inline-flex ${showDetailsPane ? 'bg-slate-100' : ''}`}
+            title="Painel de detalhes"
+          >
+            <PanelRight className="w-4 h-4" /> Detalhes
+          </button>
+        </div>
+
+        {/* BARRA DE ENDEREÇO */}
+        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-200">
+          <button type="button" onClick={goBack} disabled={!backStack.length} className={toolbarBtn} title="Voltar (Alt+←)">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <button type="button" onClick={goForward} disabled={!forwardStack.length} className={`${toolbarBtn} hidden sm:inline-flex`} title="Avançar">
+            <ArrowRight className="w-4 h-4" />
+          </button>
+          <button type="button" onClick={goUp} disabled={!location.deptId} className={toolbarBtn} title="Acima (Alt+↑)">
+            <ArrowUp className="w-4 h-4" />
+          </button>
+
+          <div className="flex-1 min-w-0 h-9 px-2 border border-slate-200 rounded-md flex items-center gap-0.5 text-[13px] text-slate-700 overflow-x-auto whitespace-nowrap">
+            <button type="button" onClick={() => location.deptId && navigate({ deptId: null, folderId: null })} className="px-1.5 py-1 rounded hover:bg-slate-100 inline-flex items-center gap-1">
+              <Home className="w-3.5 h-3.5 text-blue-600" /> Início
+            </button>
+            {currentDept && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <button type="button" onClick={() => navigate({ deptId: currentDept.id, folderId: null })} className="px-1.5 py-1 rounded hover:bg-slate-100">
+                  {currentDept.name}
+                </button>
+              </>
+            )}
+            {folderPath.map((f) => (
+              <React.Fragment key={f.id}>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <button type="button" onClick={() => navigate({ deptId: f.departmentId, folderId: f.id })} className="px-1.5 py-1 rounded hover:bg-slate-100">
+                  {f.name}
+                </button>
+              </React.Fragment>
+            ))}
+          </div>
+
+          <div className="hidden sm:flex h-9 w-56 lg:w-72 border border-slate-200 rounded-md items-center px-2 gap-1.5">
+            <input
+              type="text"
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              placeholder={`Pesquisar em ${locationName}`}
+              className="flex-1 min-w-0 text-[13px] bg-transparent outline-none placeholder:text-slate-400"
+            />
+            <Search className="w-4 h-4 text-slate-400" />
           </div>
         </div>
-      </div>
 
-      {/* Breadcrumb Trail Explorer Bar */}
-      <div className="flex items-center gap-2 text-xs font-medium text-slate-600 bg-white px-4 py-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-        <button
-          type="button"
-          onClick={() => {
-            setCurrentDeptId(null);
-            setCurrentFolderId(null);
-            setSelectedFolderId(null);
-          }}
-          className={`hover:text-blue-600 transition-colors inline-flex items-center gap-1 cursor-pointer ${
-            isAtRoot ? 'text-blue-600 font-semibold' : 'text-slate-500'
-          }`}
-        >
-          <span>🏠 Início</span>
-        </button>
+        {accessRevokedNotice && (
+          <div className="mx-3 mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="flex-1">{accessRevokedNotice}</span>
+            <button type="button" onClick={() => setAccessRevokedNotice(null)} className="font-semibold">
+              OK
+            </button>
+          </div>
+        )}
 
-        {currentDepartment && (
-          <>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+        <div className="flex flex-1 min-h-0">
+          {/* PAINEL DE NAVEGAÇÃO (esquerda) */}
+          <nav className="hidden md:block w-56 shrink-0 border-r border-slate-200 py-2 overflow-y-auto text-[13px]">
             <button
               type="button"
-              onClick={() => {
-                setCurrentFolderId(null);
-                setSelectedFolderId(null);
-              }}
-              className={`hover:text-blue-600 transition-colors cursor-pointer ${
-                !currentFolderId ? 'text-blue-600 font-semibold' : 'text-slate-500'
-              }`}
+              onClick={() => navigate({ deptId: null, folderId: null })}
+              className={`w-full px-3 py-1.5 flex items-center gap-2 text-left hover:bg-slate-100 ${!location.deptId ? 'bg-blue-50 text-blue-800' : 'text-slate-700'}`}
             >
-              {currentDepartment.name}
+              <Home className="w-4 h-4 text-blue-600" /> Início
             </button>
-          </>
-        )}
-
-        {currentFolder && (
-          <>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-blue-600 font-semibold">{currentFolder.name}</span>
-          </>
-        )}
-
-        {/* Interactive Helper Hint */}
-        {!isAtRoot && (
-          <span className="ml-auto text-[11px] text-slate-400 hidden sm:inline-flex items-center gap-1">
-            <Info className="w-3 h-3 text-slate-400" />
-            <span>Duplo clique ou 1 clique + Enter abre a pasta • Botão direito para opções</span>
-          </span>
-        )}
-      </div>
-
-      {/* Main Grid / Split Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Main Explorer Column */}
-        <div className="lg:col-span-8 space-y-4">
-          {/* Department Banner Header */}
-          {currentDepartment && (
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-500 shadow-xs">
-                    <FolderIcon className="w-7 h-7 fill-amber-400 text-amber-500" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-bold text-slate-900">{currentDepartment.name}</h2>
-                      {currentDepartment.isLocked && <Lock className="w-3.5 h-3.5 text-slate-400" />}
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      {currentDepartment.itemCount} itens • Gestor: {currentDepartment.managerName || 'Diretoria'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-medium">
-                    <button
-                      type="button"
-                      onClick={() => setActiveDepartmentTab('arquivos')}
-                      className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-                        activeDepartmentTab === 'arquivos'
-                          ? 'bg-white text-blue-600 shadow-xs font-semibold'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      Arquivos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveDepartmentTab('permissoes')}
-                      className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-                        activeDepartmentTab === 'permissoes'
-                          ? 'bg-white text-blue-600 shadow-xs font-semibold'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      Permissões
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {activeDepartmentTab === 'permissoes' && (
-                <div className="mt-3 p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-blue-900 space-y-2 animate-in fade-in">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 font-semibold">
-                      <ShieldCheck className="w-4 h-4 text-blue-600" />
-                      <span>Políticas de Acesso do Setor {currentDepartment.name}</span>
-                    </div>
-                    {canManageFolderPermissions && (
-                      <span className="text-[11px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                        Você é o Gestor Deste Setor
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-slate-600 text-xs leading-relaxed">
-                    O Gestor de Área tem autoridade para conceder ou revogar o acesso de cada colaborador às pastas do setor, bem como proibir o download de cópias e restringir edições conforme as regras de segurança corporativa.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Root View: Grid or List of Departments */}
-          {isAtRoot &&
-            (visibleDepartments.length === 0 ? (
-              <div className="bg-white p-12 rounded-2xl border border-dashed border-slate-300 text-center flex flex-col items-center justify-center">
-                <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mb-3">
-                  <FolderIcon className="w-7 h-7 fill-amber-400 text-amber-500" />
-                </div>
-                <h3 className="text-base font-bold text-slate-800">Nenhum setor corporativo cadastrado</h3>
-                <p className="text-xs text-slate-500 max-w-md mt-1.5 leading-relaxed">
-                  Os setores foram zerados para implantação em produção. Cadastre os setores da organização na aba &quot;Setores&quot; para organizar pastas e documentos.
-                </p>
-              </div>
-            ) : viewMode === 'grid' ? (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {visibleDepartments.map((dept) => (
-                  <button
-                    key={dept.id}
-                    type="button"
-                    onClick={() => handleOpenDepartment(dept)}
-                    className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-blue-300 hover:shadow-md transition-all text-center flex flex-col items-center justify-between group cursor-pointer"
+            <div className="mt-2 px-3 py-1 text-[11px] uppercase tracking-wide text-slate-400 font-semibold">Setores</div>
+            {departments.map((dept) => {
+              const access = hasDeptAccess(dept);
+              const expanded = expandedDeptIds.includes(dept.id);
+              const rootFolders = folders.filter((f) => f.departmentId === dept.id && !f.parentId);
+              return (
+                <div key={dept.id}>
+                  <div
+                    className={`flex items-center pr-2 hover:bg-slate-100 ${
+                      location.deptId === dept.id && !location.folderId ? 'bg-blue-50 text-blue-800' : 'text-slate-700'
+                    }`}
                   >
-                    <div className="w-14 h-14 rounded-2xl bg-amber-50/80 flex items-center justify-center text-amber-500 mb-3 group-hover:scale-110 transition-transform">
-                      <FolderIcon className="w-8 h-8 fill-amber-400 text-amber-500 drop-shadow-xs" />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        access &&
+                        setExpandedDeptIds((prev) => (prev.includes(dept.id) ? prev.filter((x) => x !== dept.id) : [...prev, dept.id]))
+                      }
+                      className="w-6 h-7 flex items-center justify-center text-slate-400"
+                      aria-label={expanded ? 'Recolher' : 'Expandir'}
+                    >
+                      {access && rootFolders.length > 0 ? (
+                        expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
+                      ) : null}
+                    </button>
+                    <button type="button" onClick={() => openDept(dept)} className="flex-1 min-w-0 py-1.5 flex items-center gap-2 text-left">
+                      <FolderGlyph size={18} />
+                      <span className={`truncate ${access ? '' : 'text-slate-400'}`}>{dept.name}</span>
+                      {!access && <Lock className="w-3 h-3 text-slate-400 shrink-0" />}
+                    </button>
+                  </div>
+                  {access &&
+                    expanded &&
+                    rootFolders.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => openFolder(f)}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverId(f.id);
+                        }}
+                        onDragLeave={() => setDragOverId(null)}
+                        onDrop={(e) => onDropOnFolder(e, f)}
+                        className={`w-full pl-10 pr-2 py-1.5 flex items-center gap-2 text-left hover:bg-slate-100 ${
+                          location.folderId === f.id ? 'bg-blue-50 text-blue-800' : 'text-slate-700'
+                        } ${dragOverId === f.id ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
+                      >
+                        <FolderGlyph size={16} />
+                        <span className="truncate">{f.name}</span>
+                      </button>
+                    ))}
+                </div>
+              );
+            })}
+          </nav>
 
-                    <div className="flex items-center gap-1 justify-center">
-                      <h3 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors truncate max-w-[120px]">
-                        {dept.name}
-                      </h3>
-                      {dept.isLocked && <Lock className="w-3 h-3 text-slate-400 shrink-0" />}
-                    </div>
-
-                    <span className="text-[11px] text-slate-400 mt-1">{dept.itemCount} itens</span>
-                  </button>
-                ))}
+          {/* CONTEÚDO */}
+          <div
+            ref={contentRef}
+            className="flex-1 min-w-0 overflow-auto p-2 sm:p-3"
+            onClick={() => setSelected(null)}
+            onContextMenu={(e) => location.deptId && handleContextMenu(e, null)}
+          >
+            {items.length === 0 ? (
+              <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center text-slate-400 text-sm gap-2">
+                {query ? (
+                  <span>Nenhum item corresponde à pesquisa.</span>
+                ) : !location.deptId ? (
+                  <span>Nenhum setor cadastrado. Cadastre os setores na tela “Setores”.</span>
+                ) : (
+                  <>
+                    <span>Esta pasta está vazia.</span>
+                    <span className="text-xs">Use “Novo” ou clique com o botão direito para criar uma pasta ou enviar um arquivo.</span>
+                  </>
+                )}
               </div>
+            ) : viewMode === 'details' ? (
+              <table className="w-full text-[13px] text-left">
+                <thead>
+                  <tr className="text-slate-500 border-b border-slate-200">
+                    {([
+                      ['name', 'Nome', ''],
+                      ['date', 'Data de modificação', 'hidden sm:table-cell'],
+                      ['type', 'Tipo', 'hidden md:table-cell'],
+                      ['size', 'Tamanho', 'text-right'],
+                    ] as [SortKey, string, string][]).map(([k, label, cls]) => (
+                      <th key={k} className={`py-1.5 px-2 font-normal ${cls}`}>
+                        <button type="button" onClick={(e) => (e.stopPropagation(), setSort(k))} className="hover:text-slate-900 inline-flex items-center gap-1">
+                          {label}
+                          {sortKey === k && <span className="text-[10px]">{sortAsc ? '▲' : '▼'}</span>}
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it) => {
+                    const isSel = selected?.kind === it.kind && selected.id === it.id;
+                    const locked = it.kind === 'dept' && !hasDeptAccess(it.dept);
+                    return (
+                      <tr
+                        key={`${it.kind}-${it.id}`}
+                        draggable={it.kind !== 'dept'}
+                        onDragStart={(e) => onDragStart(e, it)}
+                        onDragOver={(e) => it.kind === 'folder' && (e.preventDefault(), setDragOverId(it.id))}
+                        onDragLeave={() => setDragOverId(null)}
+                        onDrop={(e) => it.kind === 'folder' && onDropOnFolder(e, it.folder)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelected({ kind: it.kind, id: it.id });
+                        }}
+                        onDoubleClick={() => activate(it)}
+                        onContextMenu={(e) => handleContextMenu(e, it)}
+                        className={`cursor-default ${isSel ? 'bg-blue-100' : 'hover:bg-blue-50'} ${
+                          dragOverId === it.id ? 'outline outline-2 outline-blue-400' : ''
+                        } ${locked ? 'text-slate-400' : 'text-slate-800'}`}
+                      >
+                        <td className="py-1 px-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="shrink-0">{renderIcon(it, 20)}</span>
+                            <span className="truncate">{it.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-1 px-2 text-slate-500 hidden sm:table-cell whitespace-nowrap">{itemDate(it)}</td>
+                        <td className="py-1 px-2 text-slate-500 hidden md:table-cell whitespace-nowrap">{itemType(it)}</td>
+                        <td className="py-1 px-2 text-slate-500 text-right whitespace-nowrap tabular-nums">{formatBytes(itemSize(it))}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             ) : (
-              /* Root List View Table */
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-                <table className="w-full text-xs text-left">
-                  <thead>
-                    <tr className="text-slate-400 border-b border-slate-100 bg-slate-50/60 font-semibold">
-                      <th className="py-3.5 px-4 font-medium">Nome do Setor</th>
-                      <th className="py-3.5 px-4 font-medium">Itens</th>
-                      <th className="py-3.5 px-4 font-medium">Gestor Responsável</th>
-                      <th className="py-3.5 px-4 font-medium">Armazenamento</th>
-                      <th className="py-3.5 px-4 font-medium">Segurança</th>
-                      <th className="py-3.5 px-4 font-medium text-right">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {visibleDepartments.map((dept) => {
-                      const usedGb = (dept.storageUsedBytes / (1024 * 1024 * 1024)).toFixed(0);
-                      const limitGb = (dept.storageLimitBytes / (1024 * 1024 * 1024)).toFixed(0);
-                      return (
-                        <tr
-                          key={dept.id}
-                          onClick={() => handleOpenDepartment(dept)}
-                          className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
-                        >
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                                <FolderIcon className="w-5 h-5 fill-amber-400 text-amber-500" />
-                              </div>
-                              <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                                {dept.name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-slate-500 tabular-nums font-medium">
-                            {dept.itemCount} itens
-                          </td>
-                          <td className="py-3 px-4 text-slate-700">{dept.managerName || 'Diretoria'}</td>
-                          <td className="py-3 px-4 text-slate-500 tabular-nums">
-                            {usedGb} GB / {limitGb} GB
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600">
-                              {dept.isLocked ? (
-                                <>
-                                  <Lock className="w-3 h-3 text-blue-600" />
-                                  <span>RBAC Ativo</span>
-                                </>
-                              ) : (
-                                <span>Público</span>
-                              )}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <span className="text-blue-600 font-semibold text-xs group-hover:underline inline-flex items-center gap-0.5">
-                              Abrir <ChevronRight className="w-3.5 h-3.5" />
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div
+                className="grid gap-1"
+                style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${viewMode === 'large' ? 128 : 96}px, 1fr))` }}
+              >
+                {items.map((it) => {
+                  const isSel = selected?.kind === it.kind && selected.id === it.id;
+                  const locked = it.kind === 'dept' && !hasDeptAccess(it.dept);
+                  return (
+                    <div
+                      key={`${it.kind}-${it.id}`}
+                      role="button"
+                      tabIndex={0}
+                      draggable={it.kind !== 'dept'}
+                      onDragStart={(e) => onDragStart(e, it)}
+                      onDragOver={(e) => it.kind === 'folder' && (e.preventDefault(), setDragOverId(it.id))}
+                      onDragLeave={() => setDragOverId(null)}
+                      onDrop={(e) => it.kind === 'folder' && onDropOnFolder(e, it.folder)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelected({ kind: it.kind, id: it.id });
+                      }}
+                      onDoubleClick={() => activate(it)}
+                      onContextMenu={(e) => handleContextMenu(e, it)}
+                      title={`${it.name}\n${itemType(it)} • ${formatBytes(itemSize(it))}${locked ? '\nSem permissão de acesso' : ''}`}
+                      className={`group flex flex-col items-center gap-1.5 p-2 rounded-md border cursor-default outline-none ${
+                        isSel ? 'bg-blue-100 border-blue-300' : 'border-transparent hover:bg-blue-50 hover:border-blue-100'
+                      } ${dragOverId === it.id ? 'border-blue-400 bg-blue-50' : ''}`}
+                    >
+                      <div className="flex items-end justify-center" style={{ height: iconSize }}>
+                        {renderIcon(it, iconSize)}
+                      </div>
+                      <span
+                        className={`text-[12.5px] leading-tight text-center break-words w-full ${
+                          isSel ? '' : 'line-clamp-3'
+                        } ${locked ? 'text-slate-400' : 'text-slate-800'}`}
+                      >
+                        {it.name}
+                      </span>
+                      {it.kind === 'dept' && (
+                        <span className="text-[11px] text-slate-400">{formatBytes(it.dept.storageUsedBytes || 0)}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            )}
+          </div>
 
-          {/* Subfolders Grid / List when inside a Department */}
-          {!isAtRoot && (
-            <div className="space-y-4">
-              {viewMode === 'grid' ? (
-                <>
-                  {/* Subfolders grid */}
-                  {currentFolders.length > 0 && (
-                    <div>
-                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between">
-                        <span>Pastas ({currentFolders.length})</span>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          Arraste e solte arquivos ou pastas para organizar
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {currentFolders.map((folder) => {
-                          const isSelected = selectedFolderId === folder.id;
-                          const isDragOver = dragOverFolderId === folder.id;
-
-                          return (
-                            <div
-                              key={folder.id}
-                              tabIndex={0}
-                              draggable={true}
-                              onDragStart={(e) => handleDragStartFolder(e, folder)}
-                              onDragOver={(e) => handleDragOverFolder(e, folder.id)}
-                              onDragLeave={handleDragLeaveFolder}
-                              onDrop={(e) => handleDropOnFolder(e, folder)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedFolderId(folder.id);
-                              }}
-                              onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenFolder(folder);
-                              }}
-                              onContextMenu={(e) => handleFolderContextMenu(e, folder)}
-                              className={`p-4 rounded-xl border transition-all text-left flex items-start justify-between group cursor-pointer relative ${
-                                isDragOver
-                                  ? 'bg-blue-50/90 border-blue-500 ring-2 ring-blue-500/50 scale-[1.02] shadow-md'
-                                  : isSelected
-                                  ? 'bg-blue-50/40 border-blue-400 ring-2 ring-blue-500/40 shadow-xs'
-                                  : 'bg-white border-slate-200/80 hover:border-blue-300 hover:shadow-xs'
-                              }`}
-                            >
-                              <div className="flex items-start gap-3 min-w-0">
-                                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                                  <FolderIcon className="w-5 h-5 fill-amber-400 text-amber-500" />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1">
-                                    <h4 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 truncate">
-                                      {folder.name}
-                                    </h4>
-                                    {folder.isLocked && <Lock className="w-3 h-3 text-slate-400 shrink-0" />}
-                                  </div>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">
-                                    {folder.itemCount} itens • {folder.updatedAt}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Folder settings trigger for managers */}
-                              {canManageFolderPermissions && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleOpenFolderConfig(folder, e)}
-                                  title="Propriedades e Permissões"
-                                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors"
-                                >
-                                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-
-                              {isDragOver && (
-                                <div className="absolute inset-0 bg-blue-600/10 rounded-xl pointer-events-none flex items-center justify-center">
-                                  <span className="px-2 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold shadow-xs">
-                                    Soltar para mover
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+          {/* PAINEL DE DETALHES (direita) */}
+          {showDetailsPane && (
+            <aside className="hidden md:block w-64 shrink-0 border-l border-slate-200 p-4 overflow-y-auto text-[13px]">
+              {selectedItem ? (
+                <div className="space-y-3">
+                  <div className="flex justify-center py-2">{renderIcon(selectedItem, 88)}</div>
+                  <div className="font-semibold text-slate-900 break-words text-center">{selectedItem.name}</div>
+                  <dl className="space-y-2 text-xs">
+                    {[
+                      ['Tipo', itemType(selectedItem)],
+                      ['Tamanho', formatBytes(itemSize(selectedItem))],
+                      selectedItem.kind === 'folder' ? ['Itens', String(folderCount.get(selectedItem.id) || 0)] : null,
+                      selectedItem.kind === 'doc' ? ['Enviado por', selectedItem.doc.ownerName] : null,
+                      selectedItem.kind === 'doc' ? ['Criado em', formatDate(selectedItem.doc.createdAt)] : null,
+                      selectedItem.kind !== 'dept' ? ['Modificado em', itemDate(selectedItem)] : null,
+                      selectedItem.kind === 'dept'
+                        ? ['Uso / Limite', `${formatBytes(selectedItem.dept.storageUsedBytes || 0)} de ${formatBytes(selectedItem.dept.storageLimitBytes || 0)}`]
+                        : null,
+                      selectedItem.kind === 'dept' ? ['Gestor', selectedItem.dept.managerName || '-'] : null,
+                      selectedItem.kind === 'dept' ? ['Acesso', hasDeptAccess(selectedItem.dept) ? 'Liberado' : 'Sem permissão'] : null,
+                    ]
+                      .filter(Boolean)
+                      .map((row) => (
+                        <div key={(row as string[])[0]}>
+                          <dt className="text-slate-400">{(row as string[])[0]}</dt>
+                          <dd className="text-slate-800 break-words">{(row as string[])[1]}</dd>
+                        </div>
+                      ))}
+                  </dl>
+                </div>
+              ) : (
+                <div className="space-y-3 text-center text-slate-500">
+                  <div className="flex justify-center py-2">
+                    {currentDept ? <FolderGlyph size={88} /> : <Home className="w-16 h-16 text-blue-200" />}
+                  </div>
+                  <div className="font-semibold text-slate-800">{locationName}</div>
+                  <div className="text-xs">{items.length} {items.length === 1 ? 'item' : 'itens'}</div>
+                  {currentFolder && <div className="text-xs">{formatBytes(folderSize.get(currentFolder.id) || 0)}</div>}
+                  {!currentFolder && currentDept && (
+                    <div className="text-xs">
+                      {formatBytes(currentDept.storageUsedBytes || 0)} de {formatBytes(currentDept.storageLimitBytes || 0)}
                     </div>
                   )}
-
-                  {/* Documents Grid */}
-                  <div>
-                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Documentos & Arquivos ({currentDocs.length})
-                    </div>
-
-                    {currentDocs.length === 0 ? (
-                      <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400">
-                        <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                        <p className="text-xs">Nenhum documento encontrado nesta pasta.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {currentDocs.map((doc) => {
-                          const canDownload = verifyPermission(
-                            currentUser,
-                            'document',
-                            doc.id,
-                            doc.departmentId,
-                            'DOWNLOAD_DOCUMENT',
-                            doc.folderId || undefined
-                          ).allowed;
-
-                          return (
-                            <div
-                              key={doc.id}
-                              draggable={true}
-                              onDragStart={(e) => handleDragStartDocument(e, doc)}
-                              onClick={() => handleOpenDocument(doc)}
-                              className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all flex items-center justify-between cursor-grab active:cursor-grabbing group"
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                {getFileIcon(doc.extension)}
-                                <div className="min-w-0">
-                                  <h4 className="text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors truncate">
-                                    {doc.name}
-                                  </h4>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">
-                                    {(doc.sizeBytes / 1024).toFixed(0)} KB • {doc.updatedAt}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  onClick={() => onToggleFavorite(doc.id)}
-                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                    doc.isFavorite ? 'text-amber-500' : 'text-slate-300 hover:text-slate-500'
-                                  }`}
-                                  title="Favoritar"
-                                >
-                                  <Star className={`w-4 h-4 ${doc.isFavorite ? 'fill-amber-400' : ''}`} />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleTriggerDownload(doc, e)}
-                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                    canDownload
-                                      ? 'hover:bg-slate-100 text-slate-400 hover:text-blue-600'
-                                      : 'text-slate-200 hover:text-rose-500'
-                                  }`}
-                                  title={canDownload ? 'Baixar Documento' : 'Download Bloqueado (Sem Permissão)'}
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenDocument(doc)}
-                                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
-                                  title="Visualizar"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </button>
-
-                                {canDeleteDoc(doc) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setDeleteConfirmDoc(doc)}
-                                    className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                    title="Excluir (enviar para a lixeira)"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                /* Enhanced Unified Windows Explorer List View Table */
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left min-w-[640px] md:min-w-0">
-                    <thead>
-                      <tr className="text-slate-400 border-b border-slate-100 bg-slate-50/60 font-semibold">
-                        <th className="py-3 px-4 font-medium">Nome</th>
-                        <th className="py-3 px-4 font-medium">Tipo</th>
-                        <th className="py-3 px-4 font-medium">Tamanho</th>
-                        <th className="py-3 px-4 font-medium">Última Modificação</th>
-                        <th className="py-3 px-4 font-medium">Proprietário</th>
-                        <th className="py-3 px-4 font-medium text-right">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {/* Subfolders in List Table */}
-                      {currentFolders.map((folder) => {
-                        const isSelected = selectedFolderId === folder.id;
-                        const isDragOver = dragOverFolderId === folder.id;
-
-                        return (
-                          <tr
-                            key={folder.id}
-                            tabIndex={0}
-                            draggable={true}
-                            onDragStart={(e) => handleDragStartFolder(e, folder)}
-                            onDragOver={(e) => handleDragOverFolder(e, folder.id)}
-                            onDragLeave={handleDragLeaveFolder}
-                            onDrop={(e) => handleDropOnFolder(e, folder)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedFolderId(folder.id);
-                            }}
-                            onDoubleClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenFolder(folder);
-                            }}
-                            onContextMenu={(e) => handleFolderContextMenu(e, folder)}
-                            className={`transition-colors cursor-pointer group ${
-                              isDragOver
-                                ? 'bg-blue-100/70 border-y-2 border-blue-500'
-                                : isSelected
-                                ? 'bg-blue-50/60 font-semibold'
-                                : 'hover:bg-blue-50/30'
-                            }`}
-                          >
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
-                                  <FolderIcon className="w-4 h-4 fill-amber-400 text-amber-500" />
-                                </div>
-                                <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                                  {folder.name}
-                                </span>
-                                {folder.isLocked && <Lock className="w-3 h-3 text-slate-400" />}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-slate-500">Pasta de arquivos</td>
-                            <td className="py-3 px-4 text-slate-500 tabular-nums">{folder.itemCount} itens</td>
-                            <td className="py-3 px-4 text-slate-500">{folder.updatedAt}</td>
-                            <td className="py-3 px-4 text-slate-600">{currentDepartment?.managerName || 'Setor'}</td>
-                            <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center justify-end gap-2">
-                                {canManageFolderPermissions && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleOpenFolderConfig(folder, e)}
-                                    className="px-2 py-1 text-[11px] font-medium bg-slate-100 hover:bg-amber-50 hover:text-amber-800 rounded-lg text-slate-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
-                                    title="Propriedades e Permissões"
-                                  >
-                                    <SlidersHorizontal className="w-3 h-3" />
-                                    <span>Propriedades</span>
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenFolder(folder)}
-                                  className="text-blue-600 font-semibold hover:underline cursor-pointer"
-                                >
-                                  Abrir
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-
-                      {/* Documents in List Table */}
-                      {currentDocs.map((doc) => {
-                        const canDownload = verifyPermission(
-                          currentUser,
-                          'document',
-                          doc.id,
-                          doc.departmentId,
-                          'DOWNLOAD_DOCUMENT',
-                          doc.folderId || undefined
-                        ).allowed;
-
-                        return (
-                          <tr
-                            key={doc.id}
-                            draggable={true}
-                            onDragStart={(e) => handleDragStartDocument(e, doc)}
-                            onClick={() => handleOpenDocument(doc)}
-                            className="hover:bg-blue-50/30 transition-colors cursor-grab active:cursor-grabbing group"
-                          >
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2.5">
-                                {getFileIcon(doc.extension)}
-                                <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                                  {doc.name}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-slate-500 uppercase font-mono text-[11px]">
-                              {doc.extension} (v{doc.currentVersion}.0)
-                            </td>
-                            <td className="py-3 px-4 text-slate-500 tabular-nums">
-                              {(doc.sizeBytes / 1024).toFixed(0)} KB
-                            </td>
-                            <td className="py-3 px-4 text-slate-500">{doc.updatedAt}</td>
-                            <td className="py-3 px-4 text-slate-600">{doc.ownerName}</td>
-                            <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => onToggleFavorite(doc.id)}
-                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                    doc.isFavorite ? 'text-amber-500' : 'text-slate-300 hover:text-slate-500'
-                                  }`}
-                                  title="Favoritar"
-                                >
-                                  <Star className={`w-3.5 h-3.5 ${doc.isFavorite ? 'fill-amber-400' : ''}`} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleTriggerDownload(doc, e)}
-                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                    canDownload
-                                      ? 'hover:bg-slate-100 text-slate-400 hover:text-blue-600'
-                                      : 'text-slate-200'
-                                  }`}
-                                  title="Download"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                </button>
-                                {canDeleteDoc(doc) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setDeleteConfirmDoc(doc)}
-                                    className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                    title="Excluir (enviar para a lixeira)"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenDocument(doc)}
-                                  className="text-blue-600 font-semibold hover:underline cursor-pointer ml-1"
-                                >
-                                  Visualizar
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                  <div className="text-xs text-slate-400 pt-2">Selecione um item para ver os detalhes.</div>
                 </div>
-              </div>
               )}
-            </div>
+            </aside>
           )}
         </div>
 
-        {/* Right Sidebar: Quick Access & Info */}
-        <div className="lg:col-span-4 space-y-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-            <h2 className="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">
-              Acesso Rápido
-            </h2>
-
-            <div className="mt-3 space-y-1">
-              <button
-                type="button"
-                onClick={() => {
-                  const recent = documents[0];
-                  if (recent) handleOpenDocument(recent);
-                }}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <Clock className="w-4 h-4 text-blue-600" />
-                  <span className="font-medium">Documentos Recentes</span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const fav = documents.find((d) => d.isFavorite);
-                  if (fav) handleOpenDocument(fav);
-                }}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <Star className="w-4 h-4 text-amber-500" />
-                  <span className="font-medium">Favoritos</span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const shared = documents.find((d) => d.isShared);
-                  if (shared) handleOpenDocument(shared);
-                }}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 text-xs text-slate-700 hover:text-slate-900 transition-colors group cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <Users className="w-4 h-4 text-blue-600" />
-                  <span className="font-medium">Compartilhados comigo</span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-            </div>
-          </div>
-
-          {/* Card 2: Meu Setor */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-            <h2 className="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Meu Setor</h2>
-            <div className="mt-3 p-3.5 bg-blue-50/60 rounded-xl border border-blue-100 flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                <Building className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-slate-900 block">
-                  {currentUser.departmentName || 'Geral'}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  {currentUser.role === 'MANAGER' ? 'Gestor da área' : 'Colaborador'}
-                </span>
-              </div>
-            </div>
-          </div>
+        {/* BARRA DE STATUS */}
+        <div className="flex items-center gap-4 px-3 py-1.5 border-t border-slate-200 text-xs text-slate-600">
+          <span>
+            {items.length} {items.length === 1 ? 'item' : 'itens'}
+          </span>
+          {selectedItem && (
+            <span className="truncate">
+              1 item selecionado {selectedItem.kind !== 'dept' || hasDeptAccess(selectedItem.dept) ? formatBytes(itemSize(selectedItem)) : ''}
+            </span>
+          )}
+          {currentDept && !selectedItem && (
+            <span className="hidden sm:inline">
+              {currentFolder
+                ? `Tamanho da pasta: ${formatBytes(folderSize.get(currentFolder.id) || 0)}`
+                : `Setor: ${formatBytes(currentDept.storageUsedBytes || 0)} de ${formatBytes(currentDept.storageLimitBytes || 0)}`}
+            </span>
+          )}
+          <div className="flex-1" />
+          <button type="button" onClick={() => setViewMode('details')} className={`p-1 rounded ${viewMode === 'details' ? 'bg-slate-200' : 'hover:bg-slate-100'}`} title="Detalhes">
+            <ListIcon className="w-3.5 h-3.5" />
+          </button>
+          <button type="button" onClick={() => setViewMode('large')} className={`p-1 rounded ${viewMode !== 'details' ? 'bg-slate-200' : 'hover:bg-slate-100'}`} title="Ícones grandes">
+            <LayoutGrid className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* FLOATING CONTEXT MENU */}
-      {contextMenu.isOpen && (
+      {/* MENU DE CONTEXTO (botão direito) */}
+      {contextMenu && (
         <div
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-50 w-52 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xl py-1.5 text-xs text-slate-700 animate-in fade-in zoom-in-95 duration-100"
+          className="fixed z-50 w-56 bg-white rounded-lg border border-slate-200 shadow-xl py-1"
         >
-          {contextMenu.type === 'folder' && contextMenu.folder ? (
-            /* CONTEXT MENU ON TOP OF A FOLDER */
+          {!contextMenu.item ? (
             <>
-              <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate border-b border-slate-100">
-                📁 {contextMenu.folder.name}
-              </div>
-
-              <button
-                type="button"
+              <MenuItem icon={<FolderPlus className="w-4 h-4 text-amber-500" />} label="Nova pasta" onClick={() => onOpenCreateFolderModal(location.deptId || undefined, location.folderId)} />
+              <MenuItem icon={<Upload className="w-4 h-4 text-blue-600" />} label="Enviar arquivo" onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)} />
+              <div className="border-t border-slate-100 my-1" />
+              <MenuItem label="Ícones grandes" checked={viewMode === 'large'} onClick={() => setViewMode('large')} />
+              <MenuItem label="Ícones médios" checked={viewMode === 'medium'} onClick={() => setViewMode('medium')} />
+              <MenuItem label="Detalhes" checked={viewMode === 'details'} onClick={() => setViewMode('details')} />
+              {currentFolder && isManagerOf(currentFolder.departmentId) && (
+                <>
+                  <div className="border-t border-slate-100 my-1" />
+                  <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades desta pasta" onClick={() => openProperties(currentFolder)} />
+                </>
+              )}
+            </>
+          ) : contextMenu.item.kind === 'dept' ? (
+            <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => activate(contextMenu.item!)} />
+          ) : contextMenu.item.kind === 'folder' ? (
+            <>
+              <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => activate(contextMenu.item!)} />
+              <MenuItem
+                icon={<FolderPlus className="w-4 h-4 text-amber-500" />}
+                label="Nova subpasta"
                 onClick={() => {
-                  handleOpenFolder(contextMenu.folder!);
-                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
+                  const f = (contextMenu.item as Extract<Item, { kind: 'folder' }>).folder;
+                  onOpenCreateFolderModal(f.departmentId, f.id);
                 }}
-                className="w-full px-3 py-2 text-left hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2.5 transition-colors cursor-pointer"
-              >
-                <FolderOpen className="w-4 h-4 text-blue-600" />
-                <span className="font-medium">Abrir Pasta</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenCreateFolderModal(contextMenu.folder!.departmentId, contextMenu.folder!.id);
-                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
-                }}
-                className="w-full px-3 py-2 text-left hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2.5 transition-colors cursor-pointer"
-              >
-                <FolderPlus className="w-4 h-4 text-emerald-600" />
-                <span>Nova Subpasta</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode(viewMode === 'grid' ? 'list' : 'grid');
-                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
-                }}
-                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-              >
-                {viewMode === 'grid' ? <ListIcon className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
-                <span>{viewMode === 'grid' ? 'Modo Lista' : 'Modo Grade'}</span>
-              </button>
-
-              <div className="my-1 border-t border-slate-100" />
-
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteConfirmFolder(contextMenu.folder!);
-                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
-                }}
-                className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2.5 transition-colors cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Excluir Pasta</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  handleOpenFolderConfig(contextMenu.folder!);
-                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
-                }}
-                className="w-full px-3 py-2 text-left hover:bg-amber-50 text-amber-800 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
-              >
-                <SlidersHorizontal className="w-4 h-4 text-amber-600" />
-                <span className="font-semibold">Propriedades & Acessos</span>
-              </button>
+              />
+              {isManagerOf((contextMenu.item as Extract<Item, { kind: 'folder' }>).folder.departmentId) && (
+                <>
+                  <MenuItem
+                    icon={<SlidersHorizontal className="w-4 h-4" />}
+                    label="Propriedades e permissões"
+                    onClick={() => openProperties((contextMenu.item as Extract<Item, { kind: 'folder' }>).folder)}
+                  />
+                  <div className="border-t border-slate-100 my-1" />
+                  <MenuItem icon={<Trash2 className="w-4 h-4" />} label="Excluir pasta" danger onClick={() => requestDelete(contextMenu.item)} />
+                </>
+              )}
             </>
           ) : (
-            /* CONTEXT MENU OUTSIDE A FOLDER (BLANK AREA) */
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenCreateFolderModal(currentDeptId || undefined, currentFolderId || undefined);
-                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
-                }}
-                className="w-full px-3 py-2 text-left hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2.5 transition-colors cursor-pointer"
-              >
-                <FolderPlus className="w-4 h-4 text-blue-600" />
-                <span className="font-medium">Nova Pasta</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode(viewMode === 'grid' ? 'list' : 'grid');
-                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
-                }}
-                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-              >
-                {viewMode === 'grid' ? <ListIcon className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
-                <span>Alternar Visualização ({viewMode === 'grid' ? 'Lista' : 'Grade'})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedFolderId(null);
-                  setContextMenu((prev) => ({ ...prev, isOpen: false }));
-                }}
-                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer text-slate-500"
-              >
-                <ArrowRight className="w-4 h-4" />
-                <span>Atualizar Conteúdo</span>
-              </button>
-            </>
+            (() => {
+              const doc = (contextMenu.item as Extract<Item, { kind: 'doc' }>).doc;
+              return (
+                <>
+                  <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => openDoc(doc)} />
+                  <MenuItem icon={<Download className="w-4 h-4" />} label="Baixar" disabled={!canDownloadDoc(doc)} onClick={() => downloadDoc(doc)} />
+                  <MenuItem
+                    icon={<Star className={`w-4 h-4 ${doc.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />}
+                    label={doc.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                    onClick={() => onToggleFavorite(doc.id)}
+                  />
+                  {canDeleteDoc(doc) && (
+                    <>
+                      <div className="border-t border-slate-100 my-1" />
+                      <MenuItem icon={<Trash2 className="w-4 h-4" />} label="Excluir" danger onClick={() => requestDelete(contextMenu.item)} />
+                    </>
+                  )}
+                </>
+              );
+            })()
           )}
         </div>
       )}
 
-      {/* DELETE FOLDER CONFIRMATION MODAL */}
+      {/* CONFIRMAÇÃO: excluir pasta */}
       {deleteConfirmFolder && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-4 animate-in zoom-in-95">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
+        <div data-modal-open="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-center">
+              <FolderGlyph size={56} />
             </div>
             <div className="text-center space-y-1">
-              <h3 className="text-base font-bold text-slate-900">Excluir Pasta?</h3>
+              <h3 className="text-base font-bold text-slate-900">Excluir a pasta “{deleteConfirmFolder.name}”?</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Tem certeza que deseja excluir a pasta <strong>{deleteConfirmFolder.name}</strong>? Somente pastas vazias
-                podem ser excluídas: mova ou exclua os arquivos e subpastas antes.
+                Somente pastas vazias podem ser excluídas. Mova ou exclua os arquivos e as subpastas antes.
               </p>
             </div>
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmFolder(null)}
-                className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDeleteConfirmFolder(null)} className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleDeleteFolderConfirmed}
-                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20"
+                onClick={() => {
+                  onDeleteFolder?.(deleteConfirmFolder.id);
+                  setDeleteConfirmFolder(null);
+                  setSelected(null);
+                }}
+                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
               >
-                Sim, Excluir
+                Excluir
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Confirmação: excluir documento → lixeira do setor por 7 dias */}
+      {/* CONFIRMAÇÃO: excluir documento → lixeira do setor */}
       {deleteConfirmDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
+        <div data-modal-open="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-center">
+              <FileGlyph ext={deleteConfirmDoc.extension} size={56} />
             </div>
             <div className="text-center space-y-1">
               <h3 className="text-base font-bold text-slate-900">Enviar para a lixeira?</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
                 <strong className="break-all">{deleteConfirmDoc.name}</strong> irá para a lixeira do setor{' '}
-                <strong>{deleteConfirmDoc.departmentName}</strong>. Ele pode ser restaurado por <strong>7 dias</strong>;
-                depois disso será apagado do servidor definitivamente.
+                <strong>{deleteConfirmDoc.departmentName}</strong>. Pode ser restaurado por <strong>7 dias</strong>; depois
+                será apagado do servidor definitivamente.
               </p>
             </div>
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmDoc(null)}
-                className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDeleteConfirmDoc(null)} className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
                 Cancelar
               </button>
               <button
@@ -1320,8 +1210,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 onClick={() => {
                   onDeleteDocument(deleteConfirmDoc.id);
                   setDeleteConfirmDoc(null);
+                  setSelected(null);
                 }}
-                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20"
+                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
               >
                 Enviar para a lixeira
               </button>
@@ -1330,15 +1221,13 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         </div>
       )}
 
-      {/* Folder Configuration Modal (Propriedades & Configuração de quem pode acessar) */}
+      {/* Propriedades e permissões da pasta (gestor / administração) */}
       <FolderConfigModal
-        isOpen={configFolderModalData.isOpen}
-        onClose={() => setConfigFolderModalData({ isOpen: false, folder: null })}
-        folder={configFolderModalData.folder}
-        department={departments.find((d) => d.id === configFolderModalData.folder?.departmentId)}
-        collaborators={users.filter(
-          (u) => u.departmentId === configFolderModalData.folder?.departmentId && u.role === 'EMPLOYEE'
-        )}
+        isOpen={!!configFolder}
+        onClose={() => setConfigFolder(null)}
+        folder={configFolder}
+        department={departments.find((d) => d.id === configFolder?.departmentId)}
+        collaborators={users.filter((u) => u.departmentId === configFolder?.departmentId && u.role === 'EMPLOYEE')}
         currentUser={currentUser}
         onSavePermissions={onUpdateUserPermissions}
         onUpdateFolder={onUpdateFolder}

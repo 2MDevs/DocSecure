@@ -314,6 +314,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <Laptop className="w-4 h-4 shrink-0" />
                     <span>Dispositivos</span>
                   </button>
+                  {currentUser.role === 'DIRECTOR' && (
                   <button
                     type="button"
                     onClick={() => handleItemClick('audit_logs')}
@@ -326,6 +327,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <ClipboardList className="w-4 h-4 shrink-0" />
                     <span>Auditoria Corporativa</span>
                   </button>
+                  )}
+                  {currentUser.role === 'DIRECTOR' && (
                   <button
                     type="button"
                     onClick={() => handleItemClick('system')}
@@ -338,6 +341,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <Server className="w-4 h-4 shrink-0" />
                     <span>Sistema</span>
                   </button>
+                  )}
                 </div>
               )}
             </>

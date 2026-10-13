@@ -157,6 +157,7 @@ export type AuditAction =
   | 'PERMISSIONS_MODIFIED'
   | 'USER_CREATED'
   | 'USER_EDITED'
+  | 'USER_DELETED'
   | 'USER_BLOCKED'
   | 'USER_UNBLOCKED'
   | 'MANAGER_CREATED'
