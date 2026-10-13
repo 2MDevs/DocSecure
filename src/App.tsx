@@ -30,6 +30,7 @@ import { apiClient } from './services/apiClient';
 // Components
 import { LoginView } from './components/auth/LoginView';
 import { SetPasswordPage } from './pages/SetPasswordPage';
+import { TrashView } from './components/documents/TrashView';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { DeviceApprovalModal } from './components/auth/DeviceApprovalModal';
 import { AccessDeniedModal } from './components/common/AccessDeniedModal';
@@ -536,117 +537,47 @@ export default function App() {
     });
   };
 
-  // Document Download Handler
-  const handleDownloadDocument = (doc: DocumentItem) => {
-    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DOWNLOAD_DOCUMENT', doc.folderId);
+  // Document Download Handler: baixa o arquivo REAL (descriptografado pelo servidor)
+  const handleDownloadDocument = async (doc: DocumentItem) => {
+    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DOWNLOAD_DOCUMENT', doc.folderId || undefined);
     if (!perm.allowed) {
       triggerAccessDenied(perm.reason || 'Você não tem permissão para baixar este documento.', doc.name);
       return;
     }
-
-    logSecurityEvent(
-      currentUser,
-      'DOCUMENT_DOWNLOADED',
-      doc.name,
-      `Download efetuado da versão v${doc.currentVersion}.0.`,
-      'SUCCESS'
-    );
-
-    const element = document.createElement('a');
-    const file = new Blob([`DOCSECURE ENCRYPTED ARCHIVE\nFilename: ${doc.name}\nHash: ${doc.hashSha256}`], {
-      type: 'text/plain',
-    });
-    element.href = URL.createObjectURL(file);
-    element.download = doc.name;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+    try {
+      const blob = await apiClient.getDocumentContent(doc.id, true);
+      const url = URL.createObjectURL(blob);
+      const element = document.createElement('a');
+      element.href = url;
+      element.download = doc.name;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (err: any) {
+      triggerAccessDenied(err?.message || 'Não foi possível baixar o arquivo.', doc.name);
+    }
   };
 
-  // Document Upload Handler (Persisted to PostgreSQL)
-  const handleUploadDocument = async (newDocData: {
-    name: string;
-    extension: 'pdf' | 'xlsx' | 'docx' | 'png' | 'csv' | 'zip';
-    sizeBytes: number;
-    folderId: string;
-    departmentId: string;
-    tags: string[];
-  }) => {
-    const targetDept = departments.find((d) => d.id === newDocData.departmentId);
-    const newDoc: DocumentItem = {
-      id: 'doc-' + Date.now(),
-      name: newDocData.name,
-      extension: newDocData.extension,
-      mimeType: 'application/octet-stream',
-      sizeBytes: newDocData.sizeBytes,
-      folderId: newDocData.folderId,
-      departmentId: newDocData.departmentId,
-      departmentName: targetDept?.name || 'Geral',
-      ownerId: currentUser?.id || 'anon',
-      ownerName: currentUser?.name || 'Desconhecido',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toLocaleDateString('pt-BR'),
-      hashSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-      currentVersion: 1,
-      versions: [
-        {
-          id: 'ver-' + Date.now(),
-          documentId: 'doc-' + Date.now(),
-          versionNumber: 1,
-          versionLabel: 'v1.0 (Upload Inicial)',
-          createdAt:
-            new Date().toLocaleDateString('pt-BR') +
-            ' ' +
-            new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          createdBy: currentUser?.name || 'Sistema',
-          sizeBytes: newDocData.sizeBytes,
-          hashSha256: 'a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0',
-          changeLog: 'Upload inicial seguro do arquivo com validação antivírus e gravação PostgreSQL.',
-        },
-      ],
-      isFavorite: false,
-      isArchived: false,
-      isShared: false,
-      status: 'active',
-      scanStatus: 'clean',
-      tags: newDocData.tags,
-    };
-
-    setDocuments((prev) => [newDoc, ...prev]);
-
+  // Upload real: o arquivo é enviado ao servidor, que o grava criptografado. Erros sobem para o modal.
+  const handleUploadDocument = async (
+    file: File,
+    options: { departmentId: string; folderId: string | null; name: string; tags: string[] },
+    onProgress?: (percent: number) => void
+  ) => {
+    const saved = await apiClient.uploadFile(file, options, onProgress);
+    setDocuments((prev) => [saved, ...prev]);
     setDepartments((prev) =>
       prev.map((d) =>
-        d.id === newDocData.departmentId
-          ? { ...d, storageUsedBytes: d.storageUsedBytes + newDocData.sizeBytes, itemCount: d.itemCount + 1 }
+        d.id === saved.departmentId
+          ? { ...d, storageUsedBytes: (d.storageUsedBytes || 0) + saved.sizeBytes, itemCount: (d.itemCount || 0) + 1 }
           : d
       )
     );
-
-    try {
-      await apiClient.uploadDocument({
-        name: newDoc.name,
-        extension: newDoc.extension,
-        sizeBytes: newDoc.sizeBytes,
-        folderId: newDoc.folderId,
-        departmentId: newDoc.departmentId,
-        tags: newDoc.tags,
-        ownerId: newDoc.ownerId,
-        ownerName: newDoc.ownerName,
-      });
-    } catch (e) {
-      console.warn('[Upload Document API Persist]', e);
-    }
-
-    logSecurityEvent(
-      currentUser,
-      'DOCUMENT_UPLOADED',
-      newDoc.name,
-      `Upload gravado no banco de dados para o setor ${newDoc.departmentName}.`,
-      'SUCCESS'
-    );
+    return saved;
   };
 
-  // Create Folder Handler (Persisted to PostgreSQL)
+  // Create Folder Handler: grava no servidor primeiro (ele valida setor e permissões)
   const handleCreateFolder = async (data: {
     name: string;
     departmentId: string;
@@ -655,79 +586,32 @@ export default function App() {
     parentId?: string | null;
   }) => {
     const dept = departments.find((d) => d.id === data.departmentId);
-    const newFolder: Folder = {
-      id: 'folder-' + Date.now(),
-      name: data.name,
-      departmentId: data.departmentId,
-      departmentName: dept?.name || 'Geral',
-      parentId: data.parentId || null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toLocaleDateString('pt-BR'),
-      isLocked: data.isLocked,
-      itemCount: 0,
-      description: data.description,
-    };
-
-    setFolders((prev) => [newFolder, ...prev]);
-
-    try {
-      await apiClient.createFolder(data);
-    } catch (e) {
-      console.warn('[Create Folder API Persist]', e);
-    }
-
-    logSecurityEvent(currentUser, 'FOLDER_CREATED', data.name, `Pasta criada no setor ${dept?.name}.`, 'SUCCESS');
+    const created = await apiClient.createFolder({ ...data, departmentName: dept?.name });
+    setFolders((prev) => [created, ...prev]);
   };
 
-  // Delete Folder Handler (Persisted to PostgreSQL)
+  // Delete Folder Handler: o servidor só permite excluir pastas vazias
   const handleDeleteFolder = async (folderId: string) => {
     const folder = folders.find((f) => f.id === folderId);
     if (!folder) return;
-
-    setFolders((prev) => prev.filter((f) => f.id !== folderId && f.parentId !== folderId));
-    setDocuments((prev) => prev.filter((d) => d.folderId !== folderId));
     try {
       await apiClient.deleteFolder(folderId);
-    } catch (e) {
-      console.warn('[Delete Folder Persist]', e);
+      setFolders((prev) => prev.filter((f) => f.id !== folderId));
+    } catch (err: any) {
+      triggerAccessDenied(err?.message || 'Não foi possível excluir a pasta.', folder.name);
     }
-    logSecurityEvent(currentUser, 'FOLDER_DELETED', folder.name, `Pasta ${folder.name} removida.`, 'SUCCESS');
   };
 
-  // Move Document Handler (Persisted to PostgreSQL)
+  // Move Document Handler (validado no servidor)
   const handleMoveDocument = async (docId: string, targetFolderId: string) => {
-    const targetFolder = folders.find((f) => f.id === targetFolderId);
     const doc = documents.find((d) => d.id === docId);
-    if (!doc || !targetFolder) return;
-
-    setDocuments((prev) =>
-      prev.map((d) =>
-        d.id === docId
-          ? {
-              ...d,
-              folderId: targetFolderId,
-              departmentId: targetFolder.departmentId,
-              departmentName: targetFolder.departmentName,
-            }
-          : d
-      )
-    );
+    if (!doc || doc.folderId === targetFolderId) return;
     try {
-      await apiClient.updateDocument(docId, {
-        folderId: targetFolderId,
-        departmentId: targetFolder.departmentId,
-        departmentName: targetFolder.departmentName,
-      });
-    } catch (e) {
-      console.warn('[Move Document Persist]', e);
+      const saved = await apiClient.updateDocument(docId, { folderId: targetFolderId });
+      setDocuments((prev) => prev.map((d) => (d.id === docId ? saved : d)));
+    } catch (err: any) {
+      triggerAccessDenied(err?.message || 'Não foi possível mover o documento.', doc.name);
     }
-    logSecurityEvent(
-      currentUser,
-      'DOCUMENT_MOVED',
-      doc.name,
-      `Documento movido para a pasta ${targetFolder.name}.`,
-      'SUCCESS'
-    );
   };
 
   // Move Folder Handler (Persisted to PostgreSQL)
@@ -737,21 +621,19 @@ export default function App() {
     const folder = folders.find((f) => f.id === folderId);
     if (!folder || !targetFolder) return;
 
-    setFolders((prev) =>
-      prev.map((f) => (f.id === folderId ? { ...f, parentId: targetFolderId } : f))
-    );
     try {
       await apiClient.updateFolder(folderId, { parentId: targetFolderId });
-    } catch (e) {
-      console.warn('[Move Folder Persist]', e);
+      setFolders((prev) => prev.map((f) => (f.id === folderId ? { ...f, parentId: targetFolderId } : f)));
+      logSecurityEvent(
+        currentUser,
+        'FOLDER_MOVED',
+        folder.name,
+        `Pasta ${folder.name} movida para dentro de ${targetFolder.name}.`,
+        'SUCCESS'
+      );
+    } catch (err: any) {
+      triggerAccessDenied(err?.message || 'Não foi possível mover a pasta.', folder.name);
     }
-    logSecurityEvent(
-      currentUser,
-      'FOLDER_MOVED',
-      folder.name,
-      `Pasta ${folder.name} movida para dentro de ${targetFolder.name}.`,
-      'SUCCESS'
-    );
   };
 
   // Toggle Favorite (Persisted to PostgreSQL)
@@ -766,25 +648,24 @@ export default function App() {
     }
   };
 
-  // Delete Document (Persisted to PostgreSQL)
+  // Excluir documento: vai para a lixeira do setor por 7 dias (o servidor valida a permissão)
   const handleDeleteDocument = async (docId: string) => {
     const doc = documents.find((d) => d.id === docId);
     if (!doc) return;
-
-    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DELETE_DOCUMENT');
-    if (!perm.allowed) {
-      triggerAccessDenied(perm.reason || 'Você não possui autorização para excluir documentos.', doc.name);
-      return;
-    }
-
-    setDocuments((prev) => prev.filter((d) => d.id !== docId));
     try {
       await apiClient.deleteDocument(docId);
-    } catch (e) {
-      console.warn('[Delete Document API Persist]', e);
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+      if (viewingDocument?.id === docId) setViewingDocument(null);
+    } catch (err: any) {
+      triggerAccessDenied(err?.message || 'Não foi possível excluir o documento.', doc.name);
     }
+  };
 
-    logSecurityEvent(currentUser, 'DOCUMENT_DELETED', doc.name, 'Documento removido do banco de dados.', 'SUCCESS');
+  // Restaurar da lixeira
+  const handleRestoreDocument = async (doc: DocumentItem) => {
+    const restored = await apiClient.restoreDocument(doc.id);
+    setDocuments((prev) => [restored, ...prev.filter((d) => d.id !== restored.id)]);
+    return restored;
   };
 
   // Device Management Actions (Persisted to PostgreSQL)
@@ -1222,6 +1103,11 @@ export default function App() {
           onClose={() => setViewingDocument(null)}
           currentUser={currentUser}
           onDownload={handleDownloadDocument}
+          onDelete={(doc) => {
+            if (window.confirm(`Enviar "${doc.name}" para a lixeira do setor ${doc.departmentName}?\n\nEle poderá ser restaurado por 7 dias; depois será apagado do servidor.`)) {
+              handleDeleteDocument(doc.id);
+            }
+          }}
         />
       </div>
     );
@@ -1402,7 +1288,11 @@ export default function App() {
             />
           )}
 
-          {['shared', 'favorites', 'trash'].includes(activeTab) && (
+          {activeTab === 'trash' && (
+            <TrashView currentUser={currentUser} departments={departments} onRestore={handleRestoreDocument} />
+          )}
+
+          {['shared', 'favorites'].includes(activeTab) && (
             <DocumentsExplorer
               currentUser={currentUser}
               departments={departments}
@@ -1410,7 +1300,6 @@ export default function App() {
               documents={documents.filter((d) => {
                 if (activeTab === 'favorites') return d.isFavorite;
                 if (activeTab === 'shared') return d.isShared;
-                if (activeTab === 'trash') return d.status === 'trash';
                 return true;
               })}
               users={users}
@@ -1441,25 +1330,10 @@ export default function App() {
         onClose={() => setViewingDocument(null)}
         currentUser={currentUser}
         onDownload={handleDownloadDocument}
-        onRestoreVersion={(doc, ver) => {
-          setDocuments((prev) =>
-            prev.map((d) =>
-              d.id === doc.id
-                ? {
-                    ...d,
-                    currentVersion: ver.versionNumber,
-                    updatedAt: 'Hoje (Restaurado)',
-                  }
-                : d
-            )
-          );
-          logSecurityEvent(
-            currentUser,
-            'DOCUMENT_VERSION_RESTORED',
-            doc.name,
-            `Versão v${ver.versionNumber}.0 restaurada no banco de dados.`,
-            'SUCCESS'
-          );
+        onDelete={(doc) => {
+          if (window.confirm(`Enviar "${doc.name}" para a lixeira do setor ${doc.departmentName}?\n\nEle poderá ser restaurado por 7 dias; depois será apagado do servidor.`)) {
+            handleDeleteDocument(doc.id);
+          }
         }}
       />
 

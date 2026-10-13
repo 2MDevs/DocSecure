@@ -87,10 +87,10 @@ export interface DocumentVersion {
 export interface DocumentItem {
   id: string;
   name: string;
-  extension: 'pdf' | 'xlsx' | 'docx' | 'png' | 'jpg' | 'csv' | 'zip';
+  extension: string;
   mimeType: string;
   sizeBytes: number;
-  folderId: string;
+  folderId: string | null;
   departmentId: string;
   departmentName: string;
   ownerId: string;
@@ -107,6 +107,13 @@ export interface DocumentItem {
   status: 'active' | 'archived' | 'trash';
   scanStatus: 'clean' | 'scanning' | 'quarantined';
   tags?: string[];
+  /** false = registro antigo sem arquivo armazenado */
+  hasContent?: boolean;
+  trashedAt?: string | null;
+  trashedByName?: string | null;
+  /** Data em que o arquivo será apagado definitivamente do servidor */
+  purgeAt?: string | null;
+  canPurge?: boolean;
 }
 
 export interface Device {
@@ -141,7 +148,11 @@ export type AuditAction =
   | 'DOCUMENT_DELETED'
   | 'DOCUMENT_EDITED'
   | 'DOCUMENT_VERSION_RESTORED'
+  | 'DOCUMENT_MOVED'
+  | 'DOCUMENT_RESTORED'
+  | 'DOCUMENT_PURGED'
   | 'FOLDER_CREATED'
+  | 'FOLDER_MOVED'
   | 'FOLDER_DELETED'
   | 'PERMISSIONS_MODIFIED'
   | 'USER_CREATED'

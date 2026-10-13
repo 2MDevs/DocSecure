@@ -279,6 +279,14 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE devices ALTER COLUMN fingerprint_hash DROP NOT NULL;
       ALTER TABLE devices ALTER COLUMN device_token_hash DROP NOT NULL;
       ALTER TABLE devices ALTER COLUMN trusted_until DROP NOT NULL;
+
+      -- Documentos: armazenamento real criptografado, raiz do setor e lixeira com prazo de 7 dias
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS storage_path TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_at TIMESTAMPTZ;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_by VARCHAR(100);
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_by_name VARCHAR(255);
+      ALTER TABLE documents ALTER COLUMN folder_id DROP NOT NULL;
+      UPDATE documents SET trashed_at = updated_at WHERE status = 'trash' AND trashed_at IS NULL;
     `);
 
     // 3. Criação de Índices após garantir a existência das colunas
@@ -288,6 +296,8 @@ export async function initDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_password_resets_token_hash ON password_resets(token_hash);
       CREATE INDEX IF NOT EXISTS idx_devices_token_hash ON devices(device_token_hash);
       CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
+      CREATE INDEX IF NOT EXISTS idx_documents_department_status ON documents(department_id, status);
+      CREATE INDEX IF NOT EXISTS idx_documents_trashed_at ON documents(trashed_at) WHERE status = 'trash';
       CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);
     `);
 

@@ -1,22 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Download,
-  Share2,
   ChevronLeft,
-  ChevronRight,
   ShieldCheck,
-  History,
   FileText,
   Lock,
-  RotateCcw,
-  Eye,
-  CheckCircle2,
-  Printer,
-  Sparkles,
+  Loader2,
+  AlertTriangle,
+  Info,
+  Trash2,
 } from 'lucide-react';
 import { DocumentItem, DocumentVersion, User } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
+import { apiClient } from '../../services/apiClient';
 
 interface DocumentViewerModalProps {
   document: DocumentItem | null;
@@ -24,8 +21,30 @@ interface DocumentViewerModalProps {
   onClose: () => void;
   currentUser: User;
   onDownload: (doc: DocumentItem) => void;
+  onDelete?: (doc: DocumentItem) => void;
+  /** Mantido por compatibilidade; o histórico de versões ainda não é editável. */
   onRestoreVersion?: (doc: DocumentItem, version: DocumentVersion) => void;
 }
+
+const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+const TEXT_EXT = ['txt', 'csv', 'json', 'log', 'md'];
+const MAX_TEXT_PREVIEW = 1024 * 1024; // 1 MB
+
+type PreviewState =
+  | { kind: 'loading' }
+  | { kind: 'image' | 'pdf'; url: string }
+  | { kind: 'text'; text: string; truncated: boolean }
+  | { kind: 'unsupported' }
+  | { kind: 'error'; message: string };
+
+const formatSize = (bytes: number) =>
+  bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+const formatDate = (value?: string) => {
+  if (!value) return '-';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+};
 
 export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   document,
@@ -33,362 +52,258 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   onClose,
   currentUser,
   onDownload,
-  onRestoreVersion,
+  onDelete,
 }) => {
-  const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = 12;
-  const [activeTab, setActiveTab] = useState<'preview' | 'versions' | 'security'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview' | 'details'>('preview');
+  const [preview, setPreview] = useState<PreviewState>({ kind: 'loading' });
+
+  const ext = (document?.extension || '').toLowerCase();
+  const previewKind: 'image' | 'pdf' | 'text' | null = IMAGE_EXT.includes(ext)
+    ? 'image'
+    : ext === 'pdf'
+    ? 'pdf'
+    : TEXT_EXT.includes(ext)
+    ? 'text'
+    : null;
+
+  // Carrega o conteúdo REAL do arquivo enviado
+  useEffect(() => {
+    if (!isOpen || !document) return;
+    setActiveTab('preview');
+
+    if (document.hasContent === false) {
+      setPreview({
+        kind: 'error',
+        message:
+          'Este registro foi criado por uma versão antiga do sistema e não possui o arquivo armazenado. Exclua-o e envie o arquivo novamente.',
+      });
+      return;
+    }
+    if (!previewKind) {
+      setPreview({ kind: 'unsupported' });
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setPreview({ kind: 'loading' });
+
+    apiClient
+      .getDocumentContent(document.id)
+      .then(async (blob) => {
+        if (cancelled) return;
+        if (previewKind === 'text') {
+          const truncated = blob.size > MAX_TEXT_PREVIEW;
+          const text = await blob.slice(0, MAX_TEXT_PREVIEW).text();
+          if (!cancelled) setPreview({ kind: 'text', text, truncated });
+          return;
+        }
+        const typed = new Blob([blob], { type: previewKind === 'pdf' ? 'application/pdf' : blob.type || `image/${ext}` });
+        objectUrl = URL.createObjectURL(typed);
+        setPreview({ kind: previewKind, url: objectUrl });
+      })
+      .catch((err) => {
+        if (!cancelled) setPreview({ kind: 'error', message: err?.message || 'Não foi possível carregar o arquivo.' });
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [isOpen, document?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen || !document) return null;
 
-  const downloadPermissionCheck = verifyPermission(
+  const canDownload = verifyPermission(
     currentUser,
     'document',
     document.id,
     document.departmentId,
     'DOWNLOAD_DOCUMENT',
-    document.folderId
-  );
-  const canDownload = downloadPermissionCheck.allowed;
+    document.folderId || undefined
+  ).allowed;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl w-full max-w-4xl h-full sm:h-auto sm:max-h-[92dvh] flex flex-col shadow-2xl overflow-hidden">
-        {/* Modal Top Bar matching mobile #6 & desktop specs */}
-        <div className="px-5 py-3.5 bg-[#0a1222] border-b border-slate-800 flex items-center justify-between text-white select-none">
-          <div className="flex items-center gap-3 truncate">
+      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl w-full max-w-5xl h-full sm:h-[92dvh] flex flex-col shadow-2xl overflow-hidden">
+        {/* Barra superior */}
+        <div className="px-4 sm:px-5 py-3 bg-[#0a1222] border-b border-slate-800 flex items-center justify-between gap-3 text-white select-none">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={onClose}
               className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              aria-label="Voltar"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <div className="truncate">
-              <h3 className="text-sm font-bold text-white truncate">{document.name}</h3>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-white truncate" title={document.name}>
+                {document.name}
+              </h3>
               <span className="text-[11px] text-slate-400">
-                v{document.currentVersion}.0 • {document.departmentName} • {(document.sizeBytes / (1024 * 1024)).toFixed(1)} MB
+                {ext.toUpperCase()} • {document.departmentName} • {formatSize(document.sizeBytes)}
               </span>
             </div>
           </div>
 
-          {/* Top Actions & Tabs */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Tab switcher */}
             <div className="hidden sm:flex items-center bg-slate-800/80 p-0.5 rounded-lg text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveTab('preview')}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  activeTab === 'preview' ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Visualizar
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('versions')}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  activeTab === 'versions' ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Versões ({document.versions.length || 1})
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('security')}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  activeTab === 'security' ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Segurança
-              </button>
+              {(['preview', 'details'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    activeTab === tab ? 'bg-blue-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {tab === 'preview' ? 'Visualizar' : 'Detalhes'}
+                </button>
+              ))}
             </div>
+
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(document)}
+                className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                title="Excluir (enviar para a lixeira do setor)"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
 
             <button
               type="button"
               onClick={() => onDownload(document)}
-              title={canDownload ? 'Download Cópia Criptografada' : 'Download Bloqueado (Permissão Revogada)'}
-              className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm ${
+              disabled={!canDownload || document.hasContent === false}
+              title={canDownload ? 'Baixar arquivo original' : 'Download bloqueado (sem permissão)'}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                 canDownload
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer'
-                  : 'bg-rose-950/80 border border-rose-800/80 text-rose-400 hover:bg-rose-900 cursor-pointer'
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40'
+                  : 'bg-rose-950/80 border border-rose-800/80 text-rose-400 cursor-not-allowed'
               }`}
             >
-              {canDownload ? <Download className="w-4 h-4" /> : <Lock className="w-4 h-4 text-rose-400" />}
-              <span className="hidden sm:inline">
-                {canDownload ? 'Baixar' : 'Download Bloqueado'}
-              </span>
+              {canDownload ? <Download className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+              <span className="hidden sm:inline">{canDownload ? 'Baixar' : 'Download bloqueado'}</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors ml-1"
+              className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              aria-label="Fechar"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Modal Main Content */}
-        <div className="flex-1 overflow-y-auto bg-slate-950 p-4 sm:p-6 flex justify-center">
+        {/* Conteúdo */}
+        <div className="flex-1 min-h-0 overflow-auto bg-slate-950 flex">
           {activeTab === 'preview' ? (
-            /* Document Render Canvas matching exact mobile screen #6 */
-            <div className="w-full max-w-2xl bg-white rounded-xl shadow-2xl p-6 sm:p-8 text-slate-900 border border-slate-200">
-              {/* Report Header */}
-              <div className="flex items-center justify-between border-b pb-4 border-slate-200">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">Relatório Financeiro</h2>
-                  <span className="text-xs text-slate-500">Setembro 2025 • Consolidado Oficial</span>
+            <div className="flex-1 flex items-center justify-center p-3 sm:p-6 min-h-0">
+              {preview.kind === 'loading' && (
+                <div className="text-slate-400 text-xs flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Carregando arquivo...
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
-                    DS
+              )}
+
+              {preview.kind === 'image' && (
+                <img
+                  src={preview.url}
+                  alt={document.name}
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white"
+                />
+              )}
+
+              {preview.kind === 'pdf' && (
+                <iframe src={preview.url} title={document.name} className="w-full h-full min-h-[60dvh] rounded-lg bg-white" />
+              )}
+
+              {preview.kind === 'text' && (
+                <div className="w-full h-full flex flex-col">
+                  {preview.truncated && (
+                    <div className="mb-2 text-[11px] text-amber-300">Mostrando apenas o primeiro 1 MB. Baixe para ver o arquivo completo.</div>
+                  )}
+                  <pre className="flex-1 overflow-auto bg-white text-slate-800 rounded-lg p-4 text-xs leading-relaxed whitespace-pre-wrap break-words select-text">
+                    {preview.text}
+                  </pre>
+                </div>
+              )}
+
+              {preview.kind === 'unsupported' && (
+                <div className="text-center max-w-sm space-y-3">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-800 text-slate-300 flex items-center justify-center">
+                    <FileText className="w-7 h-7" />
                   </div>
-                  <span className="font-bold text-slate-900 text-sm">DocSecure</span>
+                  <p className="text-sm font-semibold text-white">Pré-visualização indisponível para .{ext}</p>
+                  <p className="text-xs text-slate-400">
+                    A visualização no navegador funciona para PDF, imagens e arquivos de texto. Use “Baixar” para abrir este
+                    arquivo no seu computador.
+                  </p>
                 </div>
-              </div>
+              )}
 
-              {/* Chart & KPI Section matching screenshot #6 */}
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-medium text-slate-500 block">Receita Total</span>
-                  <span className="text-base font-bold text-slate-900 tabular-nums">R$ 458.230,00</span>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-medium text-slate-500 block">Despesa Total</span>
-                  <span className="text-base font-bold text-slate-900 tabular-nums">R$ 312.540,00</span>
-                </div>
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                  <span className="text-[11px] font-medium text-emerald-700 block">Saldo</span>
-                  <span className="text-base font-bold text-emerald-700 tabular-nums">R$ 145.690,00</span>
-                </div>
-              </div>
-
-              {/* Bar Chart Representation: Receitas x Despesas */}
-              <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-800">Receitas x Despesas</span>
-                  <span className="text-[10px] text-slate-400">Em milhares (R$)</span>
-                </div>
-                <div className="h-32 flex items-end justify-between gap-3 px-2 pt-2 border-b border-slate-200">
-                  {[
-                    { label: 'Sem 1', rec: 85, desp: 55 },
-                    { label: 'Sem 2', rec: 110, desp: 75 },
-                    { label: 'Sem 3', rec: 130, desp: 90 },
-                    { label: 'Sem 4', rec: 133, desp: 92 },
-                  ].map((item, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <div className="w-full flex items-end justify-center gap-1.5 h-24">
-                        <div
-                          style={{ height: `${(item.rec / 140) * 100}%` }}
-                          className="w-3 sm:w-5 bg-blue-600 rounded-t transition-all hover:opacity-80"
-                          title={`Receita: R$ ${item.rec}k`}
-                        />
-                        <div
-                          style={{ height: `${(item.desp / 140) * 100}%` }}
-                          className="w-3 sm:w-5 bg-amber-500 rounded-t transition-all hover:opacity-80"
-                          title={`Despesa: R$ ${item.desp}k`}
-                        />
-                      </div>
-                      <span className="text-[10px] text-slate-500">{item.label}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-center gap-6 mt-2 text-[11px] text-slate-600">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 bg-blue-600 rounded-xs" />
-                    <span>Receitas</span>
+              {preview.kind === 'error' && (
+                <div className="text-center max-w-md space-y-3">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-950 text-rose-400 flex items-center justify-center">
+                    <AlertTriangle className="w-7 h-7" />
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 bg-amber-500 rounded-xs" />
-                    <span>Despesas</span>
-                  </div>
+                  <p className="text-sm text-rose-200">{preview.message}</p>
                 </div>
-              </div>
-
-              {/* Donut Chart Representation: Principais Categorias */}
-              <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-xs font-bold text-slate-800 block mb-3">Principais Categorias</span>
-                <div className="flex flex-col sm:flex-row items-center justify-around gap-4">
-                  {/* Visual Donut representation */}
-                  <div className="relative w-28 h-28 flex items-center justify-center">
-                    <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                      {/* Circle slices */}
-                      <circle cx="18" cy="18" r="15.915" fill="transparent" stroke="#2563eb" strokeWidth="4" strokeDasharray="42 58" strokeDashoffset="0" />
-                      <circle cx="18" cy="18" r="15.915" fill="transparent" stroke="#0ea5e9" strokeWidth="4" strokeDasharray="28 72" strokeDashoffset="-42" />
-                      <circle cx="18" cy="18" r="15.915" fill="transparent" stroke="#f59e0b" strokeWidth="4" strokeDasharray="20 80" strokeDashoffset="-70" />
-                      <circle cx="18" cy="18" r="15.915" fill="transparent" stroke="#f97316" strokeWidth="4" strokeDasharray="10 90" strokeDashoffset="-90" />
-                    </svg>
-                    <span className="absolute text-[11px] font-bold text-slate-700">100%</span>
-                  </div>
-
-                  {/* Legend matching screenshot */}
-                  <div className="space-y-1.5 text-xs text-slate-700">
-                    <div className="flex items-center justify-between gap-6">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                        <span>Operacional</span>
-                      </div>
-                      <span className="font-semibold tabular-nums">42%</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-6">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-                        <span>Administrativo</span>
-                      </div>
-                      <span className="font-semibold tabular-nums">28%</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-6">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                        <span>Comercial</span>
-                      </div>
-                      <span className="font-semibold tabular-nums">20%</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-6">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                        <span>Outros</span>
-                      </div>
-                      <span className="font-semibold tabular-nums">10%</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Watermark / Signature */}
-              <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                <span>Homologado por Marcos Silva (Gestor Financeiro)</span>
-                <span className="font-mono text-[10px]">HASH: 9f86d081...a08</span>
-              </div>
-            </div>
-          ) : activeTab === 'versions' ? (
-            /* Versioning History tab */
-            <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 text-white space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div>
-                  <h3 className="text-base font-bold">Histórico de Versões</h3>
-                  <p className="text-xs text-slate-400">Controle rigoroso de alterações e auditoria de autoria.</p>
-                </div>
-                <span className="px-2.5 py-1 bg-blue-950 text-blue-400 border border-blue-800 rounded-lg text-xs font-semibold">
-                  Versão Atual: v{document.currentVersion}.0
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {document.versions.map((ver) => (
-                  <div
-                    key={ver.id}
-                    className={`p-4 rounded-xl border transition-colors ${
-                      ver.versionNumber === document.currentVersion
-                        ? 'bg-blue-950/30 border-blue-500/50'
-                        : 'bg-slate-800/40 border-slate-700/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-blue-400" />
-                        <span className="font-bold text-sm text-white">{ver.versionLabel}</span>
-                        {ver.versionNumber === document.currentVersion && (
-                          <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold rounded">
-                            Atual
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-xs text-slate-400">{ver.createdAt}</span>
-                    </div>
-
-                    <p className="text-xs text-slate-300 mt-2">{ver.changeLog}</p>
-
-                    <div className="mt-3 pt-2 border-t border-slate-700/40 flex items-center justify-between text-[11px] text-slate-400">
-                      <span>Autor: <strong className="text-slate-200">{ver.createdBy}</strong></span>
-                      {ver.versionNumber !== document.currentVersion && onRestoreVersion && (
-                        <button
-                          type="button"
-                          onClick={() => onRestoreVersion(document, ver)}
-                          className="text-xs text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Restaurar esta versão
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              )}
             </div>
           ) : (
-            /* Security & Integrity tab */
-            <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 text-white space-y-4">
-              <h3 className="text-base font-bold">Criptografia & Integridade do Arquivo</h3>
-              <div className="p-4 bg-slate-800/60 rounded-xl border border-slate-700 space-y-3 text-xs">
-                <div>
-                  <span className="text-slate-400 block mb-1">Assinatura Digital SHA-256:</span>
-                  <div className="font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-blue-300 select-all break-all">
-                    {document.hashSha256}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div>
-                    <span className="text-slate-400">Antivírus / Malware Scan:</span>
-                    <div className="flex items-center gap-1.5 text-emerald-400 font-semibold mt-0.5">
-                      <CheckCircle2 className="w-4 h-4" /> 100% Limpo (Verificado)
+            <div className="w-full max-w-2xl mx-auto p-4 sm:p-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white space-y-4">
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-400" /> Detalhes do Arquivo
+                </h3>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {[
+                    ['Nome', document.name],
+                    ['Tipo', ext.toUpperCase()],
+                    ['Tamanho', formatSize(document.sizeBytes)],
+                    ['Setor', document.departmentName],
+                    ['Enviado por', document.ownerName],
+                    ['Enviado em', formatDate(document.createdAt)],
+                    ['Última alteração', formatDate(document.updatedAt)],
+                    ['Tags', document.tags?.length ? document.tags.join(', ') : '-'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/60">
+                      <dt className="text-slate-400 mb-0.5">{label}</dt>
+                      <dd className="text-slate-100 font-medium break-words">{value}</dd>
                     </div>
+                  ))}
+                </dl>
+                <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/60 text-xs space-y-1">
+                  <div className="text-slate-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> SHA-256 do arquivo original
                   </div>
-                  <div>
-                    <span className="text-slate-400">Armazenamento:</span>
-                    <div className="font-semibold text-slate-200 mt-0.5">Object Storage Criptografado</div>
-                  </div>
+                  <div className="font-mono text-blue-300 break-all select-all">{document.hashSha256}</div>
+                  <div className="text-slate-500 pt-1">Armazenado no servidor com criptografia AES-256-GCM.</div>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Modal Bottom Pagination & Navigation toolbar matching mobile screen #6 */}
-        <div className="px-6 py-3 bg-[#0a1222] border-t border-slate-800 flex items-center justify-between text-white text-xs select-none">
-          <div className="flex items-center gap-2">
+        {/* Abas no celular */}
+        <div className="sm:hidden px-4 py-2 bg-[#0a1222] border-t border-slate-800 flex gap-2">
+          {(['preview', 'details'] as const).map((tab) => (
             <button
+              key={tab}
               type="button"
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none text-slate-300 transition-colors"
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2 rounded-lg text-xs font-medium ${
+                activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'
+              }`}
             >
-              <ChevronLeft className="w-4 h-4" />
+              {tab === 'preview' ? 'Visualizar' : 'Detalhes'}
             </button>
-            <span className="font-mono tabular-nums px-2">
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              type="button"
-              disabled={currentPage >= totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none text-slate-300 transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => onDownload(document)}
-              className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-              title="Baixar Cópia Criptografada"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => alert(`Link seguro copiado com expiração de 24h para: ${document.name}`)}
-              className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-              title="Compartilhar Link Seguro"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
-          </div>
+          ))}
         </div>
       </div>
     </div>
