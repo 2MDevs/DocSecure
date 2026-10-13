@@ -1,27 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { FolderPlus, X, Lock, AlertCircle, Loader2 } from 'lucide-react';
-import { Department } from '../../types';
+import { FolderPlus, X, Lock, AlertCircle, Loader2, EyeOff } from 'lucide-react';
+import { Department, User } from '../../types';
 
 interface CreateFolderModalProps {
   isOpen: boolean;
   onClose: () => void;
   departments: Department[];
+  currentUser: User;
   currentDepartmentId?: string;
   parentFolderId?: string | null;
-  onCreateFolder: (data: { name: string; departmentId: string; isLocked: boolean; description: string; parentId?: string | null }) => Promise<void>;
+  onCreateFolder: (data: { name: string; departmentId: string; isLocked: boolean; isPrivate: boolean; description: string; parentId?: string | null }) => Promise<void>;
 }
 
 export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
   isOpen,
   onClose,
   departments,
+  currentUser,
   currentDepartmentId,
   parentFolderId,
   onCreateFolder,
 }) => {
   const [folderName, setFolderName] = useState('');
   const [departmentId, setDepartmentId] = useState(currentDepartmentId || departments[0]?.id || '');
-  const [isLocked, setIsLocked] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
   const [description, setDescription] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,16 +33,24 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
   // (Antes o setor ficava "preso" em vazio e a criação falhava em silêncio.)
   useEffect(() => {
     if (!isOpen) return;
-    const deptId = currentDepartmentId || departments[0]?.id || '';
+    // Pastas são criadas no setor onde o usuário está; colaboradores só no próprio setor
+    const deptId = currentDepartmentId || currentUser.departmentId || departments[0]?.id || '';
     setDepartmentId(departments.some((d) => d.id === deptId) ? deptId : departments[0]?.id || '');
     setFolderName('');
     setDescription('');
-    setIsLocked(true);
+    setIsLocked(false);
+    setIsPrivate(false);
     setError(null);
     setIsSaving(false);
   }, [isOpen, currentDepartmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null;
+
+  // Trancar (exigir liberação do gestor) é coisa da gestão; privada qualquer um pode
+  const isDocAdmin = currentUser.role === 'DIRECTOR' || Boolean(currentUser.directorAccess);
+  const canLock =
+    isDocAdmin || ((currentUser.role === 'MANAGER' || currentUser.role === 'DEVELOPER') && currentUser.departmentId === departmentId);
+  const selectableDepartments = isDocAdmin ? departments : departments.filter((d) => d.id === currentUser.departmentId || d.id === departmentId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +66,8 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
       await onCreateFolder({
         name: folderName.trim(),
         departmentId,
-        isLocked,
+        isLocked: canLock ? isLocked : false,
+        isPrivate,
         description,
         parentId: parentFolderId || null,
       });
@@ -111,10 +123,10 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
               onChange={(e) => setDepartmentId(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500"
             >
-              {departments.length === 0 ? (
+              {selectableDepartments.length === 0 ? (
                 <option value="">Nenhum setor cadastrado (Crie um setor antes)</option>
               ) : (
-                departments.map((dept) => (
+                selectableDepartments.map((dept) => (
                   <option key={dept.id} value={dept.id}>
                     {dept.name}
                   </option>
@@ -134,18 +146,45 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
             />
           </div>
 
-          <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 cursor-pointer">
+          <label className="flex items-start gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 cursor-pointer">
             <input
               type="checkbox"
-              checked={isLocked}
-              onChange={(e) => setIsLocked(e.target.checked)}
-              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+              className="w-4 h-4 mt-0.5 rounded accent-violet-600"
             />
-            <div className="flex items-center gap-1.5 font-medium">
-              <Lock className="w-3.5 h-3.5 text-blue-600" />
-              <span>Exigir autorização prévia por RBAC (Bloqueada)</span>
+            <div>
+              <div className="flex items-center gap-1.5 font-medium">
+                <EyeOff className="w-3.5 h-3.5 text-violet-600" />
+                <span>Pasta privada</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Só você, o gestor do setor e a diretoria veem. Os outros colaboradores não.
+              </p>
             </div>
           </label>
+
+          {canLock && (
+            <label className="flex items-start gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isLocked}
+                onChange={(e) => setIsLocked(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded accent-blue-600"
+              />
+              <div>
+                <div className="flex items-center gap-1.5 font-medium">
+                  <Lock className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Trancada</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Colaboradores do setor só entram se você liberar em “Propriedades e permissões”.
+                </p>
+              </div>
+            </label>
+          )}
+
+          <p className="text-[11px] text-slate-400">Pessoas de outros setores nunca veem esta pasta, a menos que a gestão libere.</p>
 
           {error && (
             <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 flex items-start gap-2">

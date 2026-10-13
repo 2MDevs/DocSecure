@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
 import { requireAuth } from '../auth/middleware';
-import { can, isAdminRole, isDepartmentManager, roleOf, writeAudit, getClientIp } from '../services/documentAccess';
+import { canAccess, isDepartmentManager, roleOf, writeAudit, getClientIp, visibleFolderIds, loadFolderIndex, folderVisible } from '../services/documentAccess';
 
 export const foldersRouter = Router();
 
@@ -14,6 +14,8 @@ export function toFolderDto(f: any) {
     departmentName: f.department_name,
     parentId: f.parent_id || null,
     isLocked: Boolean(f.is_locked),
+    isPrivate: Boolean(f.is_private),
+    createdBy: f.created_by || null,
     itemCount: f.item_count || 0,
     tags: f.tags || [],
     description: f.description || '',
@@ -38,22 +40,9 @@ function cleanFolderName(name: unknown): string {
 foldersRouter.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    let query = 'SELECT * FROM folders ORDER BY name ASC';
-    let params: any[] = [];
-
-    if (!isAdminRole(user)) {
-      const permittedIds = user.permittedFolderIds || [];
-      if (roleOf(user) === 'MANAGER') {
-        query = 'SELECT * FROM folders WHERE department_id = $1 OR id = ANY($2::text[]) ORDER BY name ASC';
-        params = [user.departmentId, permittedIds];
-      } else {
-        query = 'SELECT * FROM folders WHERE id = ANY($1::text[]) ORDER BY name ASC';
-        params = [permittedIds];
-      }
-    }
-
-    const { rows } = await pool.query(query, params);
-    return res.json(rows.map(toFolderDto));
+    const visible = await visibleFolderIds(user);
+    const { rows } = await pool.query('SELECT * FROM folders ORDER BY name ASC');
+    return res.json(rows.filter((f: any) => visible.has(f.id)).map(toFolderDto));
   } catch (err: any) {
     console.error('[FOLDERS GET ERROR]', err);
     return res.status(503).json({ error: 'Erro ao listar pastas do banco de dados.' });
@@ -63,7 +52,7 @@ foldersRouter.get('/', requireAuth, async (req: Request, res: Response) => {
 foldersRouter.post('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const { departmentId, parentId, description, isLocked } = req.body;
+    const { departmentId, parentId, description, isLocked, isPrivate } = req.body;
     const name = cleanFolderName(req.body.name);
     if (!name) return res.status(400).json({ error: 'Informe o nome da pasta.' });
     if (!departmentId) return res.status(400).json({ error: 'Selecione o setor da pasta.' });
@@ -81,9 +70,19 @@ foldersRouter.post('/', requireAuth, async (req: Request, res: Response) => {
       }
     }
 
-    if (!can(user, 'CREATE_FOLDER', departmentId, parent ? parent.id : null) && !isDepartmentManager(user, departmentId)) {
-      return res.status(403).json({ error: 'Você não tem permissão para criar pastas neste setor.' });
+    if (!(await canAccess(user, 'CREATE_FOLDER', departmentId, parent ? parent.id : null))) {
+      return res.status(403).json({
+        error:
+          departmentId === user.departmentId
+            ? 'Você não tem permissão para criar pastas neste local.'
+            : 'Você só pode criar pastas no seu próprio setor.',
+      });
     }
+
+    // Colaborador não define permissões: só pode marcar como privada (só ele + gestão + diretoria)
+    const isManager = isDepartmentManager(user, departmentId);
+    const lockedFlag = isManager ? Boolean(isLocked) : false;
+    const privateFlag = Boolean(isPrivate);
 
     const { rows: dup } = await pool.query(
       `SELECT 1 FROM folders WHERE department_id = $1 AND COALESCE(parent_id, '') = COALESCE($2, '') AND LOWER(name) = LOWER($3) LIMIT 1`,
@@ -93,18 +92,12 @@ foldersRouter.post('/', requireAuth, async (req: Request, res: Response) => {
 
     const folderId = 'folder-' + crypto.randomBytes(8).toString('hex');
     await pool.query(
-      `INSERT INTO folders (id, name, department_id, department_name, parent_id, description, is_locked, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-      [folderId, name, departmentId, dept.name, parent ? parent.id : null, String(description || '').slice(0, 500), Boolean(isLocked)]
+      `INSERT INTO folders (id, name, department_id, department_name, parent_id, description, is_locked, is_private, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
+      [folderId, name, departmentId, dept.name, parent ? parent.id : null, String(description || '').slice(0, 500), lockedFlag, privateFlag, user.id]
     );
 
-    // Colaborador que cria a pasta passa a enxergá-la
-    if (roleOf(user) === 'EMPLOYEE') {
-      const permitted: string[] = [...(user.permittedFolderIds || []), folderId];
-      await pool.query('UPDATE users SET permitted_folder_ids = $1 WHERE id = $2', [JSON.stringify(permitted), user.id]);
-    }
-
-    await writeAudit(userCtx(req), 'FOLDER_CREATED', folderId, name, `Pasta criada no setor ${dept.name}.`, 'SUCCESS', getClientIp(req));
+    await writeAudit(userCtx(req), 'FOLDER_CREATED', folderId, name, `Pasta ${privateFlag ? 'privada ' : ''}criada no setor ${dept.name}.`, 'SUCCESS', getClientIp(req));
 
     const { rows } = await pool.query('SELECT * FROM folders WHERE id = $1', [folderId]);
     return res.status(201).json(toFolderDto(rows[0]));
@@ -122,8 +115,11 @@ foldersRouter.put('/:id', requireAuth, async (req: Request, res: Response) => {
     const folder = found[0];
     if (!folder) return res.status(404).json({ error: 'Pasta não encontrada.' });
 
-    if (!isDepartmentManager(user, folder.department_id)) {
-      return res.status(403).json({ error: 'Somente o gestor do setor, a Diretoria ou o Desenvolvedor podem alterar esta pasta.' });
+    const isManager = isDepartmentManager(user, folder.department_id);
+    const isCreator = folder.created_by === user.id;
+    const onlyOwnerFields = Object.keys(req.body || {}).every((k) => ['name', 'isPrivate', 'description'].includes(k));
+    if (!isManager && !(isCreator && onlyOwnerFields)) {
+      return res.status(403).json({ error: 'Somente o gestor do setor ou a diretoria podem alterar esta pasta.' });
     }
 
     const name = req.body.name !== undefined ? cleanFolderName(req.body.name) : undefined;
@@ -155,6 +151,7 @@ foldersRouter.put('/:id', requireAuth, async (req: Request, res: Response) => {
         is_locked = COALESCE($3, is_locked),
         tags = COALESCE($4, tags),
         parent_id = CASE WHEN $5::boolean THEN $6 ELSE parent_id END,
+        is_private = COALESCE($8, is_private),
         updated_at = NOW()
        WHERE id = $7`,
       [
@@ -165,6 +162,7 @@ foldersRouter.put('/:id', requireAuth, async (req: Request, res: Response) => {
         parentId !== undefined,
         parentId ?? null,
         id,
+        typeof req.body.isPrivate === 'boolean' ? req.body.isPrivate : null,
       ]
     );
 
@@ -184,7 +182,11 @@ foldersRouter.delete('/:id', requireAuth, async (req: Request, res: Response) =>
     const folder = found[0];
     if (!folder) return res.status(404).json({ error: 'Pasta não encontrada.' });
 
-    if (!isDepartmentManager(user, folder.department_id) && !can(user, 'DELETE_FOLDER', folder.department_id, id)) {
+    if (
+      !isDepartmentManager(user, folder.department_id) &&
+      folder.created_by !== user.id &&
+      !(await canAccess(user, 'DELETE_FOLDER', folder.department_id, id))
+    ) {
       return res.status(403).json({ error: 'Você não tem permissão para excluir esta pasta.' });
     }
 

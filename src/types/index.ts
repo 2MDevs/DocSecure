@@ -38,6 +38,8 @@ export interface User {
   twoFactorSecret?: string;
   mustChangePassword?: boolean;
   hasPin?: boolean;
+  /** Acesso de diretoria concedido por um Diretor: vê todos os setores */
+  directorAccess?: boolean;
   createdAt: string;
   lastLoginAt?: string;
   permittedFolderIds: string[];
@@ -68,6 +70,9 @@ export interface Folder {
   createdAt: string;
   updatedAt: string;
   isLocked: boolean;
+  /** Privada: só quem criou + gestão do setor + diretoria */
+  isPrivate?: boolean;
+  createdBy?: string | null;
   itemCount: number;
   tags?: string[];
   description?: string;

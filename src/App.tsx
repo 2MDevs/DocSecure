@@ -63,7 +63,7 @@ export const ROLE_ALLOWED_ROUTES: Record<string, UserRole[]> = {
   '/documentos/favoritos': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
   '/documentos/compartilhados': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
   '/documentos/lixeira': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
-  '/usuarios': ['DEVELOPER', 'MANAGER'],
+  '/usuarios': ['DEVELOPER', 'DIRECTOR', 'MANAGER'],
   '/setores': ['DEVELOPER', 'DIRECTOR'],
   '/permissoes': ['DEVELOPER', 'MANAGER'],
   '/dispositivos': ['DEVELOPER'],
@@ -911,6 +911,7 @@ export default function App() {
     name: string;
     departmentId: string;
     isLocked: boolean;
+    isPrivate?: boolean;
     description: string;
     parentId?: string | null;
   }) => {
@@ -1319,13 +1320,15 @@ export default function App() {
 
   // Folder Metadata Update (Persisted to PostgreSQL)
   const handleUpdateFolder = async (folderId: string, updates: Partial<Folder>) => {
-    setFolders((prev) =>
-      prev.map((f) => (f.id === folderId ? { ...f, ...updates } : f))
-    );
+    const before = folders.find((f) => f.id === folderId);
+    setFolders((prev) => prev.map((f) => (f.id === folderId ? { ...f, ...updates } : f)));
     try {
-      await apiClient.updateFolder(folderId, updates);
-    } catch (e) {
-      console.warn('[Update Folder Persist]', e);
+      const saved = await apiClient.updateFolder(folderId, updates);
+      setFolders((prev) => prev.map((f) => (f.id === folderId ? { ...f, ...saved } : f)));
+    } catch (err: any) {
+      // Desfaz a alteração na tela e mostra o motivo
+      if (before) setFolders((prev) => prev.map((f) => (f.id === folderId ? before : f)));
+      triggerAccessDenied(err?.message || 'Não foi possível alterar a pasta.', before?.name || 'Pasta');
     }
   };
 
@@ -1739,6 +1742,7 @@ export default function App() {
         isOpen={isCreateFolderModalOpen}
         onClose={() => setIsCreateFolderModalOpen(false)}
         departments={departments}
+        currentUser={currentUser}
         currentDepartmentId={createFolderDeptId}
         parentFolderId={createFolderParentId}
         onCreateFolder={handleCreateFolder}

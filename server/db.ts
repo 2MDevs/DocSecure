@@ -286,6 +286,11 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_failed_attempts INT DEFAULT 0;
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
 
+      -- Pastas privadas (criador + gestão + diretoria) e acesso de diretoria concedido
+      ALTER TABLE folders ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT false;
+      ALTER TABLE folders ADD COLUMN IF NOT EXISTS created_by VARCHAR(100);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS director_access BOOLEAN DEFAULT false;
+
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS storage_path TEXT;
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_at TIMESTAMPTZ;
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_by VARCHAR(100);

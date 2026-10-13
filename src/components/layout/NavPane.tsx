@@ -43,7 +43,7 @@ interface NavPaneProps {
 
 /** Todos veem todos os setores; o acesso é liberado no próprio setor ou quando há pastas liberadas nele. */
 export function canAccessDepartment(user: User, dept: Department, folders: Folder[]): boolean {
-  if (user.role === 'DEVELOPER' || user.role === 'DIRECTOR') return true;
+  if (user.role === 'DIRECTOR' || user.directorAccess) return true; // diretoria vê todos os setores
   if (dept.id === user.departmentId) return true;
   return folders.some((f) => f.departmentId === dept.id);
 }

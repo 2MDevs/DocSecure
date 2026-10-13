@@ -6,11 +6,13 @@ import { pool } from '../db';
 import { requireAuth } from '../auth/middleware';
 import { getEffectiveSetting } from '../services/systemSettings';
 import {
-  can,
+  canAccess as can,
   isDepartmentManager,
-  isAdminRole,
+  isDocAdmin,
   roleOf,
-  documentVisibilityFilter,
+  loadFolderIndex,
+  visibleFolderIds,
+  documentVisible,
   toDocumentDto,
   writeAudit,
   getClientIp,
@@ -112,12 +114,9 @@ const userCtx = (req: Request) => {
 documentsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const filter = documentVisibilityFilter(user);
-    const { rows } = await pool.query(
-      `SELECT d.* FROM documents d WHERE d.status <> 'trash' AND ${filter.sql} ORDER BY d.created_at DESC`,
-      filter.params
-    );
-    return res.json(rows.map(toDocumentDto));
+    const visible = await visibleFolderIds(user);
+    const { rows } = await pool.query(`SELECT d.* FROM documents d WHERE d.status <> 'trash' ORDER BY d.created_at DESC`);
+    return res.json(rows.filter((d: any) => documentVisible(user, d, visible)).map(toDocumentDto));
   } catch (err: any) {
     console.error('[DOCUMENTS GET ERROR]', err);
     return res.status(503).json({ error: 'Erro ao listar documentos do banco de dados.' });
@@ -132,12 +131,12 @@ documentsRouter.get('/trash', requireAuth, async (req: Request, res: Response) =
     let sql = "SELECT d.* FROM documents d WHERE d.status = 'trash'";
     const params: any[] = [];
 
-    if (isAdminRole(user)) {
+    if (isDocAdmin(user)) {
       if (requestedDept) {
         params.push(requestedDept);
         sql += ` AND d.department_id = $${params.length}`;
       }
-    } else if (roleOf(user) === 'MANAGER') {
+    } else if (roleOf(user) === 'MANAGER' || roleOf(user) === 'DEVELOPER') {
       params.push(user.departmentId);
       sql += ` AND d.department_id = $${params.length}`;
     } else {
@@ -217,7 +216,7 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
       }
     }
 
-    if (!can(user, 'UPLOAD_DOCUMENT', departmentId, folderId)) {
+    if (!await can(user, 'UPLOAD_DOCUMENT', departmentId, folderId)) {
       await writeAudit(userCtx(req), 'DOCUMENT_UPLOADED', '', file.originalname, `Envio negado para o setor ${dept.name}.`, 'DENIED', ip);
       return res.status(403).json({ error: 'Você não tem permissão para enviar arquivos neste local.' });
     }
@@ -342,7 +341,7 @@ documentsRouter.get('/:id/content', requireAuth, async (req: Request, res: Respo
     if (!doc || doc.status === 'trash') return res.status(404).json({ error: 'Documento não encontrado.' });
 
     const perm = isDownload ? 'DOWNLOAD_DOCUMENT' : 'VIEW_DOCUMENT';
-    if (!can(user, perm, doc.department_id, doc.folder_id)) {
+    if (!await can(user, perm, doc.department_id, doc.folder_id)) {
       await writeAudit(
         userCtx(req),
         isDownload ? 'DOCUMENT_DOWNLOADED' : 'DOCUMENT_VIEWED',
@@ -423,12 +422,12 @@ documentsRouter.patch('/:id', requireAuth, async (req: Request, res: Response) =
       } else if (req.body.departmentId) {
         targetDeptId = String(req.body.departmentId);
       }
-      if (targetDeptId !== doc.department_id && !isAdminRole(user)) {
+      if (targetDeptId !== doc.department_id && !isDocAdmin(user)) {
         return res.status(403).json({ error: 'Somente a Diretoria ou o Desenvolvedor podem mover arquivos entre setores.' });
       }
       if (
-        !can(user, 'MOVE_DOCUMENT', doc.department_id, doc.folder_id) ||
-        !can(user, 'UPLOAD_DOCUMENT', targetDeptId, targetFolderId)
+        !await can(user, 'MOVE_DOCUMENT', doc.department_id, doc.folder_id) ||
+        !await can(user, 'UPLOAD_DOCUMENT', targetDeptId, targetFolderId)
       ) {
         return res.status(403).json({ error: 'Você não tem permissão para mover este documento para esse local.' });
       }
@@ -438,7 +437,7 @@ documentsRouter.patch('/:id', requireAuth, async (req: Request, res: Response) =
     }
 
     if (req.body.name !== undefined) {
-      if (!can(user, 'RENAME_DOCUMENT', doc.department_id, doc.folder_id) && doc.owner_id !== user.id) {
+      if (!await can(user, 'RENAME_DOCUMENT', doc.department_id, doc.folder_id) && doc.owner_id !== user.id) {
         return res.status(403).json({ error: 'Você não tem permissão para renomear este documento.' });
       }
       let newName = sanitizeFileName(String(req.body.name));
@@ -452,7 +451,7 @@ documentsRouter.patch('/:id', requireAuth, async (req: Request, res: Response) =
     }
 
     if (Array.isArray(req.body.tags)) {
-      if (!can(user, 'EDIT_DOCUMENT', doc.department_id, doc.folder_id) && doc.owner_id !== user.id) {
+      if (!await can(user, 'EDIT_DOCUMENT', doc.department_id, doc.folder_id) && doc.owner_id !== user.id) {
         return res.status(403).json({ error: 'Você não tem permissão para editar as tags deste documento.' });
       }
       params.push(req.body.tags.map((t: any) => String(t).trim().slice(0, 40)).filter(Boolean).slice(0, 15));
@@ -477,7 +476,7 @@ documentsRouter.post('/:id/favorite', requireAuth, async (req: Request, res: Res
   try {
     const user = (req as any).user;
     const doc = await loadDocument(req.params.id);
-    if (!doc || !can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id)) {
+    if (!doc || !await can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id)) {
       return res.status(404).json({ error: 'Documento não encontrado.' });
     }
     await pool.query('UPDATE documents SET is_favorite = NOT is_favorite, updated_at = NOW() WHERE id = $1', [doc.id]);
@@ -497,7 +496,7 @@ documentsRouter.delete('/:id', requireAuth, async (req: Request, res: Response) 
     const doc = await loadDocument(req.params.id);
     if (!doc || doc.status === 'trash') return res.status(404).json({ error: 'Documento não encontrado.' });
 
-    const allowed = can(user, 'DELETE_DOCUMENT', doc.department_id, doc.folder_id) || doc.owner_id === user.id;
+    const allowed = await can(user, 'DELETE_DOCUMENT', doc.department_id, doc.folder_id) || doc.owner_id === user.id;
     if (!allowed) {
       await writeAudit(userCtx(req), 'DOCUMENT_DELETED', doc.id, doc.name, 'Exclusão negada.', 'DENIED', getClientIp(req));
       return res.status(403).json({ error: 'Você não tem permissão para excluir este documento.' });
@@ -532,7 +531,7 @@ documentsRouter.post('/:id/restore', requireAuth, async (req: Request, res: Resp
 
     const allowed =
       isDepartmentManager(user, doc.department_id) ||
-      can(user, 'DELETE_DOCUMENT', doc.department_id, doc.folder_id) ||
+      await can(user, 'DELETE_DOCUMENT', doc.department_id, doc.folder_id) ||
       (user.departmentId === doc.department_id && (doc.trashed_by === user.id || doc.owner_id === user.id));
     if (!allowed) return res.status(403).json({ error: 'Você não tem permissão para restaurar este documento.' });
 

@@ -376,6 +376,7 @@ export const apiClient = {
     departmentName?: string;
     parentId?: string | null;
     isLocked?: boolean;
+    isPrivate?: boolean;
     description?: string;
   }): Promise<Folder> {
     return apiRequest<Folder>('/api/folders', {
