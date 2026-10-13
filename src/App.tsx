@@ -31,6 +31,8 @@ import { apiClient, dispatchSessionExpired, SESSION_LOCKED_EVENT } from './servi
 import { LoginView } from './components/auth/LoginView';
 import { SetPasswordPage } from './pages/SetPasswordPage';
 import { TrashView } from './components/documents/TrashView';
+import { WindowDialog } from './components/common/WindowDialog';
+import { UserCog, Building2, ShieldCheck as ShieldCheckIcon } from 'lucide-react';
 import { ExplorerLocation } from './components/layout/NavPane';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { DeviceApprovalModal } from './components/auth/DeviceApprovalModal';
@@ -197,6 +199,9 @@ export default function App() {
 
   // Modals
   const [viewingDocument, setViewingDocument] = useState<DocumentItem | null>(null);
+  // Usuários, Setores e Permissões abrem como janelas (caixa de diálogo) sobre a tela atual
+  const [adminWindow, setAdminWindow] = useState<'users' | 'sectors' | 'permissions' | null>(null);
+
   // Menu lateral único ↔ explorador de arquivos
   const [explorerLocation, setExplorerLocation] = useState<ExplorerLocation>({ deptId: null, folderId: null });
   const [explorerNav, setExplorerNav] = useState<ExplorerLocation & { nonce: number }>({ deptId: null, folderId: null, nonce: 0 });
@@ -241,6 +246,10 @@ export default function App() {
           });
           return;
         }
+      }
+      if (tab === 'users' || tab === 'sectors' || tab === 'permissions') {
+        setAdminWindow(tab);
+        return;
       }
       navigate(targetPath);
     },
@@ -710,6 +719,21 @@ export default function App() {
       navigate('/setores', { replace: true });
     }
   }, [location.pathname, navigate]);
+
+  // 3c. Links antigos (/usuarios, /setores, /permissoes) abrem a janela correspondente
+  useEffect(() => {
+    if (!currentUser) return;
+    const map: Record<string, 'users' | 'sectors' | 'permissions'> = {
+      '/usuarios': 'users',
+      '/setores': 'sectors',
+      '/permissoes': 'permissions',
+    };
+    const target = map[location.pathname];
+    if (!target) return;
+    const roles = ROLE_ALLOWED_ROUTES[location.pathname];
+    if (!roles || roles.includes(currentUser.role)) setAdminWindow(target);
+    navigate('/documentos', { replace: true });
+  }, [location.pathname, currentUser, navigate]);
 
   // 4. Troca obrigatória de senha (mustChangePassword === true)
   useEffect(() => {
@@ -1548,8 +1572,8 @@ export default function App() {
               auditLogsCount={auditLogs.length}
               recentAuditLogs={auditLogs}
               onNavigate={(tab) => navigateToTab(tab)}
-              onOpenCreateUser={() => navigate('/usuarios')}
-              onOpenCreateSector={() => navigate('/setores')}
+              onOpenCreateUser={() => navigateToTab('users')}
+              onOpenCreateSector={() => navigateToTab('sectors')}
             />
           )}
 
@@ -1588,7 +1612,8 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'users' && (
+          {adminWindow === 'users' && (
+            <WindowDialog title="Usuários" icon={<UserCog className="w-4 h-4 text-blue-600" />} onClose={() => setAdminWindow(null)}>
             <UsersManagement
               currentUser={currentUser}
               users={users}
@@ -1603,9 +1628,11 @@ export default function App() {
                 alert(`Chave 2FA redefinida com sucesso para ${u?.name}.`);
               }}
             />
+            </WindowDialog>
           )}
 
-          {activeTab === 'sectors' && (
+          {adminWindow === 'sectors' && (
+            <WindowDialog title="Setores & Armazenamento" icon={<Building2 className="w-4 h-4 text-amber-600" />} onClose={() => setAdminWindow(null)}>
             <SectorsManagement
               departments={departments}
               users={users}
@@ -1614,15 +1641,18 @@ export default function App() {
               onCreateDepartment={handleCreateDepartment}
               onDeleteDepartment={handleDeleteDepartment}
             />
+            </WindowDialog>
           )}
 
-          {activeTab === 'permissions' && (
+          {adminWindow === 'permissions' && (
+            <WindowDialog title="Permissões" icon={<ShieldCheckIcon className="w-4 h-4 text-emerald-600" />} onClose={() => setAdminWindow(null)}>
             <PermissionsMatrix
               currentUser={currentUser}
               users={users}
               folders={folders}
               onUpdateUserPermissions={handleUpdatePermissions}
             />
+            </WindowDialog>
           )}
 
           {activeTab === 'devices' && (

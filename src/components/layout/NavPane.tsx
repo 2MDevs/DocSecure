@@ -172,7 +172,12 @@ export const NavPane: React.FC<NavPaneProps> = ({
     );
   };
 
-  const adminItems = ADMIN_ITEMS.filter((i) => allowedTabs.includes(i.tab));
+  // Usuários, Setores e Permissões abrem como janela. Quem tem o Painel acessa por lá (atalhos rápidos);
+  // os demais perfis (gestor, diretor) abrem pelo menu.
+  const hasDashboard = allowedTabs.includes('dev_dashboard');
+  const adminItems = ADMIN_ITEMS.filter(
+    (i) => allowedTabs.includes(i.tab) && !(hasDashboard && ['users', 'sectors', 'permissions'].includes(i.tab))
+  );
 
   const pane = (
     <div className="w-64 md:w-60 h-full bg-[#f9fafb] border-r border-slate-200 flex flex-col select-none">
