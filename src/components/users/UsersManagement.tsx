@@ -18,6 +18,7 @@ import {
   Mail,
   Copy,
   Loader2,
+  Pencil,
 } from 'lucide-react';
 import { User, UserRole, UserStatus, Department } from '../../types';
 import { Avatar } from '../common/Avatar';
@@ -33,6 +34,7 @@ interface UsersManagementProps {
   departments: Department[];
   onCreateUser: (userData: Partial<User>) => Promise<UserAccessResult>;
   onResendAccess: (userId: string) => Promise<UserAccessResult>;
+  onUpdateUser: (userId: string, updates: Partial<User>) => Promise<void>;
   onToggleUserStatus: (userId: string) => void;
   onReset2FA: (userId: string) => void;
 }
@@ -43,6 +45,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
   departments,
   onCreateUser,
   onResendAccess,
+  onUpdateUser,
   onToggleUserStatus,
   onReset2FA,
 }) => {
@@ -69,6 +72,69 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
   >(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Edição de usuário (nome, e-mail, matrícula, cargo/função, perfil e setor)
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editMatricula, setEditMatricula] = useState('');
+  const [editCargo, setEditCargo] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('EMPLOYEE');
+  const [editDeptId, setEditDeptId] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const canEditUsers = currentUser.role === 'DEVELOPER' || currentUser.role === 'DIRECTOR';
+  const canEditTarget = (u: User) => canEditUsers && (u.role !== 'DEVELOPER' || currentUser.role === 'DEVELOPER');
+  // Perfil não pode ser alterado para desenvolvedores (definido no .env) nem para o próprio usuário logado
+  const canChangeRole = (u: User) => u.role !== 'DEVELOPER' && u.id !== currentUser.id;
+
+  const openEdit = (u: User) => {
+    setEditingUser(u);
+    setEditName(u.name);
+    setEditEmail(u.email);
+    setEditMatricula(u.matricula || '');
+    setEditCargo(u.cargo || '');
+    setEditRole(u.role);
+    setEditDeptId(u.departmentId || departments[0]?.id || '');
+    setEditError(null);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser || isSavingEdit) return;
+    if (!editName.trim() || !editEmail.trim()) {
+      setEditError('Nome e e-mail são obrigatórios.');
+      return;
+    }
+
+    const updates: Partial<User> = {};
+    if (editName.trim() !== editingUser.name) updates.name = editName.trim();
+    if (editEmail.trim().toLowerCase() !== editingUser.email.toLowerCase()) updates.email = editEmail.trim().toLowerCase();
+    if (editMatricula.trim() !== (editingUser.matricula || '')) updates.matricula = editMatricula.trim();
+    if (editCargo.trim() !== (editingUser.cargo || '')) updates.cargo = editCargo.trim();
+    if (canChangeRole(editingUser) && editRole !== editingUser.role) updates.role = editRole;
+    if (editDeptId && editDeptId !== editingUser.departmentId) {
+      updates.departmentId = editDeptId;
+      updates.departmentName = departments.find((d) => d.id === editDeptId)?.name || editingUser.departmentName;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      setEditingUser(null);
+      return;
+    }
+
+    try {
+      setIsSavingEdit(true);
+      setEditError(null);
+      await onUpdateUser(editingUser.id, updates);
+      setEditingUser(null);
+    } catch (err: any) {
+      setEditError(err?.message || 'Não foi possível salvar as alterações.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   const canManageAccess = currentUser.role === 'DEVELOPER' || currentUser.role === 'DIRECTOR' || currentUser.role === 'MANAGER';
 
@@ -306,6 +372,18 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                   )}
                 </button>
 
+                {canEditTarget(u) && (
+                  <button
+                    type="button"
+                    onClick={() => openEdit(u)}
+                    className="py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
+                    title="Editar usuário"
+                  >
+                    <Pencil className="w-4 h-4 text-slate-500" />
+                    <span>Editar</span>
+                  </button>
+                )}
+
                 {canManageAccess && u.id !== currentUser.id && (
                   <button
                     type="button"
@@ -424,6 +502,17 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                       >
                         {u.status === 'ACTIVE' ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
                       </button>
+
+                      {canEditTarget(u) && (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(u)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 border border-slate-200 hover:bg-slate-50 transition-colors"
+                          title="Editar usuário (função, perfil e setor)"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
 
                       {canManageAccess && u.id !== currentUser.id && (
                         <button
@@ -572,6 +661,19 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 </div>
               </div>
 
+              {currentUser.role === 'DEVELOPER' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Função / Cargo</label>
+                  <input
+                    type="text"
+                    value={newCargo}
+                    onChange={(e) => setNewCargo(e.target.value)}
+                    placeholder="ex: Analista Pleno"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
+
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                 <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                   <input
@@ -614,6 +716,133 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 >
                   {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {isSubmitting ? 'Cadastrando e enviando e-mail...' : 'Salvar e Enviar Acesso'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Usuário */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 max-h-[90dvh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Editar Usuário</h3>
+                  <p className="text-xs text-slate-500">Altere dados, função, perfil de acesso e setor.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="mt-4 space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Nome Completo</label>
+                <input type="text" required value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500" />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">E-mail Corporativo</label>
+                  <input type="email" required value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Matrícula</label>
+                  <input type="text" value={editMatricula} onChange={(e) => setEditMatricula(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 font-mono" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Função / Cargo</label>
+                  <input
+                    type="text"
+                    value={editCargo}
+                    onChange={(e) => setEditCargo(e.target.value)}
+                    placeholder="ex: Analista Financeiro"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Perfil de Acesso (RBAC)</label>
+                  {canChangeRole(editingUser) ? (
+                    <select value={editRole} onChange={(e) => setEditRole(e.target.value as UserRole)} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-60">
+                      <option value="EMPLOYEE">Colaborador (Funcionário)</option>
+                      <option value="MANAGER">Gestor de Área</option>
+                      <option value="DIRECTOR">Diretoria</option>
+                    </select>
+                  ) : (
+                    <>
+                      <select disabled value={editingUser.role} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-60">
+                        <option value={editingUser.role}>
+                          {editingUser.role === 'DEVELOPER'
+                            ? 'Desenvolvedor'
+                            : editingUser.role === 'DIRECTOR'
+                            ? 'Diretoria'
+                            : editingUser.role === 'MANAGER'
+                            ? 'Gestor de Área'
+                            : 'Colaborador (Funcionário)'}
+                        </option>
+                      </select>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {editingUser.role === 'DEVELOPER'
+                          ? 'Definido pela variável DEVELOPER_EMAILS no servidor.'
+                          : 'Você não pode alterar o seu próprio perfil.'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Setor</label>
+                <select value={editDeptId} onChange={(e) => setEditDeptId(e.target.value)} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-60">
+                  {departments.length === 0 ? (
+                    <option value="">Geral (Sem setor cadastrado)</option>
+                  ) : (
+                    departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {editError && (
+                <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center gap-2"
+                >
+                  {isSavingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {isSavingEdit ? 'Salvando...' : 'Salvar Alterações'}
                 </button>
               </div>
             </form>
