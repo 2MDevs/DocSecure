@@ -96,49 +96,29 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="h-14 sm:h-16 bg-white border-b border-slate-200/80 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 select-none">
+    <header className="h-12 bg-white border-b border-slate-200 px-2 sm:px-4 flex items-center justify-between z-30 select-none shrink-0">
       {/* Left side: Hamburger (Mobile) + Search Bar (Desktop) / Brand (Mobile) */}
       <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
         {/* Mobile Hamburger Drawer Trigger */}
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="lg:hidden p-2 -ml-1 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0"
+          className="md:hidden p-2 -ml-1 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center shrink-0"
           aria-label="Abrir menu lateral"
         >
           <Menu className="w-5 h-5" />
         </button>
 
         {/* Mobile Title / Logo */}
-        <div className="lg:hidden flex items-center gap-2 truncate">
+        <div className="flex items-center gap-2 truncate">
           <DocSecureLogo size="sm" showSubtitle={false} />
           {currentTitle && (
-            <span className="hidden xs:inline-block text-xs font-semibold text-slate-600 truncate border-l border-slate-200 pl-2">
+            <span className="hidden sm:inline-block text-xs font-semibold text-slate-600 truncate border-l border-slate-200 pl-2">
               {currentTitle}
             </span>
           )}
         </div>
 
-        {/* Desktop Search Input Zone */}
-        <div className="hidden lg:block flex-1 max-w-md">
-          {showSearchBar ? (
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => onSearchChange?.(e.target.value)}
-                placeholder="Buscar documentos, pastas..."
-                className="w-full pl-9 pr-4 py-2 bg-slate-100/80 hover:bg-slate-100 border border-transparent focus:border-blue-500 focus:bg-white rounded-xl text-xs text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-              />
-            </div>
-          ) : (
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>DocSecure Enterprise Core</span>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Right Controls Zone */}

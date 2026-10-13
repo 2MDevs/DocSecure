@@ -31,12 +31,12 @@ import { apiClient, dispatchSessionExpired } from './services/apiClient';
 import { LoginView } from './components/auth/LoginView';
 import { SetPasswordPage } from './pages/SetPasswordPage';
 import { TrashView } from './components/documents/TrashView';
+import { ExplorerLocation } from './components/layout/NavPane';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { DeviceApprovalModal } from './components/auth/DeviceApprovalModal';
 import { AccessDeniedModal } from './components/common/AccessDeniedModal';
 import { AppShell } from './components/layout/AppShell';
 import { NavigationTab } from './components/layout/Sidebar';
-import { DesktopSidebar } from './components/layout/DesktopSidebar';
 import { DesktopHeader } from './components/layout/DesktopHeader';
 import { DeveloperDashboard } from './components/dashboard/DeveloperDashboard';
 import { DocumentsExplorer } from './components/documents/DocumentsExplorer';
@@ -194,6 +194,9 @@ export default function App() {
 
   // Modals
   const [viewingDocument, setViewingDocument] = useState<DocumentItem | null>(null);
+  // Menu lateral único ↔ explorador de arquivos
+  const [explorerLocation, setExplorerLocation] = useState<ExplorerLocation>({ deptId: null, folderId: null });
+  const [explorerNav, setExplorerNav] = useState<ExplorerLocation & { nonce: number }>({ deptId: null, folderId: null, nonce: 0 });
   // Incrementado a cada recarga de dados (usado por telas que buscam dados próprios, como a Lixeira)
   const [dataVersion, setDataVersion] = useState(0);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -461,7 +464,7 @@ export default function App() {
         initialSetupMode && currentUser.role === 'DEVELOPER'
           ? '/integracao'
           : currentUser.role === 'DEVELOPER'
-          ? '/painel'
+          ? '/documentos'
           : '/documentos';
       navigate(homePath, { replace: true });
     }
@@ -475,7 +478,7 @@ export default function App() {
         initialSetupMode && currentUser.role === 'DEVELOPER'
           ? '/integracao'
           : currentUser.role === 'DEVELOPER'
-          ? '/painel'
+          ? '/documentos'
           : '/documentos';
       navigate(redirectParam && redirectParam.startsWith('/') ? redirectParam : homePath, {
         replace: true,
@@ -525,7 +528,7 @@ export default function App() {
         reason: `Acesso negado: Seu perfil (${currentUser.role}) não possui permissão para acessar esta área.`,
         resourceName: path,
       });
-      const homePath = currentUser.role === 'DEVELOPER' ? '/painel' : '/documentos';
+      const homePath = '/documentos';
       navigate(homePath, { replace: true });
     }
   }, [currentUser, location.pathname, navigate]);
@@ -557,7 +560,7 @@ export default function App() {
     if (redirectParam && redirectParam.startsWith('/')) {
       navigate(redirectParam);
     } else if (user.role === 'DEVELOPER') {
-      navigate(isSetupMode ? '/integracao' : '/painel');
+      navigate(isSetupMode ? '/integracao' : '/documentos');
     } else {
       navigate('/documentos');
     }
@@ -580,7 +583,7 @@ export default function App() {
     if (!import.meta.env.DEV) return;
     const freshUser = users.find((u) => u.id === newUser.id) || newUser;
     setCurrentUser(freshUser);
-    navigate(freshUser.role === 'DEVELOPER' ? '/painel' : '/documentos');
+    navigate('/documentos');
     logSecurityEvent(
       freshUser,
       'LOGIN',
@@ -1070,7 +1073,7 @@ export default function App() {
         currentUser={currentUser}
         onPasswordChangeSuccess={(updatedUser) => {
           setCurrentUser(updatedUser);
-          const home = updatedUser.role === 'DEVELOPER' ? '/painel' : '/documentos';
+          const home = '/documentos';
           navigate(home);
         }}
       />
@@ -1187,21 +1190,28 @@ export default function App() {
     <AppShell
       currentUser={currentUser}
       activeTab={activeTab}
+      allowedTabs={(Object.keys(TAB_TO_PATH) as NavigationTab[]).filter((tab) => {
+        const roles = ROLE_ALLOWED_ROUTES[TAB_TO_PATH[tab]];
+        return !roles || roles.includes(currentUser.role);
+      })}
       onSelectTab={(tab) => navigateToTab(tab)}
       onLogout={handleLogout}
       availableUsers={users}
       onSwitchUser={import.meta.env.DEV ? handleSwitchUser : undefined}
       onOpenDevices={() => navigate('/dispositivos')}
       onOpenSecurity={() => navigate('/seguranca')}
-      onOpenUpload={() => setIsUploadModalOpen(true)}
-      searchTerm={globalSearchTerm}
-      onSearchChange={setGlobalSearchTerm}
-      showSearchBar={activeTab === 'my_documents' || activeTab === 'audit_logs'}
       notifications={notifications}
       isMobileFrameActive={isMobileSimulator}
       onToggleMobileFrame={() => setIsMobileSimulator(!isMobileSimulator)}
       dbStatus={dbStatus}
       currentTitle={TAB_TO_TITLE[activeTab] || 'DocSecure'}
+      departments={departments}
+      folders={folders}
+      explorerLocation={explorerLocation}
+      onOpenLocation={(loc) => {
+        if (activeTab !== 'my_documents') navigateToTab('my_documents');
+        setExplorerNav({ ...loc, nonce: Date.now() });
+      }}
       initialSetupBanner={
         initialSetupMode && currentUser.role === 'DEVELOPER' ? (
           <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-md border-b border-amber-600 sticky top-0 z-50 shrink-0">
@@ -1257,6 +1267,8 @@ export default function App() {
 
           {activeTab === 'my_documents' && (
             <DocumentsExplorer
+              externalNavigation={explorerNav}
+              onLocationChange={setExplorerLocation}
               currentUser={currentUser}
               departments={departments}
               folders={folders}
@@ -1369,6 +1381,8 @@ export default function App() {
 
           {['shared', 'favorites'].includes(activeTab) && (
             <DocumentsExplorer
+              flatView={{ title: activeTab === 'favorites' ? 'Favoritos' : 'Compartilhados' }}
+              onGoHome={() => navigateToTab('my_documents')}
               currentUser={currentUser}
               departments={departments}
               folders={folders}

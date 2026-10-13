@@ -29,6 +29,7 @@ import {
 import { Department, Folder, DocumentItem, User, PermissionType } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
 import { FolderConfigModal } from './FolderConfigModal';
+import { canAccessDepartment } from '../layout/NavPane';
 
 interface DocumentsExplorerProps {
   currentUser: User;
@@ -49,6 +50,14 @@ interface DocumentsExplorerProps {
   onDeleteFolder?: (folderId: string) => void;
   onMoveDocument?: (docId: string, targetFolderId: string) => void;
   onMoveFolder?: (folderId: string, targetFolderId: string) => void;
+  /** Navegação pedida pelo menu lateral (muda o nonce a cada clique) */
+  externalNavigation?: { deptId: string | null; folderId: string | null; nonce: number };
+  /** Informa a pasta aberta para o menu lateral destacar */
+  onLocationChange?: (location: { deptId: string | null; folderId: string | null }) => void;
+  /** Lista plana (Favoritos / Compartilhados): mostra só os documentos recebidos */
+  flatView?: { title: string };
+  /** Em Favoritos/Compartilhados, o "Início" volta para o explorador */
+  onGoHome?: () => void;
 }
 
 type ViewMode = 'large' | 'medium' | 'details';
@@ -206,6 +215,10 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   onDeleteFolder,
   onMoveDocument,
   onMoveFolder,
+  externalNavigation,
+  onLocationChange,
+  flatView,
+  onGoHome,
 }) => {
   const [location, setLocation] = useState<Location>({ deptId: null, folderId: null });
   const [backStack, setBackStack] = useState<Location[]>([]);
@@ -247,12 +260,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   // ---------------------------------------------------------------- acesso
   /** Todos veem todos os setores; só entram onde têm permissão. */
-  const hasDeptAccess = (dept: Department) => {
-    if (isAdmin) return true;
-    if (dept.id === currentUser.departmentId) return true;
-    // Pastas liberadas em outro setor (o servidor só envia as pastas permitidas)
-    return folders.some((f) => f.departmentId === dept.id);
-  };
+  const hasDeptAccess = (dept: Department) => canAccessDepartment(currentUser, dept, folders);
   const isManagerOf = (deptId?: string | null) =>
     isAdmin || (role === 'MANAGER' && !!deptId && currentUser.departmentId === deptId);
   const canDeleteDoc = (doc: DocumentItem) =>
@@ -363,6 +371,29 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     else if (location.deptId) navigate({ deptId: null, folderId: null });
   };
 
+  // Menu lateral único: abre o setor/pasta clicado
+  useEffect(() => {
+    if (!externalNavigation) return;
+    const { deptId, folderId } = externalNavigation;
+    if (deptId === location.deptId && folderId === location.folderId) return;
+    if (!deptId) {
+      navigate({ deptId: null, folderId: null });
+      return;
+    }
+    const dept = departments.find((d) => d.id === deptId);
+    if (!dept) return;
+    if (!folderId) {
+      openDept(dept);
+      return;
+    }
+    const folder = folders.find((f) => f.id === folderId);
+    if (folder) openFolder(folder);
+  }, [externalNavigation?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    onLocationChange?.(location);
+  }, [location.deptId, location.folderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Caminho completo da pasta atual (Início > Setor > Pasta > Subpasta)
   const folderPath = useMemo(() => {
     const path: Folder[] = [];
@@ -401,7 +432,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   // ---------------------------------------------------------------- itens da pasta atual
   const items: Item[] = useMemo(() => {
     let list: Item[] = [];
-    if (query) {
+    if (flatView) {
+      list = documents
+        .filter((d) => !query || d.name.toLowerCase().includes(query) || d.tags?.some((t) => t.toLowerCase().includes(query)))
+        .map((d) => ({ kind: 'doc' as const, id: d.id, name: d.name, doc: d }));
+    } else if (query) {
       // Pesquisa: dentro do setor atual ou em tudo que o usuário enxerga (Início)
       const inScope = (deptId: string) => !location.deptId || deptId === location.deptId;
       list = [
@@ -454,7 +489,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       if (cmp === 0) cmp = a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' });
       return cmp * dir;
     });
-  }, [query, location, departments, folders, documents, sortKey, sortAsc, folderSize]);
+  }, [query, location, departments, folders, documents, sortKey, sortAsc, folderSize, flatView]);
 
   const selectedItem = selected ? items.find((i) => i.kind === selected.kind && i.id === selected.id) || null : null;
   const selectedDoc = selectedItem?.kind === 'doc' ? selectedItem.doc : null;
@@ -542,7 +577,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   };
 
   // ---------------------------------------------------------------- textos auxiliares
-  const locationName = currentFolder?.name || currentDept?.name || 'Início';
+  const locationName = flatView?.title || currentFolder?.name || currentDept?.name || 'Início';
   const itemSize = (it: Item) =>
     it.kind === 'doc' ? it.doc.sizeBytes : it.kind === 'folder' ? folderSize.get(it.id) || 0 : it.dept.storageUsedBytes || 0;
   const itemDate = (it: Item) =>
@@ -570,7 +605,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     });
   };
 
-  const canCreateHere = !!location.deptId;
+  const canCreateHere = !flatView && !!location.deptId;
   const toolbarBtn =
     'h-9 px-2.5 rounded-md text-[13px] text-slate-700 hover:bg-slate-100 disabled:opacity-35 disabled:hover:bg-transparent inline-flex items-center gap-1.5 transition-colors';
 
@@ -602,8 +637,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   // ---------------------------------------------------------------- render
   return (
-    <div className="p-2 sm:p-4 lg:p-6 h-full select-none">
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden min-h-[70dvh]">
+    <div className="h-full select-none">
+      <div className="bg-white flex flex-col h-full min-h-[60dvh] overflow-hidden">
         {/* BARRA DE COMANDOS (como a do Explorador do Windows) */}
         <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-200 overflow-x-auto">
           <div className="relative">
@@ -770,10 +805,20 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           </button>
 
           <div className="flex-1 min-w-0 h-9 px-2 border border-slate-200 rounded-md flex items-center gap-0.5 text-[13px] text-slate-700 overflow-x-auto whitespace-nowrap">
-            <button type="button" onClick={() => location.deptId && navigate({ deptId: null, folderId: null })} className="px-1.5 py-1 rounded hover:bg-slate-100 inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => (flatView ? onGoHome?.() : location.deptId && navigate({ deptId: null, folderId: null }))}
+              className="px-1.5 py-1 rounded hover:bg-slate-100 inline-flex items-center gap-1"
+            >
               <Home className="w-3.5 h-3.5 text-blue-600" /> Início
             </button>
-            {currentDept && (
+            {flatView && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="px-1.5 py-1 font-medium text-slate-900">{flatView.title}</span>
+              </>
+            )}
+            {!flatView && currentDept && (
               <>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <button type="button" onClick={() => navigate({ deptId: currentDept.id, folderId: null })} className="px-1.5 py-1 rounded hover:bg-slate-100">
@@ -781,7 +826,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 </button>
               </>
             )}
-            {folderPath.map((f) => (
+            {!flatView && folderPath.map((f) => (
               <React.Fragment key={f.id}>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <button type="button" onClick={() => navigate({ deptId: f.departmentId, folderId: f.id })} className="px-1.5 py-1 rounded hover:bg-slate-100">
@@ -814,72 +859,6 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         )}
 
         <div className="flex flex-1 min-h-0">
-          {/* PAINEL DE NAVEGAÇÃO (esquerda) */}
-          <nav className="hidden md:block w-56 shrink-0 border-r border-slate-200 py-2 overflow-y-auto text-[13px]">
-            <button
-              type="button"
-              onClick={() => navigate({ deptId: null, folderId: null })}
-              className={`w-full px-3 py-1.5 flex items-center gap-2 text-left hover:bg-slate-100 ${!location.deptId ? 'bg-blue-50 text-blue-800' : 'text-slate-700'}`}
-            >
-              <Home className="w-4 h-4 text-blue-600" /> Início
-            </button>
-            <div className="mt-2 px-3 py-1 text-[11px] uppercase tracking-wide text-slate-400 font-semibold">Setores</div>
-            {departments.map((dept) => {
-              const access = hasDeptAccess(dept);
-              const expanded = expandedDeptIds.includes(dept.id);
-              const rootFolders = folders.filter((f) => f.departmentId === dept.id && !f.parentId);
-              return (
-                <div key={dept.id}>
-                  <div
-                    className={`flex items-center pr-2 hover:bg-slate-100 ${
-                      location.deptId === dept.id && !location.folderId ? 'bg-blue-50 text-blue-800' : 'text-slate-700'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        access &&
-                        setExpandedDeptIds((prev) => (prev.includes(dept.id) ? prev.filter((x) => x !== dept.id) : [...prev, dept.id]))
-                      }
-                      className="w-6 h-7 flex items-center justify-center text-slate-400"
-                      aria-label={expanded ? 'Recolher' : 'Expandir'}
-                    >
-                      {access && rootFolders.length > 0 ? (
-                        expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
-                      ) : null}
-                    </button>
-                    <button type="button" onClick={() => openDept(dept)} className="flex-1 min-w-0 py-1.5 flex items-center gap-2 text-left">
-                      <FolderGlyph size={18} />
-                      <span className={`truncate ${access ? '' : 'text-slate-400'}`}>{dept.name}</span>
-                      {!access && <Lock className="w-3 h-3 text-slate-400 shrink-0" />}
-                    </button>
-                  </div>
-                  {access &&
-                    expanded &&
-                    rootFolders.map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => openFolder(f)}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          setDragOverId(f.id);
-                        }}
-                        onDragLeave={() => setDragOverId(null)}
-                        onDrop={(e) => onDropOnFolder(e, f)}
-                        className={`w-full pl-10 pr-2 py-1.5 flex items-center gap-2 text-left hover:bg-slate-100 ${
-                          location.folderId === f.id ? 'bg-blue-50 text-blue-800' : 'text-slate-700'
-                        } ${dragOverId === f.id ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
-                      >
-                        <FolderGlyph size={16} />
-                        <span className="truncate">{f.name}</span>
-                      </button>
-                    ))}
-                </div>
-              );
-            })}
-          </nav>
-
           {/* CONTEÚDO */}
           <div
             ref={contentRef}
@@ -891,6 +870,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
               <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center text-slate-400 text-sm gap-2">
                 {query ? (
                   <span>Nenhum item corresponde à pesquisa.</span>
+                ) : flatView ? (
+                  <span>Nenhum documento em {flatView.title}.</span>
                 ) : !location.deptId ? (
                   <span>Nenhum setor cadastrado. Cadastre os setores na tela “Setores”.</span>
                 ) : (
