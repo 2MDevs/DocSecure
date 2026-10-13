@@ -210,6 +210,7 @@ usersRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async
       twoFactorEnabled,
       permittedFolderIds,
       granularPermissions,
+      directorAccess,
     } = req.body;
 
     const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
@@ -233,7 +234,11 @@ usersRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async
       return res.status(400).json({ error: 'Perfil inválido.' });
     }
     if (targetRole === 'DEVELOPER' && requesterRole !== 'DEVELOPER') {
-      return res.status(403).json({ error: 'Somente desenvolvedores podem editar outro desenvolvedor.' });
+      // O Diretor pode apenas conceder/retirar o acesso de diretoria do desenvolvedor
+      const onlyDirectorAccess = requesterRole === 'DIRECTOR' && Object.keys(req.body || {}).every((k) => k === 'directorAccess');
+      if (!onlyDirectorAccess) {
+        return res.status(403).json({ error: 'Somente desenvolvedores podem editar os dados de outro desenvolvedor.' });
+      }
     }
     if (nextRole) {
       if (targetRole === 'DEVELOPER') {
@@ -244,6 +249,15 @@ usersRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async
       if (target.id === requester.id) {
         return res.status(400).json({ error: 'Você não pode alterar o seu próprio perfil de acesso.' });
       }
+    }
+
+    // "Acesso de diretoria" (ver todos os setores): somente um Diretor concede ou retira
+    let directorAccessValue: boolean | null = null;
+    if (typeof directorAccess === 'boolean' && directorAccess !== Boolean(target.director_access)) {
+      if (requesterRole !== 'DIRECTOR') {
+        return res.status(403).json({ error: 'Somente um Diretor pode conceder ou retirar o acesso de diretoria.' });
+      }
+      directorAccessValue = directorAccess;
     }
 
     if (email) {
@@ -284,7 +298,8 @@ usersRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async
         two_factor_enabled = COALESCE($11, two_factor_enabled),
         permitted_folder_ids = COALESCE($12, permitted_folder_ids),
         granular_permissions = COALESCE($13, granular_permissions),
-        password_hash = COALESCE($14, password_hash)
+        password_hash = COALESCE($14, password_hash),
+        director_access = COALESCE($16, director_access)
        WHERE id = $15`,
       [
         name,
@@ -302,8 +317,11 @@ usersRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async
         granularPermissions ? JSON.stringify(granularPermissions) : null,
         passwordHash,
         id,
+        directorAccessValue,
       ]
     );
+
+    // Mudou o alcance de acesso: a sessão do usuário é revalidada em tempo real (aviso via realtime)
 
     const updated = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
     return res.json(sanitizeUser(updated.rows[0]));

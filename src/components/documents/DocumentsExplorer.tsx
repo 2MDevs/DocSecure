@@ -27,6 +27,8 @@ import {
   Check,
   CheckCircle2,
   RefreshCw,
+  EyeOff,
+  Eye,
 } from 'lucide-react';
 import { Department, Folder, DocumentItem, User, PermissionType } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
@@ -127,16 +129,23 @@ const EXT_COLORS: Record<string, string> = {
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
 
 /** Ícone de pasta no estilo do Windows */
-const FolderGlyph: React.FC<{ size: number; locked?: boolean; dimmed?: boolean }> = ({ size, locked, dimmed }) => (
+const FolderGlyph: React.FC<{ size: number; locked?: boolean; dimmed?: boolean; privateFolder?: boolean }> = ({ size, locked, dimmed, privateFolder }) => (
   <div className={`relative ${dimmed ? 'opacity-60' : ''}`} style={{ width: size, height: size }}>
     <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
       <path d="M4 14a4 4 0 0 1 4-4h16l6 6h26a4 4 0 0 1 4 4v4H4z" fill="#e0a526" />
       <path d="M4 22h56v28a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#f8c94a" />
       <path d="M4 22h56v3H4z" fill="#fbd96b" />
     </svg>
-    {locked && (
-      <span className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200">
-        <Lock className="text-slate-600" style={{ width: size * 0.22, height: size * 0.22 }} />
+    {(locked || privateFolder) && (
+      <span
+        className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200"
+        title={privateFolder ? 'Pasta privada' : 'Pasta trancada'}
+      >
+        {privateFolder ? (
+          <EyeOff className="text-violet-600" style={{ width: size * 0.22, height: size * 0.22 }} />
+        ) : (
+          <Lock className="text-slate-600" style={{ width: size * 0.22, height: size * 0.22 }} />
+        )}
       </span>
     )}
   </div>
@@ -263,7 +272,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const contentRef = useRef<HTMLDivElement>(null);
 
   const role = currentUser.role;
-  const isAdmin = role === 'DEVELOPER' || role === 'DIRECTOR';
+  // Diretoria vê todos os setores; o desenvolvedor é tratado como responsável do próprio setor
+  const isAdmin = role === 'DIRECTOR' || Boolean(currentUser.directorAccess);
   const currentDept = departments.find((d) => d.id === location.deptId) || null;
   const currentFolder = folders.find((f) => f.id === location.folderId) || null;
   const query = (localSearch || searchTerm || '').trim().toLowerCase();
@@ -272,7 +282,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   /** Todos veem todos os setores; só entram onde têm permissão. */
   const hasDeptAccess = (dept: Department) => canAccessDepartment(currentUser, dept, folders);
   const isManagerOf = (deptId?: string | null) =>
-    isAdmin || (role === 'MANAGER' && !!deptId && currentUser.departmentId === deptId);
+    isAdmin || ((role === 'MANAGER' || role === 'DEVELOPER') && !!deptId && currentUser.departmentId === deptId);
+  const canEditFolderPrivacy = (f: Folder) => isManagerOf(f.departmentId) || f.createdBy === currentUser.id;
   const canDeleteDoc = (doc: DocumentItem) =>
     doc.ownerId === currentUser.id ||
     verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DELETE_DOCUMENT', doc.folderId || undefined).allowed;
@@ -531,8 +542,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       }
       setDeleteConfirmDoc(item.doc);
     } else if (item.kind === 'folder') {
-      if (!isManagerOf(item.folder.departmentId)) {
-        onAccessDenied('Somente o gestor do setor, a Diretoria ou o Desenvolvedor podem excluir pastas.', item.name);
+      if (!isManagerOf(item.folder.departmentId) && item.folder.createdBy !== currentUser.id) {
+        onAccessDenied('Somente quem criou a pasta, o gestor do setor ou a diretoria podem excluí-la.', item.name);
         return;
       }
       setDeleteConfirmFolder(item.folder);
@@ -604,7 +615,15 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const itemDate = (it: Item) =>
     it.kind === 'doc' ? formatDate(it.doc.updatedAt) : it.kind === 'folder' ? formatDate(it.folder.updatedAt) : '';
   const itemType = (it: Item) =>
-    it.kind === 'doc' ? typeLabel(it.doc.extension) : it.kind === 'folder' ? 'Pasta de arquivos' : 'Setor';
+    it.kind === 'doc'
+      ? typeLabel(it.doc.extension)
+      : it.kind === 'folder'
+      ? it.folder.isPrivate
+        ? 'Pasta privada'
+        : it.folder.isLocked
+        ? 'Pasta trancada'
+        : 'Pasta de arquivos'
+      : 'Setor';
 
   const iconSize = viewMode === 'large' ? 72 : 44;
 
@@ -644,7 +663,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       );
     }
     if (it.kind === 'dept') return <DriveGlyph size={size} locked={!hasDeptAccess(it.dept)} />;
-    if (it.kind === 'folder') return <FolderGlyph size={size} locked={it.folder.isLocked} />;
+    if (it.kind === 'folder') return <FolderGlyph size={size} locked={it.folder.isLocked} privateFolder={it.folder.isPrivate} />;
     return <FileGlyph ext={it.doc.extension} size={size} />;
   };
 
@@ -1158,17 +1177,31 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                   onOpenCreateFolderModal(f.departmentId, f.id);
                 }}
               />
-              {isManagerOf((contextMenu.item as Extract<Item, { kind: 'folder' }>).folder.departmentId) && (
-                <>
-                  <MenuItem
-                    icon={<SlidersHorizontal className="w-4 h-4" />}
-                    label="Propriedades e permissões"
-                    onClick={() => openProperties((contextMenu.item as Extract<Item, { kind: 'folder' }>).folder)}
-                  />
-                  <div className="border-t border-slate-100 my-1" />
-                  <MenuItem icon={<Trash2 className="w-4 h-4" />} label="Excluir pasta" danger onClick={() => requestDelete(contextMenu.item)} />
-                </>
-              )}
+              {(() => {
+                const f = (contextMenu.item as Extract<Item, { kind: 'folder' }>).folder;
+                const manager = isManagerOf(f.departmentId);
+                const editPrivacy = canEditFolderPrivacy(f);
+                return (
+                  <>
+                    {manager && (
+                      <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades e permissões" onClick={() => openProperties(f)} />
+                    )}
+                    {editPrivacy && onUpdateFolder && (
+                      <MenuItem
+                        icon={f.isPrivate ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-violet-600" />}
+                        label={f.isPrivate ? 'Tornar visível para o setor' : 'Tornar privada (só eu e a gestão)'}
+                        onClick={() => onUpdateFolder(f.id, { isPrivate: !f.isPrivate })}
+                      />
+                    )}
+                    {(manager || f.createdBy === currentUser.id) && (
+                      <>
+                        <div className="border-t border-slate-100 my-1" />
+                        <MenuItem icon={<Trash2 className="w-4 h-4" />} label="Excluir pasta" danger onClick={() => requestDelete(contextMenu.item)} />
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </>
           ) : (
             (() => {

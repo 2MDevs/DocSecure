@@ -34,13 +34,9 @@ export function verifyPermission(
     };
   }
 
-  // Developer has full system administration
-  if (user.role === 'DEVELOPER') {
-    return { allowed: true, code: 200 };
-  }
-
-  // Check Developer-only system resources
+  // Telas exclusivas do desenvolvedor (infraestrutura)
   if (requiredPermission === 'ADMIN_ONLY') {
+    if (user.role === 'DEVELOPER') return { allowed: true, code: 200 };
     return {
       allowed: false,
       code: 403,
@@ -48,17 +44,33 @@ export function verifyPermission(
     };
   }
 
-  // Director has corporate overview
-  if (user.role === 'DIRECTOR') {
-    return { allowed: true, code: 200 };
-  }
-
   if (requiredPermission === 'DIRECTOR_OR_ADMIN') {
+    if (user.role === 'DEVELOPER' || user.role === 'DIRECTOR') return { allowed: true, code: 200 };
     return {
       allowed: false,
       code: 403,
       reason: 'Acesso negado: Permissão restrita à Diretoria Executiva ou Administrador.',
     };
+  }
+
+  // Documentos: a diretoria vê todos os setores (Diretor ou "acesso de diretoria" concedido)
+  if (user.role === 'DIRECTOR' || user.directorAccess) {
+    return { allowed: true, code: 200 };
+  }
+
+  // O desenvolvedor NÃO tem acesso livre aos documentos: é o responsável do próprio setor (ex.: TI)
+  if (user.role === 'DEVELOPER') {
+    if (departmentId && departmentId !== user.departmentId) {
+      const fid = folderId || (resourceType === 'folder' ? resourceId : undefined);
+      if (!fid || !(user.permittedFolderIds?.includes(fid) || user.granularPermissions?.[fid])) {
+        return {
+          allowed: false,
+          code: 403,
+          reason: 'Acesso negado: o desenvolvedor só acessa os documentos do próprio setor. Peça o acesso de diretoria a um Diretor.',
+        };
+      }
+    }
+    return { allowed: true, code: 200 };
   }
 
   // Manager is strictly restricted to their department!
@@ -143,7 +155,7 @@ export function verifyPermission(
       userPermissions = ['VIEW_FOLDER', 'LIST_FILES', 'VIEW_DOCUMENT', 'DOWNLOAD_DOCUMENT'];
     } else if (departmentId === user.departmentId) {
       // If within employee's own department and not explicitly blocked in granularPermissions
-      userPermissions = ['VIEW_FOLDER', 'LIST_FILES', 'VIEW_DOCUMENT', 'DOWNLOAD_DOCUMENT', 'UPLOAD_DOCUMENT'];
+      userPermissions = ['VIEW_FOLDER', 'LIST_FILES', 'VIEW_DOCUMENT', 'DOWNLOAD_DOCUMENT', 'UPLOAD_DOCUMENT', 'CREATE_FOLDER'];
     } else {
       userPermissions = [];
     }

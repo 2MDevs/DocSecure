@@ -84,11 +84,13 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
   const [editCargo, setEditCargo] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('EMPLOYEE');
   const [editDeptId, setEditDeptId] = useState('');
+  const [editDirectorAccess, setEditDirectorAccess] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
   const canEditUsers = currentUser.role === 'DEVELOPER' || currentUser.role === 'DIRECTOR';
-  const canEditTarget = (u: User) => canEditUsers && (u.role !== 'DEVELOPER' || currentUser.role === 'DEVELOPER');
+  // Diretor também abre o desenvolvedor (para conceder o acesso de diretoria)
+  const canEditTarget = (u: User) => canEditUsers && (u.role !== 'DEVELOPER' || currentUser.role === 'DEVELOPER' || currentUser.role === 'DIRECTOR');
   // Perfil não pode ser alterado para desenvolvedores (definido no .env) nem para o próprio usuário logado
   const canChangeRole = (u: User) => u.role !== 'DEVELOPER' && u.id !== currentUser.id;
 
@@ -100,6 +102,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
     setEditCargo(u.cargo || '');
     setEditRole(u.role);
     setEditDeptId(u.departmentId || departments[0]?.id || '');
+    setEditDirectorAccess(Boolean(u.directorAccess));
     setEditError(null);
   };
 
@@ -120,6 +123,10 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
     if (editDeptId && editDeptId !== editingUser.departmentId) {
       updates.departmentId = editDeptId;
       updates.departmentName = departments.find((d) => d.id === editDeptId)?.name || editingUser.departmentName;
+    }
+
+    if (currentUser.role === 'DIRECTOR' && editDirectorAccess !== Boolean(editingUser.directorAccess)) {
+      updates.directorAccess = editDirectorAccess;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -143,7 +150,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const canDeleteTarget = (u: User) => canEditTarget(u) && u.id !== currentUser.id;
+  const canDeleteTarget = (u: User) => canEditTarget(u) && u.id !== currentUser.id && (u.role !== 'DEVELOPER' || currentUser.role === 'DEVELOPER');
 
   const handleConfirmDelete = async () => {
     if (!deletingUser || isDeleting) return;
@@ -497,6 +504,11 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                     >
                       <Shield className="w-3 h-3" /> {u.role}
                     </span>
+                    {u.directorAccess && (
+                      <span className="ml-1 inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200" title="Acesso de diretoria aos documentos">
+                        + Diretoria
+                      </span>
+                    )}
                   </td>
 
                   <td className="py-3.5 px-4">
@@ -871,6 +883,24 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                   )}
                 </select>
               </div>
+
+              {currentUser.role === 'DIRECTOR' && editingUser.id !== currentUser.id && editingUser.role !== 'DIRECTOR' && (
+                <label className="flex items-start gap-2 p-3 bg-purple-50/60 rounded-xl border border-purple-200 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editDirectorAccess}
+                    onChange={(e) => setEditDirectorAccess(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded accent-purple-600"
+                  />
+                  <div>
+                    <div className="font-semibold text-purple-900">Acesso de diretoria aos documentos</div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Permite ver e gerenciar as pastas e arquivos de <strong>todos os setores</strong>. Sem isso, o
+                      desenvolvedor e o gestor só acessam o próprio setor.
+                    </p>
+                  </div>
+                </label>
+              )}
 
               {editError && (
                 <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 flex items-start gap-2">

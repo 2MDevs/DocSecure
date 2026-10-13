@@ -2,13 +2,16 @@ import crypto from 'crypto';
 import { pool } from '../db';
 
 /**
- * Regras de acesso a pastas e documentos aplicadas NO SERVIDOR (espelham o
- * securityEngine do frontend, que serve só para a interface).
+ * Regras de acesso a pastas e documentos aplicadas NO SERVIDOR (o securityEngine do
+ * frontend só espelha estas regras para a interface).
  *
- * - Desenvolvedor e Diretor: acesso total.
- * - Gestor: tudo no próprio setor (salvo restrição granular); em outros setores só
- *   pastas explicitamente liberadas.
- * - Colaborador: pastas liberadas + raiz do próprio setor; permissões granulares têm prioridade.
+ * - Diretor (ou usuário com "acesso de diretoria"): acesso a todos os setores.
+ * - Gestor e Desenvolvedor: responsáveis pelo PRÓPRIO setor (tudo nele, inclusive pastas
+ *   privadas); em outros setores, só pastas explicitamente liberadas. O desenvolvedor NÃO
+ *   tem acesso livre aos documentos da empresa; só ganha com o "acesso de diretoria".
+ * - Colaborador: no próprio setor vê, envia arquivos e cria pastas; não entra em pastas
+ *   trancadas (salvo liberação do gestor) nem em pastas privadas de outros colegas.
+ * - Pasta privada: visível só para quem criou + gestão do setor + diretoria.
  */
 
 export type DocPermission =
@@ -38,65 +41,123 @@ const ALL_PERMS: DocPermission[] = [
   'RENAME_DOCUMENT',
 ];
 const READ_PERMS: DocPermission[] = ['VIEW_FOLDER', 'LIST_FILES', 'VIEW_DOCUMENT', 'DOWNLOAD_DOCUMENT'];
-const EMPLOYEE_OWN_DEPT_DEFAULT: DocPermission[] = [...READ_PERMS, 'UPLOAD_DOCUMENT'];
+/** Todo colaborador, no próprio setor, pode ver, enviar arquivos e criar pastas */
+const EMPLOYEE_OWN_DEPT_DEFAULT: DocPermission[] = [...READ_PERMS, 'UPLOAD_DOCUMENT', 'CREATE_FOLDER'];
+
+export type FolderRow = {
+  id: string;
+  department_id: string;
+  parent_id: string | null;
+  is_locked: boolean;
+  is_private: boolean;
+  created_by: string | null;
+};
+export type FolderIndex = Map<string, FolderRow>;
 
 export const roleOf = (user: any) => String(user?.role || '').toUpperCase();
-export const isAdminRole = (user: any) => ['DEVELOPER', 'DIRECTOR'].includes(roleOf(user));
 
-function resolvePermissions(user: any, departmentId: string, folderId: string | null): DocPermission[] {
+/** Diretoria: acesso a todos os setores (perfil Diretor ou "acesso de diretoria" concedido). */
+export const isDocAdmin = (user: any) => roleOf(user) === 'DIRECTOR' || Boolean(user?.directorAccess);
+
+/** Mantido por compatibilidade: agora significa "diretoria" (o desenvolvedor não entra mais aqui). */
+export const isAdminRole = isDocAdmin;
+
+/** Responsável pelo setor: diretoria, ou gestor/desenvolvedor do próprio setor. */
+export function isDepartmentManager(user: any, departmentId: string): boolean {
+  if (isDocAdmin(user)) return true;
   const role = roleOf(user);
-  if (user?.status === 'BLOCKED') return [];
-  if (role === 'DEVELOPER' || role === 'DIRECTOR') return ALL_PERMS;
+  return (role === 'MANAGER' || role === 'DEVELOPER') && user.departmentId === departmentId;
+}
 
-  const granular: Record<string, DocPermission[]> = user.granularPermissions || {};
-  const permitted: string[] = user.permittedFolderIds || [];
-  const ownDept = departmentId === user.departmentId;
-  const folderPermitted = Boolean(folderId && (permitted.includes(folderId) || granular[folderId] !== undefined));
+export async function loadFolderIndex(): Promise<FolderIndex> {
+  const { rows } = await pool.query(
+    'SELECT id, department_id, parent_id, is_locked, COALESCE(is_private, false) AS is_private, created_by FROM folders'
+  );
+  return new Map(rows.map((r: FolderRow) => [r.id, r]));
+}
 
-  if (role === 'MANAGER') {
-    if (!ownDept && !folderPermitted) return [];
-    const explicit = (folderId && granular[folderId]) || granular['*'];
-    if (explicit) return explicit;
-    return ownDept ? ALL_PERMS : READ_PERMS;
+function ancestry(folderId: string, index: FolderIndex): FolderRow[] {
+  const chain: FolderRow[] = [];
+  const guard = new Set<string>();
+  let cursor = index.get(folderId);
+  while (cursor && !guard.has(cursor.id)) {
+    guard.add(cursor.id);
+    chain.push(cursor);
+    cursor = cursor.parent_id ? index.get(cursor.parent_id) : undefined;
   }
+  return chain; // da pasta até a raiz
+}
 
+/** A pasta (e toda a cadeia acima dela) pode ser vista por este usuário? */
+export function folderVisible(user: any, folderId: string, index: FolderIndex): boolean {
+  if (user?.status === 'BLOCKED') return false;
+  const folder = index.get(folderId);
+  if (!folder) return false;
+  if (isDepartmentManager(user, folder.department_id)) return true;
+
+  const permitted: string[] = user.permittedFolderIds || [];
+  const granular: Record<string, unknown> = user.granularPermissions || {};
+  const explicitly = (id: string) => permitted.includes(id) || granular[id] !== undefined;
+
+  const chain = ancestry(folderId, index);
+  // Pasta privada de outra pessoa nunca aparece para colaboradores
+  if (chain.some((f) => f.is_private && f.created_by !== user.id)) return false;
+
+  // Liberação explícita (inclusive de outro setor) vale para a pasta e o que está dentro dela
+  if (chain.some((f) => explicitly(f.id))) return true;
+
+  // Próprio setor: tudo que não estiver trancado (trancada = só com liberação do gestor)
+  if (folder.department_id !== user.departmentId) return false;
+  return chain.every((f) => !f.is_locked || f.created_by === user.id);
+}
+
+function resolvePermissions(user: any, departmentId: string, folderId: string | null, index: FolderIndex): DocPermission[] {
+  if (user?.status === 'BLOCKED') return [];
+  if (isDepartmentManager(user, departmentId)) return ALL_PERMS;
+  if (folderId && !folderVisible(user, folderId, index)) return [];
+
+  const role = roleOf(user);
+  const granular: Record<string, DocPermission[]> = user.granularPermissions || {};
+  const ownDept = departmentId === user.departmentId;
+
+  // Permissão granular definida pelo gestor tem prioridade (pasta mais próxima vence)
+  if (folderId) {
+    for (const f of ancestry(folderId, index)) {
+      if (granular[f.id] !== undefined) return granular[f.id];
+    }
+  }
+  if (!folderId && !ownDept) return []; // raiz de outro setor
+
+  if (role === 'MANAGER' || role === 'DEVELOPER') return ownDept ? ALL_PERMS : READ_PERMS;
   if (role === 'EMPLOYEE') {
-    if (!ownDept && !folderPermitted) return [];
-    if (folderId && granular[folderId] !== undefined) return granular[folderId];
     if (granular[departmentId] !== undefined) return granular[departmentId];
     if (granular['*'] !== undefined) return granular['*'];
-    if (folderId && permitted.includes(folderId)) return READ_PERMS;
-    if (ownDept) return EMPLOYEE_OWN_DEPT_DEFAULT;
-    return [];
+    return ownDept ? EMPLOYEE_OWN_DEPT_DEFAULT : READ_PERMS;
   }
-
   return [];
 }
 
-export function can(user: any, permission: DocPermission, departmentId: string, folderId: string | null): boolean {
-  return resolvePermissions(user, departmentId, folderId).includes(permission);
+export function can(user: any, permission: DocPermission, departmentId: string, folderId: string | null, index: FolderIndex): boolean {
+  return resolvePermissions(user, departmentId, folderId, index).includes(permission);
 }
 
-/** Gestor do setor ou administração (Desenvolvedor/Diretor). */
-export function isDepartmentManager(user: any, departmentId: string): boolean {
-  return isAdminRole(user) || (roleOf(user) === 'MANAGER' && user.departmentId === departmentId);
+/** Atalho assíncrono: carrega as pastas e verifica a permissão. */
+export async function canAccess(user: any, permission: DocPermission, departmentId: string, folderId: string | null): Promise<boolean> {
+  return can(user, permission, departmentId, folderId, await loadFolderIndex());
 }
 
-/** Filtro SQL de documentos visíveis para o usuário (alias de tabela "d"). */
-export function documentVisibilityFilter(user: any, startIndex = 1): { sql: string; params: any[] } {
-  if (isAdminRole(user)) return { sql: 'TRUE', params: [] };
-  const permitted = user.permittedFolderIds || [];
-  const a = startIndex;
-  if (roleOf(user) === 'MANAGER') {
-    return {
-      sql: `(d.department_id = $${a} OR d.folder_id = ANY($${a + 1}::text[]))`,
-      params: [user.departmentId, permitted],
-    };
-  }
-  return {
-    sql: `(d.folder_id = ANY($${a}::text[]) OR (d.department_id = $${a + 1} AND d.folder_id IS NULL))`,
-    params: [permitted, user.departmentId],
-  };
+/** Pastas que o usuário enxerga. */
+export async function visibleFolderIds(user: any, index?: FolderIndex): Promise<Set<string>> {
+  const idx = index || (await loadFolderIndex());
+  const out = new Set<string>();
+  idx.forEach((f) => folderVisible(user, f.id, idx) && out.add(f.id));
+  return out;
+}
+
+/** Documento visível: pela pasta, ou pela raiz do setor (próprio setor / responsável / diretoria). */
+export function documentVisible(user: any, doc: { department_id: string; folder_id: string | null }, visible: Set<string>): boolean {
+  if (doc.folder_id) return visible.has(doc.folder_id);
+  return isDepartmentManager(user, doc.department_id) || doc.department_id === user.departmentId;
 }
 
 export function toDocumentDto(doc: any) {

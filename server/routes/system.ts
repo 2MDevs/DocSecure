@@ -5,7 +5,8 @@ import { pool, getDbStatus } from '../db';
 import { requireAuth, requireRole, sanitizeUser } from '../auth/middleware';
 import { getDepartmentsWithRealStorage } from './departments';
 import { isInitialSetupModeActive } from '../services/systemSettings';
-import { documentVisibilityFilter, toDocumentDto } from '../services/documentAccess';
+import { toDocumentDto, loadFolderIndex, visibleFolderIds, documentVisible } from '../services/documentAccess';
+import { toFolderDto } from './folders';
 
 export const systemRouter = Router();
 
@@ -162,41 +163,15 @@ systemRouter.get('/bootstrap', requireAuth, async (req: Request, res: Response) 
     const { rows: userRows } = await pool.query(usersQuery, usersParams);
     const users = userRows.map(sanitizeUser);
 
-    // 3. Pastas
-    let foldersQuery = 'SELECT * FROM folders ORDER BY name ASC';
-    let foldersParams: any[] = [];
-    if (!isAdmin) {
-      const permittedIds = user.permittedFolderIds || [];
-      if (user.role === 'MANAGER') {
-        foldersQuery = 'SELECT * FROM folders WHERE department_id = $1 OR id = ANY($2::text[]) ORDER BY name ASC';
-        foldersParams = [user.departmentId, permittedIds];
-      } else {
-        foldersQuery = 'SELECT * FROM folders WHERE id = ANY($1::text[]) ORDER BY name ASC';
-        foldersParams = [permittedIds];
-      }
-    }
-    const { rows: folderRows } = await pool.query(foldersQuery, foldersParams);
-    const folders = folderRows.map((f) => ({
-      id: f.id,
-      name: f.name,
-      departmentId: f.department_id,
-      departmentName: f.department_name,
-      parentId: f.parent_id,
-      isLocked: Boolean(f.is_locked),
-      itemCount: f.item_count || 0,
-      tags: f.tags || [],
-      description: f.description || '',
-      createdAt: f.created_at,
-      updatedAt: f.updated_at,
-    }));
+    // 3. Pastas (somente as que este usuário pode ver: setor, pastas trancadas e privadas)
+    const folderIndex = await loadFolderIndex();
+    const visible = await visibleFolderIds(user, folderIndex);
+    const { rows: folderRows } = await pool.query('SELECT * FROM folders ORDER BY name ASC');
+    const folders = folderRows.filter((f: any) => visible.has(f.id)).map(toFolderDto);
 
     // 4. Documentos (mesma regra de visibilidade usada em /api/documents)
-    const docFilter = documentVisibilityFilter(user);
-    const { rows: docRows } = await pool.query(
-      `SELECT d.* FROM documents d WHERE d.status <> 'trash' AND ${docFilter.sql} ORDER BY d.created_at DESC`,
-      docFilter.params
-    );
-    const documents = docRows.map(toDocumentDto);
+    const { rows: docRows } = await pool.query(`SELECT d.* FROM documents d WHERE d.status <> 'trash' ORDER BY d.created_at DESC`);
+    const documents = docRows.filter((d: any) => documentVisible(user, d, visible)).map(toDocumentDto);
 
     // 5. Dispositivos (Usuário vê apenas os seus, admin vê todos)
     let devQuery = 'SELECT * FROM devices ORDER BY last_access_at DESC';

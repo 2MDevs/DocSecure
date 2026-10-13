@@ -28,6 +28,7 @@ export function sanitizeUser(row: any): User {
     twoFactorEnabled: Boolean(row.two_factor_enabled),
     mustChangePassword: Boolean(row.must_change_password),
     hasPin: Boolean(row.pin_hash),
+    directorAccess: Boolean(row.director_access),
     permittedFolderIds:
       typeof row.permitted_folder_ids === 'string'
         ? JSON.parse(row.permitted_folder_ids)
