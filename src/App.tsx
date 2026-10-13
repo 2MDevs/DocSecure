@@ -934,6 +934,29 @@ export default function App() {
     return { emailSent: Boolean(emailSent), temporaryPassword };
   };
 
+  // Editar usuário (nome, e-mail, matrícula, função, perfil e setor) — gravado no servidor primeiro
+  const handleUpdateUser = async (userId: string, updates: Partial<User>) => {
+    const before = users.find((u) => u.id === userId);
+    const saved = await apiClient.updateUser(userId, updates);
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...saved } : u)));
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser((prev) => (prev ? { ...prev, ...saved } : prev));
+    }
+    const changes = Object.keys(updates)
+      .filter((k) => k !== 'departmentName')
+      .map((k) =>
+        k === 'role'
+          ? `perfil ${before?.role} → ${saved.role}`
+          : k === 'departmentId'
+          ? `setor ${before?.departmentName} → ${saved.departmentName}`
+          : k === 'cargo'
+          ? `função "${before?.cargo || '-'}" → "${saved.cargo}"`
+          : k
+      )
+      .join(', ');
+    logSecurityEvent(currentUser, 'USER_EDITED', saved.name, `Usuário atualizado: ${changes}.`, 'SUCCESS');
+  };
+
   // Reenviar acesso: nova senha provisória por e-mail + troca obrigatória no próximo login
   const handleResendAccess = async (userId: string) => {
     const res = await apiClient.resendUserAccess(userId);
@@ -1315,6 +1338,7 @@ export default function App() {
               departments={departments}
               onCreateUser={handleCreateUser}
               onResendAccess={handleResendAccess}
+              onUpdateUser={handleUpdateUser}
               onToggleUserStatus={handleToggleUserStatus}
               onReset2FA={(userId) => {
                 const u = users.find((x) => x.id === userId);

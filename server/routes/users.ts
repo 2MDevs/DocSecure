@@ -212,15 +212,46 @@ usersRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async
       granularPermissions,
     } = req.body;
 
-    if (role && String(role).toUpperCase() === 'DEVELOPER') {
+    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    const requester = (req as any).user;
+    const requesterRole = String(requester.role).toUpperCase();
+    const target = userRes.rows[0];
+    const targetRole = String(target.role || '').toUpperCase();
+    // Perfil só é considerado quando realmente muda
+    const nextRole = role && String(role).toUpperCase() !== targetRole ? String(role).toUpperCase() : undefined;
+
+    if (nextRole === 'DEVELOPER') {
       return res.status(403).json({
         error: 'O papel de Desenvolvedor é restrito e definido exclusivamente pela variável de ambiente DEVELOPER_EMAILS.',
       });
     }
+    if (nextRole && !['EMPLOYEE', 'MANAGER', 'DIRECTOR'].includes(nextRole)) {
+      return res.status(400).json({ error: 'Perfil inválido.' });
+    }
+    if (targetRole === 'DEVELOPER' && requesterRole !== 'DEVELOPER') {
+      return res.status(403).json({ error: 'Somente desenvolvedores podem editar outro desenvolvedor.' });
+    }
+    if (nextRole) {
+      if (targetRole === 'DEVELOPER') {
+        return res.status(403).json({
+          error: 'O perfil Desenvolvedor é definido pela variável DEVELOPER_EMAILS no servidor e não pode ser alterado pela tela.',
+        });
+      }
+      if (target.id === requester.id) {
+        return res.status(400).json({ error: 'Você não pode alterar o seu próprio perfil de acesso.' });
+      }
+    }
 
-    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    if (email) {
+      const cleanEmail = String(email).trim().toLowerCase();
+      const dup = await pool.query('SELECT id FROM users WHERE LOWER(email) = $1 AND id <> $2 LIMIT 1', [cleanEmail, id]);
+      if (dup.rows.length > 0) {
+        return res.status(409).json({ error: 'Já existe outro usuário com este e-mail.' });
+      }
     }
 
     let passwordHash: string | undefined;
@@ -261,7 +292,7 @@ usersRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async
         matricula,
         cpf,
         phone,
-        role,
+        nextRole,
         departmentId,
         departmentName,
         cargo,
