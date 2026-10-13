@@ -19,6 +19,9 @@ interface AppShellProps {
   isMobileFrameActive?: boolean;
   onToggleMobileFrame?: () => void;
   dbStatus?: { connected: boolean; databaseName: string; latencyMs: number; mode: string };
+  pendingSyncCount?: number;
+  /** Aviso exibido quando o servidor está fora do ar */
+  offlineBanner?: React.ReactNode;
   currentTitle?: string;
   departments: Department[];
   folders: Folder[];
@@ -51,6 +54,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   isMobileFrameActive,
   onToggleMobileFrame,
   dbStatus,
+  pendingSyncCount,
+  offlineBanner,
   currentTitle,
   departments,
   folders,
@@ -83,8 +88,10 @@ export const AppShell: React.FC<AppShellProps> = ({
         isMobileFrameActive={isMobileFrameActive}
         onToggleMobileFrame={onToggleMobileFrame}
         dbStatus={dbStatus}
+        pendingSyncCount={pendingSyncCount}
       />
 
+      {offlineBanner}
       {apiSyncErrorBanner}
 
       <div className="flex-1 min-h-0 flex">

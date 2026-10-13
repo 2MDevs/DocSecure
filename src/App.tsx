@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   INITIAL_DEPARTMENTS,
   INITIAL_FOLDERS,
@@ -25,7 +25,7 @@ import {
   PermissionType,
 } from './types';
 import { createAuditEntry, verifyPermission } from './services/securityEngine';
-import { apiClient, dispatchSessionExpired } from './services/apiClient';
+import { apiClient, dispatchSessionExpired, SESSION_LOCKED_EVENT } from './services/apiClient';
 
 // Components
 import { LoginView } from './components/auth/LoginView';
@@ -49,7 +49,10 @@ import { SectorsManagement } from './components/sectors/SectorsManagement';
 import { DevicesManagement } from './components/devices/DevicesManagement';
 import { AuditLogsView } from './components/audit/AuditLogsView';
 import { SystemView } from './components/system/SystemView';
-import { SecuritySettings } from './components/settings/SecuritySettings';
+import { AccountSecurity } from './components/settings/AccountSecurity';
+import { LockScreen } from './components/auth/LockScreen';
+import { startConnectivityMonitor, useConnectionStatus, canWrite } from './services/connectivity';
+import { enqueueUpload, listPendingUploads, loadPendingFile, removePendingUpload, PendingUpload } from './services/offlineQueue';
 import { IntegrationsView } from './components/settings/IntegrationsView';
 import { MobileAppFrame } from './components/mobile/MobileAppFrame';
 import { Database, RefreshCw, AlertCircle } from 'lucide-react';
@@ -63,7 +66,7 @@ export const ROLE_ALLOWED_ROUTES: Record<string, UserRole[]> = {
   '/usuarios': ['DEVELOPER', 'MANAGER'],
   '/setores': ['DEVELOPER', 'DIRECTOR'],
   '/permissoes': ['DEVELOPER', 'MANAGER'],
-  '/dispositivos': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
+  '/dispositivos': ['DEVELOPER'],
   '/armazenamento': ['DEVELOPER', 'DIRECTOR'],
   '/auditoria': ['DEVELOPER', 'DIRECTOR'],
   '/sistema': ['DEVELOPER', 'DIRECTOR'],
@@ -279,6 +282,7 @@ export default function App() {
         const res = await apiClient.getMe();
         if (res && res.user) {
           setCurrentUser(res.user);
+          if (res.sessionLocked) setIsLocked(true);
           await loadBootstrapData();
         }
       } catch {
@@ -288,6 +292,220 @@ export default function App() {
     };
     checkActiveSession();
   }, [loadBootstrapData]);
+
+  // ---------------------------------------------------------------------------
+  // CONEXÃO, FILA DE ENVIO OFFLINE E BLOQUEIO POR INATIVIDADE
+  // ---------------------------------------------------------------------------
+  const connectionStatus = useConnectionStatus();
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  const [uploadingDocs, setUploadingDocs] = useState<DocumentItem[]>([]);
+  const [syncStates, setSyncStates] = useState<Record<string, 'uploading' | 'pending' | 'synced' | 'error'>>({});
+  const [isLocked, setIsLocked] = useState(false);
+  const [securityPolicy, setSecurityPolicy] = useState<{ lockIdleMinutes: number; hasPin: boolean }>({ lockIdleMinutes: 0, hasPin: false });
+  const processingQueueRef = useRef(false);
+
+  useEffect(() => {
+    startConnectivityMonitor();
+  }, []);
+
+  const setSync = (id: string, state?: 'uploading' | 'pending' | 'synced' | 'error') =>
+    setSyncStates((prev) => {
+      const next = { ...prev };
+      if (state) next[id] = state;
+      else delete next[id];
+      return next;
+    });
+
+  // Check verde por alguns segundos depois de sincronizar
+  const markSynced = (id: string) => {
+    setSync(id, 'synced');
+    setTimeout(() => setSyncStates((prev) => {
+      if (prev[id] !== 'synced') return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    }), 4000);
+  };
+
+  const pendingToDoc = useCallback(
+    (p: PendingUpload): DocumentItem => ({
+      id: p.id,
+      name: p.name,
+      extension: (p.fileName.split('.').pop() || '').toLowerCase(),
+      mimeType: p.mimeType,
+      sizeBytes: p.sizeBytes,
+      folderId: p.folderId,
+      departmentId: p.departmentId,
+      departmentName: departments.find((d) => d.id === p.departmentId)?.name || '',
+      ownerId: currentUser?.id || '',
+      ownerName: currentUser?.name || '',
+      createdAt: p.createdAt,
+      updatedAt: p.createdAt,
+      hashSha256: '',
+      currentVersion: 1,
+      versions: [],
+      isFavorite: false,
+      isArchived: false,
+      isShared: false,
+      status: 'active',
+      scanStatus: 'scanning',
+      tags: p.tags,
+      hasContent: false,
+    }),
+    [departments, currentUser?.id, currentUser?.name]
+  );
+
+  const pendingDocs = useMemo(
+    () => [...uploadingDocs, ...pendingUploads.map(pendingToDoc)],
+    [uploadingDocs, pendingUploads, pendingToDoc]
+  );
+
+  // Ao entrar: carrega a fila deste usuário e a política de bloqueio
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setPendingUploads([]);
+      return;
+    }
+    listPendingUploads(currentUser.id).then((list) => {
+      setPendingUploads(list);
+      setSyncStates((prev) => {
+        const next = { ...prev };
+        list.forEach((p) => (next[p.id] = 'pending'));
+        return next;
+      });
+    });
+    if (!currentUser.mustChangePassword) {
+      apiClient
+        .getSecurityPolicy()
+        .then((p) => {
+          setSecurityPolicy({ lockIdleMinutes: p.lockIdleMinutes, hasPin: p.hasPin });
+          if (p.sessionLocked) setIsLocked(true);
+        })
+        .catch(() => {});
+    }
+  }, [currentUser?.id, currentUser?.mustChangePassword]);
+
+  // Conexão voltou: envia os arquivos da fila, um por vez
+  useEffect(() => {
+    if (connectionStatus !== 'online' || isLocked || !currentUser?.id || pendingUploads.length === 0) return;
+    if (processingQueueRef.current) return;
+    processingQueueRef.current = true;
+    (async () => {
+      for (const p of [...pendingUploads]) {
+        setSync(p.id, 'uploading');
+        try {
+          const file = await loadPendingFile(p.id);
+          if (!file) {
+            await removePendingUpload(p.id);
+            setPendingUploads((prev) => prev.filter((x) => x.id !== p.id));
+            setSync(p.id);
+            continue;
+          }
+          const saved = await apiClient.uploadFile(file, {
+            departmentId: p.departmentId,
+            folderId: p.folderId,
+            name: p.name,
+            tags: p.tags,
+          });
+          await removePendingUpload(p.id);
+          setPendingUploads((prev) => prev.filter((x) => x.id !== p.id));
+          setSync(p.id);
+          setDocuments((prev) => [saved, ...prev.filter((d) => d.id !== saved.id)]);
+          markSynced(saved.id);
+        } catch (err: any) {
+          if (err?.isConnectionError) {
+            setSync(p.id, 'pending');
+            break; // caiu de novo: tenta quando voltar
+          }
+          // Recusado pelo servidor (permissão, tipo de arquivo, quota): não adianta tentar de novo
+          await removePendingUpload(p.id);
+          setPendingUploads((prev) => prev.filter((x) => x.id !== p.id));
+          setSync(p.id);
+          setAccessDeniedState({
+            isOpen: true,
+            reason: `O arquivo que estava na fila não pôde ser enviado: ${err?.message || 'erro desconhecido'}`,
+            resourceName: p.name,
+          });
+        }
+      }
+      processingQueueRef.current = false;
+    })();
+  }, [connectionStatus, isLocked, currentUser?.id, pendingUploads.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Bloqueio: suspende a sessão no servidor e cobre a tela
+  const lockNow = useCallback(() => {
+    setIsLocked(true);
+    setViewingDocument(null);
+    try {
+      localStorage.setItem('ds.lockedAt', String(Date.now()));
+    } catch {}
+    apiClient.lockSession().catch(() => {});
+  }, []);
+
+  const handleUnlocked = () => {
+    setIsLocked(false);
+    try {
+      localStorage.setItem('ds.unlockedAt', String(Date.now()));
+      localStorage.setItem('ds.lastActivity', String(Date.now()));
+    } catch {}
+    loadBootstrapData({ silent: true });
+  };
+
+  // Detecta inatividade (compartilhada entre abas do mesmo navegador)
+  useEffect(() => {
+    if (!currentUser?.id || currentUser.mustChangePassword || isLocked || securityPolicy.lockIdleMinutes <= 0) return;
+    let last = Date.now();
+    let lastWrite = 0;
+    const touch = () => {
+      last = Date.now();
+      if (last - lastWrite > 5000) {
+        lastWrite = last;
+        try {
+          localStorage.setItem('ds.lastActivity', String(last));
+        } catch {}
+      }
+    };
+    touch();
+    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+    const interval = setInterval(() => {
+      let shared = 0;
+      try {
+        shared = Number(localStorage.getItem('ds.lastActivity') || 0);
+      } catch {}
+      if (Date.now() - Math.max(last, shared) > securityPolicy.lockIdleMinutes * 60_000) lockNow();
+    }, 10_000);
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, touch));
+      clearInterval(interval);
+    };
+  }, [currentUser?.id, currentUser?.mustChangePassword, isLocked, securityPolicy.lockIdleMinutes, lockNow]);
+
+  // Sincroniza bloqueio/desbloqueio entre abas e reage ao servidor (423)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'ds.lockedAt' && currentUser) {
+        setIsLocked(true);
+        setViewingDocument(null);
+      }
+      if (e.key === 'ds.unlockedAt') {
+        setIsLocked(false);
+        loadBootstrapData({ silent: true });
+      }
+    };
+    const onLocked = () => {
+      if (currentUser) {
+        setIsLocked(true);
+        setViewingDocument(null);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(SESSION_LOCKED_EVENT, onLocked);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(SESSION_LOCKED_EVENT, onLocked);
+    };
+  }, [currentUser, loadBootstrapData]);
 
   // TEMPO REAL: o servidor avisa quando pastas, arquivos, permissões, usuários ou setores mudam.
   // A tela recarrega os dados (já filtrados pelo servidor) sem o usuário precisar atualizar a página.
@@ -568,6 +786,15 @@ export default function App() {
 
   // Logout handler
   const handleLogout = async () => {
+    if (
+      pendingUploads.length > 0 &&
+      !window.confirm(
+        `${pendingUploads.length} arquivo(s) ainda não foram enviados ao servidor. Eles ficam guardados neste navegador e serão enviados no seu próximo acesso. Sair mesmo assim?`
+      )
+    ) {
+      return;
+    }
+    setIsLocked(false);
     try {
       await apiClient.logout();
     } catch {}
@@ -625,22 +852,58 @@ export default function App() {
     }
   };
 
-  // Upload real: o arquivo é enviado ao servidor, que o grava criptografado. Erros sobem para o modal.
+  // Upload: com conexão, envia na hora (setas girando → check verde).
+  // Sem conexão, guarda o arquivo criptografado neste navegador e envia quando voltar.
   const handleUploadDocument = async (
     file: File,
     options: { departmentId: string; folderId: string | null; name: string; tags: string[] },
     onProgress?: (percent: number) => void
-  ) => {
-    const saved = await apiClient.uploadFile(file, options, onProgress);
-    setDocuments((prev) => [saved, ...prev]);
-    setDepartments((prev) =>
-      prev.map((d) =>
-        d.id === saved.departmentId
-          ? { ...d, storageUsedBytes: (d.storageUsedBytes || 0) + saved.sizeBytes, itemCount: (d.itemCount || 0) + 1 }
-          : d
-      )
-    );
-    return saved;
+  ): Promise<DocumentItem> => {
+    const queueIt = async () => {
+      const p = await enqueueUpload(currentUser!.id, file, options);
+      setPendingUploads((prev) => [...prev, p]);
+      setSync(p.id, 'pending');
+      return pendingToDoc(p);
+    };
+
+    if (!canWrite()) return queueIt();
+
+    const tempId = 'uploading-' + Date.now();
+    const temp: DocumentItem = {
+      ...pendingToDoc({
+        id: tempId,
+        userId: currentUser!.id,
+        departmentId: options.departmentId,
+        folderId: options.folderId,
+        name: options.name || file.name,
+        tags: options.tags,
+        fileName: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        createdAt: new Date().toISOString(),
+      }),
+    };
+    setUploadingDocs((prev) => [...prev, temp]);
+    setSync(tempId, 'uploading');
+    try {
+      const saved = await apiClient.uploadFile(file, options, onProgress);
+      setDocuments((prev) => [saved, ...prev.filter((d) => d.id !== saved.id)]);
+      setDepartments((prev) =>
+        prev.map((d) =>
+          d.id === saved.departmentId
+            ? { ...d, storageUsedBytes: (d.storageUsedBytes || 0) + saved.sizeBytes, itemCount: (d.itemCount || 0) + 1 }
+            : d
+        )
+      );
+      markSynced(saved.id);
+      return saved;
+    } catch (err: any) {
+      if (err?.isConnectionError) return queueIt();
+      throw err;
+    } finally {
+      setUploadingDocs((prev) => prev.filter((d) => d.id !== tempId));
+      setSync(tempId);
+    }
   };
 
   // Create Folder Handler: grava no servidor primeiro (ele valida setor e permissões)
@@ -1204,6 +1467,15 @@ export default function App() {
       isMobileFrameActive={isMobileSimulator}
       onToggleMobileFrame={() => setIsMobileSimulator(!isMobileSimulator)}
       dbStatus={dbStatus}
+      pendingSyncCount={pendingUploads.length}
+      offlineBanner={
+        connectionStatus === 'offline' ? (
+          <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-xs px-4 py-2 shrink-0">
+            <strong>Sem conexão com o servidor.</strong> Alterações estão bloqueadas para não perder dados. Arquivos enviados
+            agora ficam guardados neste navegador e sobem automaticamente quando a conexão voltar.
+          </div>
+        ) : null
+      }
       currentTitle={TAB_TO_TITLE[activeTab] || 'DocSecure'}
       departments={departments}
       folders={folders}
@@ -1252,6 +1524,19 @@ export default function App() {
         ) : null
       }
     >
+          {isLocked && (
+            <LockScreen
+              currentUser={currentUser}
+              hasPin={securityPolicy.hasPin || Boolean(currentUser.hasPin)}
+              onUnlocked={handleUnlocked}
+              onForcedLogout={(msg) => {
+                setIsLocked(false);
+                dispatchSessionExpired(msg);
+              }}
+              onLogout={handleLogout}
+            />
+          )}
+
           {activeTab === 'dev_dashboard' && (
             <DeveloperDashboard
               usersCount={users.length}
@@ -1269,6 +1554,8 @@ export default function App() {
             <DocumentsExplorer
               externalNavigation={explorerNav}
               onLocationChange={setExplorerLocation}
+              pendingDocs={pendingDocs}
+              syncStates={syncStates}
               currentUser={currentUser}
               departments={departments}
               folders={folders}
@@ -1361,7 +1648,16 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'settings' && <SecuritySettings currentUser={currentUser} />}
+          {activeTab === 'settings' && (
+            <AccountSecurity
+              currentUser={currentUser}
+              onLockNow={lockNow}
+              onPinChanged={(hasPin) => {
+                setSecurityPolicy((p) => ({ ...p, hasPin }));
+                setCurrentUser((u) => (u ? { ...u, hasPin } : u));
+              }}
+            />
+          )}
 
           {activeTab === 'integrations' && (
             <IntegrationsView

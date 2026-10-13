@@ -409,6 +409,7 @@ authRouter.post('/resend-2fa', authRateLimiter, async (req: Request, res: Respon
 authRouter.get('/me', requireAuth, (req: Request, res: Response) => {
   return res.json({
     user: (req as any).user,
+    sessionLocked: Boolean((req as any).sessionLocked),
   });
 });
 
@@ -547,6 +548,11 @@ authRouter.post('/change-password', requireAuth, authRateLimiter, async (req: Re
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
     const dbUser = dbUserRes.rows[0];
+
+    // Troca voluntária exige a senha atual (a obrigatória do primeiro acesso não)
+    if (!dbUser.must_change_password && !currentPassword) {
+      return res.status(400).json({ error: 'Informe a sua senha atual.' });
+    }
 
     // Se senha atual foi informada, valida autenticidade
     if (currentPassword && dbUser.password_hash) {
