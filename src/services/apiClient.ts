@@ -318,8 +318,8 @@ export const apiClient = {
     });
   },
 
-  async deleteFolder(id: string): Promise<void> {
-    return apiRequest<void>(`/api/folders/${id}`, {
+  async deleteFolder(id: string): Promise<{ success: boolean; deletedId: string }> {
+    return apiRequest(`/api/folders/${id}`, {
       method: 'DELETE',
     });
   },
@@ -329,12 +329,38 @@ export const apiClient = {
     return apiRequest<DocumentItem[]>('/api/documents');
   },
 
-  async uploadDocument(docData: Partial<DocumentItem>): Promise<DocumentItem> {
-    return apiRequest<DocumentItem>('/api/documents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(docData),
+  /** Conteúdo real do arquivo (descriptografado pelo servidor). download=true exige permissão de download. */
+  async getDocumentContent(id: string, download = false): Promise<Blob> {
+    const res = await fetch(`/api/documents/${encodeURIComponent(id)}/content${download ? '?download=1' : ''}`, {
+      credentials: 'include',
+      cache: 'no-store',
     });
+    if (res.status === 401) {
+      dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
+      throw new Error(SESSION_EXPIRED_MESSAGE);
+    }
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.error) msg = body.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
+
+  async getTrash(departmentId?: string): Promise<{ retentionDays: number; items: DocumentItem[] }> {
+    const qs = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : '';
+    return apiRequest(`/api/documents/trash${qs}`);
+  },
+
+  async restoreDocument(id: string): Promise<DocumentItem> {
+    return apiRequest<DocumentItem>(`/api/documents/${encodeURIComponent(id)}/restore`, { method: 'POST' });
+  },
+
+  async purgeDocument(id: string): Promise<{ success: boolean }> {
+    return apiRequest(`/api/documents/${encodeURIComponent(id)}/permanent`, { method: 'DELETE' });
   },
 
   async toggleFavoriteDocument(id: string): Promise<DocumentItem> {
@@ -343,22 +369,47 @@ export const apiClient = {
     });
   },
 
-  async deleteDocument(id: string): Promise<void> {
-    return apiRequest<void>(`/api/documents/${id}`, {
+  async deleteDocument(id: string): Promise<{ success: boolean; document: DocumentItem }> {
+    return apiRequest(`/api/documents/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
   },
 
-  async uploadFile(file: File, folderId: string, departmentId: string, departmentName: string): Promise<DocumentItem> {
+  /** Envia o arquivo real. folderId vazio/null = raiz do setor. */
+  async uploadFile(
+    file: File,
+    options: { departmentId: string; folderId?: string | null; name?: string; tags?: string[] },
+    onProgress?: (percent: number) => void
+  ): Promise<DocumentItem> {
     const formData = new FormData();
+    formData.append('departmentId', options.departmentId);
+    if (options.folderId) formData.append('folderId', options.folderId);
+    if (options.name) formData.append('name', options.name);
+    if (options.tags?.length) formData.append('tags', options.tags.join(','));
     formData.append('file', file);
-    formData.append('folderId', folderId);
-    formData.append('departmentId', departmentId);
-    formData.append('departmentName', departmentName);
 
-    return apiRequest<DocumentItem>('/api/documents/upload', {
-      method: 'POST',
-      body: formData,
+    // XMLHttpRequest para acompanhar o progresso do envio
+    return new Promise<DocumentItem>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/documents/upload');
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        let body: any = null;
+        try {
+          body = JSON.parse(xhr.responseText);
+        } catch {}
+        if (xhr.status === 401) {
+          dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
+          return reject(new Error(SESSION_EXPIRED_MESSAGE));
+        }
+        if (xhr.status >= 200 && xhr.status < 300 && body) return resolve(body as DocumentItem);
+        reject(new Error(body?.error || `Falha no envio (HTTP ${xhr.status}).`));
+      };
+      xhr.onerror = () => reject(new Error('Falha de conexão durante o envio do arquivo.'));
+      xhr.send(formData);
     });
   },
 
@@ -450,11 +501,14 @@ export const apiClient = {
   },
 
   // Documentos: Mover / Atualizar
-  async updateDocument(id: string, updates: Partial<DocumentItem>): Promise<DocumentItem> {
-    return apiRequest<DocumentItem>('/api/documents', {
-      method: 'POST',
+  async updateDocument(
+    id: string,
+    updates: { folderId?: string | null; departmentId?: string; name?: string; tags?: string[] }
+  ): Promise<DocumentItem> {
+    return apiRequest<DocumentItem>(`/api/documents/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...updates }),
+      body: JSON.stringify(updates),
     });
   },
 

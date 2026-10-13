@@ -11,7 +11,8 @@ import { authRouter } from './server/auth/routes';
 import { usersRouter } from './server/routes/users';
 import { departmentsRouter } from './server/routes/departments';
 import { foldersRouter } from './server/routes/folders';
-import { documentsRouter } from './server/routes/documents';
+import { documentsRouter, startTrashPurgeJob } from './server/routes/documents';
+import { ensureStorageDirs, FILES_DIR, isFileStorageReady } from './server/services/fileStorage';
 import { auditRouter } from './server/routes/audit';
 import { devicesRouter } from './server/routes/devices';
 import { apiKeysRouter, webhooksRouter } from './server/routes/apiKeys';
@@ -82,6 +83,14 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 async function startServer() {
   // Inicialização e migrações do PostgreSQL
   await initDatabase();
+
+  // Armazenamento criptografado dos arquivos + limpeza automática da lixeira (7 dias)
+  ensureStorageDirs();
+  if (!isFileStorageReady()) {
+    console.warn('[STORAGE] SETTINGS_ENCRYPTION_KEY ausente: envio e leitura de arquivos ficarão bloqueados até configurá-la.');
+  }
+  console.log(`[STORAGE] Arquivos criptografados em: ${FILES_DIR}`);
+  startTrashPurgeJob();
 
   // Integração com Frontend Vite (Dev) ou Arquivos Estáticos Compilados (Prod)
   if (!isProduction) {

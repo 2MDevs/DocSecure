@@ -5,6 +5,7 @@ import { pool, getDbStatus } from '../db';
 import { requireAuth, requireRole, sanitizeUser } from '../auth/middleware';
 import { getDepartmentsWithRealStorage } from './departments';
 import { isInitialSetupModeActive } from '../services/systemSettings';
+import { documentVisibilityFilter, toDocumentDto } from '../services/documentAccess';
 
 export const systemRouter = Router();
 
@@ -189,44 +190,13 @@ systemRouter.get('/bootstrap', requireAuth, async (req: Request, res: Response) 
       updatedAt: f.updated_at,
     }));
 
-    // 4. Documentos
-    let docsQuery = "SELECT * FROM documents WHERE status != 'trash' ORDER BY created_at DESC";
-    let docsParams: any[] = [];
-    if (!isAdmin) {
-      const permittedIds = user.permittedFolderIds || [];
-      if (user.role === 'MANAGER') {
-        docsQuery = "SELECT * FROM documents WHERE status != 'trash' AND (department_id = $1 OR folder_id = ANY($2::text[])) ORDER BY created_at DESC";
-        docsParams = [user.departmentId, permittedIds];
-      } else {
-        docsQuery = "SELECT * FROM documents WHERE status != 'trash' AND folder_id = ANY($1::text[]) ORDER BY created_at DESC";
-        docsParams = [permittedIds];
-      }
-    }
-    const { rows: docRows } = await pool.query(docsQuery, docsParams);
-    const documents = docRows.map((doc) => ({
-      id: doc.id,
-      name: doc.name,
-      extension: doc.extension,
-      mimeType: doc.mime_type,
-      sizeBytes: parseInt(doc.size_bytes, 10),
-      folderId: doc.folder_id,
-      departmentId: doc.department_id,
-      departmentName: doc.department_name,
-      ownerId: doc.owner_id,
-      ownerName: doc.owner_name,
-      hashSha256: doc.hash_sha256,
-      currentVersion: doc.current_version || 1,
-      versions: typeof doc.versions === 'string' ? JSON.parse(doc.versions) : doc.versions || [],
-      isFavorite: Boolean(doc.is_favorite),
-      isArchived: Boolean(doc.is_archived),
-      isShared: Boolean(doc.is_shared),
-      contentSummary: doc.content_summary,
-      status: doc.status,
-      scanStatus: doc.scan_status,
-      tags: doc.tags || [],
-      createdAt: doc.created_at,
-      updatedAt: doc.updated_at,
-    }));
+    // 4. Documentos (mesma regra de visibilidade usada em /api/documents)
+    const docFilter = documentVisibilityFilter(user);
+    const { rows: docRows } = await pool.query(
+      `SELECT d.* FROM documents d WHERE d.status <> 'trash' AND ${docFilter.sql} ORDER BY d.created_at DESC`,
+      docFilter.params
+    );
+    const documents = docRows.map(toDocumentDto);
 
     // 5. Dispositivos (Usuário vê apenas os seus, admin vê todos)
     let devQuery = 'SELECT * FROM devices ORDER BY last_access_at DESC';

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { FolderPlus, X, Lock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { FolderPlus, X, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { Department } from '../../types';
 
 interface CreateFolderModalProps {
@@ -8,7 +8,7 @@ interface CreateFolderModalProps {
   departments: Department[];
   currentDepartmentId?: string;
   parentFolderId?: string | null;
-  onCreateFolder: (data: { name: string; departmentId: string; isLocked: boolean; description: string; parentId?: string | null }) => void;
+  onCreateFolder: (data: { name: string; departmentId: string; isLocked: boolean; description: string; parentId?: string | null }) => Promise<void>;
 }
 
 export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
@@ -23,21 +23,48 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
   const [departmentId, setDepartmentId] = useState(currentDepartmentId || departments[0]?.id || '');
   const [isLocked, setIsLocked] = useState(true);
   const [description, setDescription] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // O modal fica montado o tempo todo: a cada abertura, sincroniza o setor com o local atual.
+  // (Antes o setor ficava "preso" em vazio e a criação falhava em silêncio.)
+  useEffect(() => {
+    if (!isOpen) return;
+    const deptId = currentDepartmentId || departments[0]?.id || '';
+    setDepartmentId(departments.some((d) => d.id === deptId) ? deptId : departments[0]?.id || '');
+    setFolderName('');
+    setDescription('');
+    setIsLocked(true);
+    setError(null);
+    setIsSaving(false);
+  }, [isOpen, currentDepartmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!folderName.trim()) return;
+    if (!folderName.trim() || isSaving) return;
+    if (!departmentId) {
+      setError('Cadastre um setor antes de criar pastas.');
+      return;
+    }
 
-    onCreateFolder({
-      name: folderName.trim(),
-      departmentId,
-      isLocked,
-      description,
-      parentId: parentFolderId || null,
-    });
-    onClose();
+    try {
+      setIsSaving(true);
+      setError(null);
+      await onCreateFolder({
+        name: folderName.trim(),
+        departmentId,
+        isLocked,
+        description,
+        parentId: parentFolderId || null,
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Não foi possível criar a pasta.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -80,6 +107,7 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
             <label className="block text-xs font-semibold text-slate-700 mb-1">Setor Responsável</label>
             <select
               value={departmentId}
+              disabled={Boolean(parentFolderId)}
               onChange={(e) => setDepartmentId(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500"
             >
@@ -119,6 +147,13 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
             </div>
           </label>
 
+          {error && (
+            <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
             <button
               type="button"
@@ -129,10 +164,11 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={!folderName.trim()}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20"
+              disabled={!folderName.trim() || isSaving}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center gap-2"
             >
-              Criar Pasta
+              {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isSaving ? 'Criando...' : 'Criar Pasta'}
             </button>
           </div>
         </form>

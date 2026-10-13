@@ -9,3 +9,4 @@ coverage/
 .update/
 dist-next/
 dist-prev/
+storage/

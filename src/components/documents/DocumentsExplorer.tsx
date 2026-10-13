@@ -93,6 +93,12 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   // Delete folder confirmation modal
   const [deleteConfirmFolder, setDeleteConfirmFolder] = useState<Folder | null>(null);
+  // Confirmação de exclusão de documento (vai para a lixeira do setor)
+  const [deleteConfirmDoc, setDeleteConfirmDoc] = useState<DocumentItem | null>(null);
+
+  const canDeleteDoc = (doc: DocumentItem) =>
+    doc.ownerId === currentUser.id ||
+    verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DELETE_DOCUMENT', doc.folderId || undefined).allowed;
 
   // Floating Context Menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -139,8 +145,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     if (currentFolderId) {
       return doc.folderId === currentFolderId;
     }
-    // Root of department: show files in this department's folders or department root
-    return doc.departmentId === currentDeptId;
+    // Raiz do setor: somente arquivos que não estão dentro de nenhuma pasta
+    return doc.departmentId === currentDeptId && !doc.folderId;
   });
 
   // Check if current user is manager of this area or director/developer
@@ -217,7 +223,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   };
 
   const handleOpenDocument = (doc: DocumentItem) => {
-    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'VIEW_DOCUMENT', doc.folderId);
+    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'VIEW_DOCUMENT', doc.folderId || undefined);
     if (!perm.allowed) {
       onAccessDenied(
         perm.reason || `Acesso negado: Você não possui autorização para visualizar o documento ${doc.name}.`,
@@ -231,7 +237,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   const handleTriggerDownload = (doc: DocumentItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DOWNLOAD_DOCUMENT', doc.folderId);
+    const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DOWNLOAD_DOCUMENT', doc.folderId || undefined);
     if (!perm.allowed) {
       onAccessDenied(
         perm.reason || `Acesso negado: A permissão de download para o arquivo ${doc.name} foi revogada pelo Gestor.`,
@@ -773,7 +779,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                             doc.id,
                             doc.departmentId,
                             'DOWNLOAD_DOCUMENT',
-                            doc.folderId
+                            doc.folderId || undefined
                           ).allowed;
 
                           return (
@@ -829,6 +835,17 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                                 >
                                   <Eye className="w-4 h-4" />
                                 </button>
+
+                                {canDeleteDoc(doc) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmDoc(doc)}
+                                    className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                    title="Excluir (enviar para a lixeira)"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -933,7 +950,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                           doc.id,
                           doc.departmentId,
                           'DOWNLOAD_DOCUMENT',
-                          doc.folderId
+                          doc.folderId || undefined
                         ).allowed;
 
                         return (
@@ -984,6 +1001,16 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                                 >
                                   <Download className="w-3.5 h-3.5" />
                                 </button>
+                                {canDeleteDoc(doc) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmDoc(doc)}
+                                    className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                    title="Excluir (enviar para a lixeira)"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => handleOpenDocument(doc)}
@@ -1209,8 +1236,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
             <div className="text-center space-y-1">
               <h3 className="text-base font-bold text-slate-900">Excluir Pasta?</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Tem certeza que deseja excluir permanentemente a pasta <strong>{deleteConfirmFolder.name}</strong>?
-                Os arquivos e subitens vinculados a ela serão removidos.
+                Tem certeza que deseja excluir a pasta <strong>{deleteConfirmFolder.name}</strong>? Somente pastas vazias
+                podem ser excluídas: mova ou exclua os arquivos e subpastas antes.
               </p>
             </div>
             <div className="flex items-center gap-3 pt-2">
@@ -1227,6 +1254,44 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20"
               >
                 Sim, Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmação: excluir documento → lixeira do setor por 7 dias */}
+      {deleteConfirmDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-bold text-slate-900">Enviar para a lixeira?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                <strong className="break-all">{deleteConfirmDoc.name}</strong> irá para a lixeira do setor{' '}
+                <strong>{deleteConfirmDoc.departmentName}</strong>. Ele pode ser restaurado por <strong>7 dias</strong>;
+                depois disso será apagado do servidor definitivamente.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmDoc(null)}
+                className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteDocument(deleteConfirmDoc.id);
+                  setDeleteConfirmDoc(null);
+                }}
+                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-rose-600/20"
+              >
+                Enviar para a lixeira
               </button>
             </div>
           </div>
