@@ -25,7 +25,7 @@ import {
   PermissionType,
 } from './types';
 import { createAuditEntry, verifyPermission } from './services/securityEngine';
-import { apiClient } from './services/apiClient';
+import { apiClient, dispatchSessionExpired } from './services/apiClient';
 
 // Components
 import { LoginView } from './components/auth/LoginView';
@@ -194,6 +194,8 @@ export default function App() {
 
   // Modals
   const [viewingDocument, setViewingDocument] = useState<DocumentItem | null>(null);
+  // Incrementado a cada recarga de dados (usado por telas que buscam dados próprios, como a Lixeira)
+  const [dataVersion, setDataVersion] = useState(0);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadDeptId, setUploadDeptId] = useState<string | undefined>();
   const [uploadFolderId, setUploadFolderId] = useState<string | undefined>();
@@ -240,9 +242,10 @@ export default function App() {
   );
 
   // Fetch initial data from PostgreSQL REST API on startup
-  const loadBootstrapData = useCallback(async () => {
+  const loadBootstrapData = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent);
     try {
-      setIsLoadingInitialData(true);
+      if (!silent) setIsLoadingInitialData(true);
       const data = await apiClient.getBootstrapData();
       if (data) {
         if (data.currentUser) setCurrentUser(data.currentUser);
@@ -258,10 +261,11 @@ export default function App() {
         if (data.initialSetupMode !== undefined) setInitialSetupMode(Boolean(data.initialSetupMode));
       }
       setApiSyncError(null);
+      setDataVersion((v) => v + 1);
     } catch (err: any) {
       console.warn('[API Sync Notice] Inicializando dados locais resilientes com backend:', err.message);
     } finally {
-      setIsLoadingInitialData(false);
+      if (!silent) setIsLoadingInitialData(false);
     }
   }, []);
 
@@ -281,6 +285,65 @@ export default function App() {
     };
     checkActiveSession();
   }, [loadBootstrapData]);
+
+  // TEMPO REAL: o servidor avisa quando pastas, arquivos, permissões, usuários ou setores mudam.
+  // A tela recarrega os dados (já filtrados pelo servidor) sem o usuário precisar atualizar a página.
+  useEffect(() => {
+    if (!currentUser?.id || currentUser.mustChangePassword || typeof EventSource === 'undefined') return;
+
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let readyCount = 0;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => loadBootstrapData({ silent: true }), 250);
+    };
+
+    const source = new EventSource('/api/events', { withCredentials: true });
+    source.addEventListener('changed', scheduleRefresh);
+    source.addEventListener('session', async () => {
+      // Algo mudou na conta deste usuário (perfil, setor, bloqueio): revalida a sessão
+      try {
+        const res = await apiClient.getMe();
+        if (!res?.user) throw new Error('sessão');
+        scheduleRefresh();
+      } catch {
+        dispatchSessionExpired('Sua sessão foi encerrada por uma alteração de segurança. Entre novamente.');
+      }
+    });
+    // Ao reconectar (queda de rede, servidor reiniciado), busca o que pode ter mudado no intervalo
+    source.addEventListener('ready', () => {
+      readyCount += 1;
+      if (readyCount > 1) scheduleRefresh();
+    });
+
+    // Rede de segurança: ao voltar para a aba, sincroniza também
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') scheduleRefresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      source.close();
+      document.removeEventListener('visibilitychange', onVisible);
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
+  }, [currentUser?.id, currentUser?.mustChangePassword, loadBootstrapData]);
+
+  // Se o documento aberto deixou de estar acessível (pasta bloqueada, permissão retirada, excluído), fecha na hora
+  useEffect(() => {
+    if (!viewingDocument) return;
+    const fresh = documents.find((d) => d.id === viewingDocument.id);
+    if (!fresh) {
+      setViewingDocument(null);
+      setAccessDeniedState({
+        isOpen: true,
+        reason: 'Seu acesso a este documento foi removido ou ele foi excluído. A visualização foi encerrada.',
+        resourceName: viewingDocument.name,
+      });
+    } else if (fresh !== viewingDocument && (fresh.name !== viewingDocument.name || fresh.folderId !== viewingDocument.folderId)) {
+      setViewingDocument(fresh);
+    }
+  }, [documents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Helper: Append immutable audit log & persist via HTTP
   const logSecurityEvent = async (
@@ -1164,7 +1227,7 @@ export default function App() {
             </div>
             <button
               type="button"
-              onClick={loadBootstrapData}
+              onClick={() => loadBootstrapData()}
               className="font-bold underline hover:text-amber-950 cursor-pointer"
             >
               Reconectar
@@ -1289,7 +1352,12 @@ export default function App() {
           )}
 
           {activeTab === 'trash' && (
-            <TrashView currentUser={currentUser} departments={departments} onRestore={handleRestoreDocument} />
+            <TrashView
+              currentUser={currentUser}
+              departments={departments}
+              onRestore={handleRestoreDocument}
+              refreshKey={dataVersion}
+            />
           )}
 
           {['shared', 'favorites'].includes(activeTab) && (
