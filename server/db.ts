@@ -312,6 +312,22 @@ export async function initDatabase(): Promise<void> {
       DELETE FROM departments WHERE id IN ('dept-ti', 'dept-financeiro', 'dept-rh', 'dept-comercial', 'dept-marketing', 'dept-juridico');
     `);
 
+    // 4b. Setores de demonstração restantes de versões antigas (Projetos, Documentos Gerais, Arquivados).
+    // Só são removidos se não tiverem nenhum documento, preservando qualquer uso real.
+    const legacyDemoDepts = ['dept-projetos', 'dept-gerais', 'dept-arquivados'];
+    const { rows: removableDepts } = await client.query(
+      `SELECT d.id FROM departments d
+       WHERE d.id = ANY($1::text[])
+         AND NOT EXISTS (SELECT 1 FROM documents doc WHERE doc.department_id = d.id)`,
+      [legacyDemoDepts]
+    );
+    const removableIds = removableDepts.map((r: any) => r.id);
+    if (removableIds.length > 0) {
+      await client.query('DELETE FROM folders WHERE department_id = ANY($1::text[])', [removableIds]);
+      await client.query('DELETE FROM departments WHERE id = ANY($1::text[])', [removableIds]);
+      console.log(`[DB Migration] Setores de demonstração removidos: ${removableIds.join(', ')}`);
+    }
+
     // 5. Administrador Inicial do .env (Apenas se não existir nenhum usuário com papel ADMIN ou DEVELOPER)
     const adminEmail = process.env.ADMIN_EMAIL;
     const adminPass = process.env.ADMIN_INITIAL_PASSWORD;

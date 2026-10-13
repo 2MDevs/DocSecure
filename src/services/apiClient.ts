@@ -227,12 +227,20 @@ export const apiClient = {
     return apiRequest<User[]>('/api/users');
   },
 
-  async createUser(userData: Partial<User> & { initialPassword?: string }): Promise<User> {
-    return apiRequest<User>('/api/users', {
+  async createUser(
+    userData: Partial<User> & { initialPassword?: string }
+  ): Promise<User & { emailSent?: boolean; temporaryPassword?: string }> {
+    return apiRequest<User & { emailSent?: boolean; temporaryPassword?: string }>('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData),
     });
+  },
+
+  async resendUserAccess(
+    id: string
+  ): Promise<{ success: boolean; emailSent: boolean; temporaryPassword?: string; message: string }> {
+    return apiRequest(`/api/users/${id}/resend-access`, { method: 'POST' });
   },
 
   async updateUser(id: string, updates: Partial<User> & { password?: string }): Promise<User> {
@@ -268,6 +276,10 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(deptData),
     });
+  },
+
+  async deleteDepartment(id: string): Promise<{ success: boolean; deletedId: string }> {
+    return apiRequest(`/api/departments/${id}`, { method: 'DELETE' });
   },
 
   async updateDepartment(id: string, updates: Partial<Department>): Promise<Department> {

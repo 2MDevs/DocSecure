@@ -3,7 +3,29 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { pool } from '../db';
 import { requireAuth, requireRole, sanitizeUser, revokeAllUserSessions } from '../auth/middleware';
-import { sendPasswordResetEmail, buildPasswordLink } from '../mailer';
+import { sendAccessCredentialsEmail } from '../mailer';
+
+/**
+ * Gera uma senha provisória aleatória que atende à política do sistema
+ * (mínimo 10 caracteres com letras e números). Evita caracteres ambíguos (0/O, 1/l/I).
+ */
+function generateTemporaryPassword(length = 12): string {
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const all = letters + digits;
+  const chars = [letters[crypto.randomInt(letters.length)], digits[crypto.randomInt(digits.length)]];
+  while (chars.length < length) chars.push(all[crypto.randomInt(all.length)]);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
+
+function getLoginUrl(req: Request): string {
+  const baseUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  return `${baseUrl}/login`;
+}
 
 export const usersRouter = Router();
 
@@ -28,9 +50,10 @@ usersRouter.get('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR', 'MANAGER'
   }
 });
 
-// Criar Usuário (Apenas Desenvolvedores e Diretores)
-usersRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
+// Criar Usuário (Desenvolvedores e Diretores; Gestores apenas colaboradores do próprio setor)
+usersRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR', 'MANAGER'), async (req: Request, res: Response) => {
   try {
+    const requester = (req as any).user;
     const {
       name,
       email,
@@ -58,6 +81,15 @@ usersRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (
       });
     }
 
+    if (
+      String(requester.role).toUpperCase() === 'MANAGER' &&
+      (String(role).toUpperCase() !== 'EMPLOYEE' || departmentId !== requester.departmentId)
+    ) {
+      return res.status(403).json({
+        error: 'Gestores só podem cadastrar colaboradores no próprio setor.',
+      });
+    }
+
     const cleanEmail = String(email).trim().toLowerCase();
 
     // Checar unicidade
@@ -67,12 +99,15 @@ usersRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (
     }
 
     const newId = 'user-' + crypto.randomBytes(8).toString('hex');
-    let passwordHash: string | null = null;
-    let mustChangePassword = true;
-
-    if (initialPassword && String(initialPassword).length >= 10) {
-      passwordHash = await bcrypt.hash(String(initialPassword), 12);
-    }
+    // Senha provisória: informada pelo administrador (se cumprir a política) ou gerada aleatoriamente.
+    // Em ambos os casos o usuário é obrigado a trocá-la no primeiro acesso.
+    const providedPassword = initialPassword ? String(initialPassword) : '';
+    const temporaryPassword =
+      providedPassword.length >= 10 && /[a-zA-Z]/.test(providedPassword) && /[0-9]/.test(providedPassword)
+        ? providedPassword
+        : generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    const mustChangePassword = true;
 
     await pool.query(
       `INSERT INTO users (
@@ -99,23 +134,16 @@ usersRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (
       ]
     );
 
-    // Se não informou senha inicial, dispara e-mail de primeiro acesso
-    if (!passwordHash) {
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetHash = crypto.createHash('sha256').update(resetToken).digest('hex');
-      await pool.query(
-        `INSERT INTO password_resets (id, user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours')`,
-        ['reset_' + crypto.randomBytes(16).toString('hex'), newId, resetHash]
-      );
-
-      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-      const resetUrl = buildPasswordLink(resetToken, baseUrl);
-      sendPasswordResetEmail(cleanEmail, name, resetUrl).catch(console.error);
-    }
+    // Envia por e-mail os dados de acesso com a senha provisória
+    const emailSent = await sendAccessCredentialsEmail(cleanEmail, name, temporaryPassword, getLoginUrl(req));
 
     const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [newId]);
-    return res.status(201).json(sanitizeUser(rows[0]));
+    return res.status(201).json({
+      ...sanitizeUser(rows[0]),
+      emailSent,
+      // Só é devolvida ao administrador quando o e-mail falhou, para que ele possa repassá-la manualmente
+      temporaryPassword: emailSent ? undefined : temporaryPassword,
+    });
   } catch (err: any) {
     console.error('[USERS CREATE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao cadastrar novo usuário.' });
@@ -251,6 +279,55 @@ usersRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async
   } catch (err: any) {
     console.error('[USERS UPDATE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao atualizar dados do usuário.' });
+  }
+});
+
+// Reenviar acesso: gera nova senha provisória, exige troca no próximo login e envia por e-mail
+usersRouter.post('/:id/resend-access', requireAuth, requireRole('DEVELOPER', 'DIRECTOR', 'MANAGER'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const requester = (req as any).user;
+    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    const target = userRes.rows[0];
+    if (target.id === requester.id) {
+      return res.status(400).json({ error: 'Para trocar a sua própria senha, use a tela Segurança.' });
+    }
+    const targetRole = String(target.role || '').toUpperCase();
+    if (targetRole === 'DEVELOPER' && String(requester.role).toUpperCase() !== 'DEVELOPER') {
+      return res.status(403).json({ error: 'Somente desenvolvedores podem reenviar o acesso de outro desenvolvedor.' });
+    }
+    if (String(requester.role).toUpperCase() === 'MANAGER' && (targetRole !== 'EMPLOYEE' || target.department_id !== requester.departmentId)) {
+      return res.status(403).json({ error: 'Gestores só podem reenviar o acesso de colaboradores do próprio setor.' });
+    }
+    if (target.status === 'BLOCKED') {
+      return res.status(400).json({ error: 'Desbloqueie o usuário antes de reenviar o acesso.' });
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+
+    await pool.query(
+      `UPDATE users SET password_hash = $1, must_change_password = true, failed_login_attempts = 0, locked_until = NULL WHERE id = $2`,
+      [passwordHash, id]
+    );
+    await revokeAllUserSessions(id);
+
+    const emailSent = await sendAccessCredentialsEmail(target.email, target.name, temporaryPassword, getLoginUrl(req), true);
+
+    return res.json({
+      success: true,
+      emailSent,
+      temporaryPassword: emailSent ? undefined : temporaryPassword,
+      message: emailSent
+        ? `Nova senha provisória enviada para ${target.email}.`
+        : 'Não foi possível enviar o e-mail. Repasse a senha provisória ao usuário manualmente.',
+    });
+  } catch (err: any) {
+    console.error('[USERS RESEND ACCESS ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao reenviar o acesso do usuário.' });
   }
 });
 

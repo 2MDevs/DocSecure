@@ -7,6 +7,7 @@ import {
   Lock,
   AlertTriangle,
   X,
+  Trash2,
 } from 'lucide-react';
 import { Department, User } from '../../types';
 
@@ -16,6 +17,7 @@ interface SectorsManagementProps {
   currentUser: User;
   onUpdateDepartment: (deptId: string, data: Partial<Department>) => void;
   onCreateDepartment: (deptData: Partial<Department>) => void;
+  onDeleteDepartment?: (deptId: string) => Promise<void>;
 }
 
 // Format bytes into readable B, KB, MB, GB, TB with decimals
@@ -34,8 +36,28 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
   currentUser,
   onUpdateDepartment,
   onCreateDepartment,
+  onDeleteDepartment,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const canDelete = Boolean(onDeleteDepartment) && (currentUser.role === 'DEVELOPER' || currentUser.role === 'DIRECTOR');
+
+  const handleDelete = async (dept: Department) => {
+    if (!onDeleteDepartment) return;
+    if (!window.confirm(`Excluir o setor "${dept.name}"?\n\nSó é possível excluir setores sem documentos e sem usuários vinculados.`)) {
+      return;
+    }
+    try {
+      setDeletingId(dept.id);
+      setDeleteError(null);
+      await onDeleteDepartment(dept.id);
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Não foi possível excluir o setor.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptCode, setNewDeptCode] = useState('');
   const [newQuotaGb, setNewQuotaGb] = useState('500');
@@ -96,6 +118,18 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
       </div>
 
       {/* Grid of Sector & Quota Cards */}
+      {deleteError && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start justify-between gap-2">
+          <span className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            {deleteError}
+          </span>
+          <button type="button" onClick={() => setDeleteError(null)} className="text-rose-500 hover:text-rose-700" aria-label="Fechar">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {departments.length === 0 ? (
           <div className="col-span-full bg-white p-12 rounded-2xl border border-dashed border-slate-300 text-center flex flex-col items-center justify-center">
@@ -223,6 +257,20 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
                     className="text-slate-500 hover:text-slate-700 cursor-pointer"
                   >
                     {dept.isLocked ? 'Desbloquear Acesso Livre' : 'Ativar Bloqueio RBAC'}
+                  </button>
+                </div>
+              )}
+
+              {canDelete && (
+                <div className={`flex justify-end ${currentUser.role === 'DEVELOPER' ? '' : 'pt-3 border-t border-slate-100'}`}>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(dept)}
+                    disabled={deletingId === dept.id}
+                    className="text-xs text-rose-600 hover:text-rose-700 font-medium inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {deletingId === dept.id ? 'Excluindo...' : 'Excluir setor'}
                   </button>
                 </div>
               )}

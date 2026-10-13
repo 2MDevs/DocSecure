@@ -9,7 +9,6 @@ import {
   Folder,
   Star,
   Trash2,
-  HardDrive,
   Laptop,
   Building,
   LogOut,
@@ -128,19 +127,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               >
                 <Laptop className="w-4 h-4 shrink-0" />
                 <span>Dispositivos</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onSelectTab('storage')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  activeTab === 'storage'
-                    ? 'bg-[#2563eb] text-white shadow-md shadow-blue-600/20'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <HardDrive className="w-4 h-4 shrink-0" />
-                <span>Armazenamento</span>
               </button>
 
               <button
