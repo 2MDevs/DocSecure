@@ -252,18 +252,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                     <ShieldCheck className="w-4 h-4 shrink-0" />
                     <span>Permissões do Setor</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onSelectTab('system')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-sm font-medium transition-all ${
-                      activeTab === 'system'
-                        ? 'bg-[#2563eb] text-white'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
-                    }`}
-                  >
-                    <Server className="w-4 h-4 shrink-0" />
-                    <span>Sistema</span>
-                  </button>
                 </div>
               )}
 

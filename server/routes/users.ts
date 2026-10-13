@@ -371,8 +371,27 @@ usersRouter.delete('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), as
       return res.status(400).json({ error: 'Você não pode excluir o seu próprio usuário conectado.' });
     }
 
+    const { rows: targetRows } = await pool.query('SELECT id, name, email, role FROM users WHERE id = $1', [id]);
+    const target = targetRows[0];
+    if (!target) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    if (String(target.role).toUpperCase() === 'DEVELOPER' && String(user.role).toUpperCase() !== 'DEVELOPER') {
+      return res.status(403).json({ error: 'Somente desenvolvedores podem excluir outro desenvolvedor.' });
+    }
+
     await revokeAllUserSessions(id);
     await pool.query('DELETE FROM users WHERE id = $1', [id]);
+
+    const logId = 'audit-' + crypto.randomBytes(8).toString('hex');
+    const logHash = crypto.createHash('sha256').update(logId + user.id + Date.now()).digest('hex');
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1';
+    await pool
+      .query(
+        `INSERT INTO audit_logs (id, timestamp, user_id, user_name, role, department, action, resource_id, resource_name, details, ip_address, device_info, result, hash)
+         VALUES ($1, NOW(), $2, $3, $4, $5, 'USER_DELETED', $6, $7, $8, $9, 'Painel Web', 'SUCCESS', $10)`,
+        [logId, user.id, user.name, user.role, user.departmentName || 'Geral', id, target.name, `Usuário ${target.email} excluído. Sessões e dispositivos revogados.`, ip, logHash]
+      )
+      .catch((e: any) => console.warn('[Audit Log Insert Warning]', e));
+
     return res.json({ success: true, deletedId: id });
   } catch (err: any) {
     console.error('[USERS DELETE ERROR]', err);

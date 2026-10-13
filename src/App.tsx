@@ -66,7 +66,7 @@ export const ROLE_ALLOWED_ROUTES: Record<string, UserRole[]> = {
   '/dispositivos': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
   '/armazenamento': ['DEVELOPER', 'DIRECTOR'],
   '/auditoria': ['DEVELOPER', 'DIRECTOR'],
-  '/sistema': ['DEVELOPER', 'DIRECTOR', 'MANAGER'],
+  '/sistema': ['DEVELOPER', 'DIRECTOR'],
   '/seguranca': ['DEVELOPER', 'DIRECTOR', 'MANAGER', 'EMPLOYEE'],
   '/integracao': ['DEVELOPER'],
 };
@@ -901,6 +901,12 @@ export default function App() {
     logSecurityEvent(currentUser, 'USER_EDITED', saved.name, `Usuário atualizado: ${changes}.`, 'SUCCESS');
   };
 
+  // Excluir usuário (o servidor revoga sessões e registra na auditoria)
+  const handleDeleteUser = async (userId: string) => {
+    await apiClient.deleteUser(userId);
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
   // Reenviar acesso: nova senha provisória por e-mail + troca obrigatória no próximo login
   const handleResendAccess = async (userId: string) => {
     const res = await apiClient.resendUserAccess(userId);
@@ -1288,6 +1294,7 @@ export default function App() {
               onCreateUser={handleCreateUser}
               onResendAccess={handleResendAccess}
               onUpdateUser={handleUpdateUser}
+              onDeleteUser={handleDeleteUser}
               onToggleUserStatus={handleToggleUserStatus}
               onReset2FA={(userId) => {
                 const u = users.find((x) => x.id === userId);
