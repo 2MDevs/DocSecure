@@ -254,13 +254,6 @@ export const NavPane: React.FC<NavPaneProps> = ({
         <button type="button" onClick={onLogout} className={`${rowBase} pl-2 text-rose-600 hover:bg-rose-50`}>
           <LogOut className="w-4 h-4" /> Encerrar sessão
         </button>
-        {dbStatus && (
-          <div className="px-2 pt-1 text-[11px] text-slate-400 flex items-center gap-1.5" title={`Latência ${dbStatus.latencyMs}ms`}>
-            <Database className={`w-3 h-3 ${dbStatus.connected ? 'text-emerald-500' : 'text-amber-500'}`} />
-            <span className="font-mono truncate">{dbStatus.databaseName}</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${dbStatus.connected ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-          </div>
-        )}
       </div>
     </div>
   );

@@ -281,6 +281,11 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE devices ALTER COLUMN trusted_until DROP NOT NULL;
 
       -- Documentos: armazenamento real criptografado, raiz do setor e lixeira com prazo de 7 dias
+      -- PIN de desbloqueio e bloqueio de sessão por inatividade
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_failed_attempts INT DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
+
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS storage_path TEXT;
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_at TIMESTAMPTZ;
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_by VARCHAR(100);

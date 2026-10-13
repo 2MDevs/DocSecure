@@ -1,3 +1,4 @@
+import { canWrite, reportConnectionProblem, OFFLINE_MESSAGE } from './connectivity';
 import {
   User,
   Department,
@@ -72,6 +73,19 @@ export interface LoginResponse {
 }
 
 export const SESSION_EXPIRED_EVENT = 'docsecure:session-expired';
+export const SESSION_LOCKED_EVENT = 'docsecure:session-locked';
+
+/** Erro de conexão (servidor/banco fora do ar): o envio de arquivos vai para a fila local. */
+export class ConnectionError extends Error {
+  isConnectionError = true;
+  constructor(message = OFFLINE_MESSAGE) {
+    super(message);
+  }
+}
+
+export function dispatchSessionLocked() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SESSION_LOCKED_EVENT));
+}
 export const SESSION_EXPIRED_MESSAGE = 'Sua sessão expirou. Entre novamente.';
 
 // Rotas isentas de disparar o evento de sessão expirada global
@@ -104,8 +118,30 @@ export async function apiRequest<T = any>(url: string, init?: RequestInit): Prom
     credentials: 'include',
     ...init,
   };
+  const method = (options.method || 'GET').toUpperCase();
 
-  const res = await fetch(url, options);
+  // Fora do ar: bloqueia qualquer alteração para não perder dados
+  if (method !== 'GET' && !canWrite() && !url.startsWith('/api/auth/')) {
+    throw new ConnectionError();
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, options);
+  } catch {
+    reportConnectionProblem();
+    throw new ConnectionError();
+  }
+
+  // Sessão em modo de suspensão: pede o PIN
+  if (res.status === 423) {
+    dispatchSessionLocked();
+    throw new Error('Sessão bloqueada por inatividade. Desbloqueie para continuar.');
+  }
+  // Banco indisponível / servidor reiniciando
+  if (res.status === 503 || res.status === 502 || res.status === 504) {
+    reportConnectionProblem();
+  }
 
   if (res.status === 401) {
     const isExempt = EXEMPT_SESSION_EXPIRED_ROUTES.some(
@@ -202,8 +238,47 @@ export const apiClient = {
     });
   },
 
-  async getMe(): Promise<{ user: User }> {
-    return apiRequest<{ user: User }>('/api/auth/me');
+  async getMe(): Promise<{ user: User; sessionLocked?: boolean }> {
+    return apiRequest<{ user: User; sessionLocked?: boolean }>('/api/auth/me');
+  },
+
+  // Bloqueio por inatividade e PIN
+  async getSecurityPolicy(): Promise<{ lockIdleMinutes: number; pinMaxAttempts: number; hasPin: boolean; sessionLocked: boolean }> {
+    return apiRequest('/api/auth/security-policy');
+  },
+
+  async lockSession(): Promise<void> {
+    await apiRequest('/api/auth/lock', { method: 'POST' });
+  },
+
+  /** Desbloqueia com PIN (ou senha, se o usuário não tiver PIN). Não dispara "sessão expirada" automaticamente. */
+  async unlockSession(secret: string): Promise<{ unlocked?: boolean; loggedOut?: boolean; error?: string }> {
+    const res = await fetch('/api/auth/unlock', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: secret }),
+    }).catch(() => null);
+    if (!res) return { error: 'Sem conexão com o servidor.' };
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) return { unlocked: true };
+    return { loggedOut: Boolean(body?.loggedOut), error: body?.error || 'Não foi possível desbloquear.' };
+  },
+
+  async setPin(pin: string, currentPassword: string): Promise<{ success: boolean; message: string }> {
+    return apiRequest('/api/auth/pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin, currentPassword }),
+    });
+  },
+
+  async removePin(currentPassword: string): Promise<{ success: boolean; message: string }> {
+    return apiRequest('/api/auth/pin', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword }),
+    });
   },
 
   async logout(): Promise<void> {
@@ -339,6 +414,10 @@ export const apiClient = {
       dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
       throw new Error(SESSION_EXPIRED_MESSAGE);
     }
+    if (res.status === 423) {
+      dispatchSessionLocked();
+      throw new Error('Sessão bloqueada por inatividade.');
+    }
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
       try {
@@ -405,10 +484,21 @@ export const apiClient = {
           dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
           return reject(new Error(SESSION_EXPIRED_MESSAGE));
         }
+        if (xhr.status === 423) {
+          dispatchSessionLocked();
+          return reject(new Error('Sessão bloqueada por inatividade. Desbloqueie para continuar.'));
+        }
+        if (xhr.status === 0 || xhr.status === 502 || xhr.status === 504 || (xhr.status === 503 && !body?.error?.includes('SETTINGS_ENCRYPTION_KEY'))) {
+          reportConnectionProblem();
+          return reject(new ConnectionError());
+        }
         if (xhr.status >= 200 && xhr.status < 300 && body) return resolve(body as DocumentItem);
         reject(new Error(body?.error || `Falha no envio (HTTP ${xhr.status}).`));
       };
-      xhr.onerror = () => reject(new Error('Falha de conexão durante o envio do arquivo.'));
+      xhr.onerror = () => {
+        reportConnectionProblem();
+        reject(new ConnectionError());
+      };
       xhr.send(formData);
     });
   },

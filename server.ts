@@ -6,8 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 
-import { initDatabase } from './server/db';
+import { initDatabase, pool } from './server/db';
 import { authRouter } from './server/auth/routes';
+import { lockRouter } from './server/auth/lockRoutes';
 import { usersRouter } from './server/routes/users';
 import { departmentsRouter } from './server/routes/departments';
 import { foldersRouter } from './server/routes/folders';
@@ -49,9 +50,20 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // 3. Endpoint Público de Healthcheck
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'UP',
+app.get('/api/health', async (_req, res) => {
+  // Verifica também o banco: o indicador de conexão da interface usa este retorno
+  let db: 'up' | 'down' = 'down';
+  try {
+    await Promise.race([
+      pool.query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+    ]);
+    db = 'up';
+  } catch {}
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(db === 'up' ? 200 : 503).json({
+    status: db === 'up' ? 'UP' : 'DEGRADED',
+    db,
     environment: isProduction ? 'production' : 'development',
     timestamp: new Date().toISOString(),
   });
@@ -62,6 +74,7 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/events', requireAuth, eventsHandler);
 app.use(realtimeChangeNotifier);
 
+app.use('/api/auth', lockRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/departments', departmentsRouter);

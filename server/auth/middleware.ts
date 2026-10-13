@@ -27,6 +27,7 @@ export function sanitizeUser(row: any): User {
     failedLoginAttempts: row.failed_login_attempts || 0,
     twoFactorEnabled: Boolean(row.two_factor_enabled),
     mustChangePassword: Boolean(row.must_change_password),
+    hasPin: Boolean(row.pin_hash),
     permittedFolderIds:
       typeof row.permitted_folder_ids === 'string'
         ? JSON.parse(row.permitted_folder_ids)
@@ -161,7 +162,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let result;
     try {
       result = await pool.query(
-        `SELECT s.id as session_id, s.expires_at, u.*
+        `SELECT s.id as session_id, s.expires_at, s.locked_at as session_locked_at, u.*
          FROM sessions s
          JOIN users u ON s.user_id = u.id
          WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW()
@@ -204,6 +205,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     (req as any).user = sanitizeUser(row);
     (req as any).sessionId = row.session_id;
+    (req as any).sessionLocked = Boolean(row.session_locked_at);
+
+    // Sessão em modo de suspensão (bloqueada por inatividade): só libera desbloqueio, sessão e saída
+    if (row.session_locked_at) {
+      const url = (req.originalUrl || '').split('?')[0];
+      const allowedWhileLocked = ['/api/auth/unlock', '/api/auth/me', '/api/auth/logout', '/api/auth/security-policy', '/api/events'];
+      if (!allowedWhileLocked.includes(url)) {
+        return res.status(423).json({ error: 'Sessão bloqueada por inatividade. Desbloqueie para continuar.', code: 'SESSION_LOCKED' });
+      }
+    }
 
     // Se o usuário precisa trocar a senha obrigatoriamente, bloqueia acesso a rotas de dados
     if (row.must_change_password) {

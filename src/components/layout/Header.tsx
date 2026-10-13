@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Avatar } from '../common/Avatar';
 import { DocSecureLogo } from '../common/DocSecureLogo';
+import { ConnectionIndicator } from '../common/ConnectionIndicator';
 import { User as UserType, SystemNotification } from '../../types';
 
 interface HeaderProps {
@@ -39,6 +40,7 @@ interface HeaderProps {
     latencyMs: number;
     mode: string;
   };
+  pendingSyncCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -57,6 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
   isMobileFrameActive,
   onToggleMobileFrame,
   dbStatus,
+  pendingSyncCount = 0,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -137,17 +140,8 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        {/* DB Connection Status Indicator (hidden on mobile, visible on tablet/desktop) */}
-        {dbStatus && (
-          <div
-            title={`PostgreSQL: ${dbStatus.databaseName} • Latência: ${dbStatus.latencyMs}ms • Modo: ${dbStatus.mode}`}
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] font-medium text-slate-700"
-          >
-            <Database className={`w-3.5 h-3.5 ${dbStatus.connected ? 'text-emerald-600' : 'text-amber-500'}`} />
-            <span className="font-mono text-slate-800 font-semibold">{dbStatus.databaseName}</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${dbStatus.connected ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'}`} />
-          </div>
-        )}
+        {/* Indicador único de conexão com o servidor/banco */}
+        <ConnectionIndicator pendingCount={pendingSyncCount} />
 
         {/* Device Viewport Mode Toggle for Testing (Visible ONLY in DEV mode) */}
         {import.meta.env.DEV && onToggleMobileFrame && (
@@ -279,6 +273,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
 
               <div className="border-t border-slate-100 pt-1 space-y-0.5">
+{currentUser.role === 'DEVELOPER' && (
                 <button
                   type="button"
                   onClick={() => {
@@ -290,6 +285,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <Laptop className="w-3.5 h-3.5 text-slate-500" />
                   <span>Meus Dispositivos</span>
                 </button>
+                )}
 
                 <button
                   type="button"
@@ -300,7 +296,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-slate-700 hover:bg-slate-100 transition-colors min-h-[40px]"
                 >
                   <Shield className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Segurança e 2FA</span>
+                  <span>Segurança da conta</span>
                 </button>
 
                 <button

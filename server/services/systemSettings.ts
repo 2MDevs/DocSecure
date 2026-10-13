@@ -28,6 +28,8 @@ export const DEFAULT_SETTINGS: Record<string, { defaultValue: string; isSecret: 
   SMTP_FROM: { defaultValue: 'DocSecure <nao-responda@docsecure.io>', isSecret: false },
   SESSION_TTL_HOURS: { defaultValue: '8', isSecret: false },
   MAX_UPLOAD_MB: { defaultValue: '25', isSecret: false },
+  LOCK_IDLE_MINUTES: { defaultValue: '10', isSecret: false },
+  PIN_MAX_ATTEMPTS: { defaultValue: '5', isSecret: false },
   ADMIN_EMAIL: { defaultValue: '', isSecret: false },
   GEMINI_API_KEY: { defaultValue: '', isSecret: true },
 };
@@ -66,6 +68,24 @@ export const SettingsUpdateSchema = z.object({
       const num = parseInt(val, 10);
       return !isNaN(num) && num >= 1 && num <= 500;
     }, { message: 'MAX_UPLOAD_MB deve estar entre 1 e 500 MB.' }),
+  LOCK_IDLE_MINUTES: z
+    .union([z.number(), z.string()])
+    .optional()
+    .transform((val) => (val !== undefined ? String(val) : undefined))
+    .refine((val) => {
+      if (val === undefined || val === '') return true;
+      const num = parseInt(val, 10);
+      return !isNaN(num) && num >= 0 && num <= 240;
+    }, { message: 'O tempo de inatividade deve estar entre 0 (desligado) e 240 minutos.' }),
+  PIN_MAX_ATTEMPTS: z
+    .union([z.number(), z.string()])
+    .optional()
+    .transform((val) => (val !== undefined ? String(val) : undefined))
+    .refine((val) => {
+      if (val === undefined || val === '') return true;
+      const num = parseInt(val, 10);
+      return !isNaN(num) && num >= 1 && num <= 20;
+    }, { message: 'O limite de tentativas do PIN deve estar entre 1 e 20.' }),
   ADMIN_EMAIL: z
     .string()
     .optional()

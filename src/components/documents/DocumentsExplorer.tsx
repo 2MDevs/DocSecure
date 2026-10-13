@@ -25,6 +25,8 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Check,
+  CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import { Department, Folder, DocumentItem, User, PermissionType } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
@@ -58,6 +60,10 @@ interface DocumentsExplorerProps {
   flatView?: { title: string };
   /** Em Favoritos/Compartilhados, o "Início" volta para o explorador */
   onGoHome?: () => void;
+  /** Arquivos aguardando envio (fila offline) ou sendo enviados agora */
+  pendingDocs?: DocumentItem[];
+  /** Estado de sincronização por documento: enviando, na fila ou recém-sincronizado */
+  syncStates?: Record<string, 'uploading' | 'pending' | 'synced' | 'error'>;
 }
 
 type ViewMode = 'large' | 'medium' | 'details';
@@ -219,7 +225,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   onLocationChange,
   flatView,
   onGoHome,
+  pendingDocs = [],
+  syncStates = {},
 }) => {
+  // Arquivos na fila aparecem junto com os demais, com o ícone de sincronização
+  const allDocuments = useMemo(() => (pendingDocs.length ? [...pendingDocs, ...documents] : documents), [pendingDocs, documents]);
   const [location, setLocation] = useState<Location>({ deptId: null, folderId: null });
   const [backStack, setBackStack] = useState<Location[]>([]);
   const [forwardStack, setForwardStack] = useState<Location[]>([]);
@@ -433,7 +443,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const items: Item[] = useMemo(() => {
     let list: Item[] = [];
     if (flatView) {
-      list = documents
+      list = allDocuments
         .filter((d) => !query || d.name.toLowerCase().includes(query) || d.tags?.some((t) => t.toLowerCase().includes(query)))
         .map((d) => ({ kind: 'doc' as const, id: d.id, name: d.name, doc: d }));
     } else if (query) {
@@ -443,7 +453,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         ...folders
           .filter((f) => inScope(f.departmentId) && f.name.toLowerCase().includes(query))
           .map((f) => ({ kind: 'folder' as const, id: f.id, name: f.name, folder: f })),
-        ...documents
+        ...allDocuments
           .filter(
             (d) =>
               inScope(d.departmentId) &&
@@ -466,7 +476,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         ...folders
           .filter((f) => f.departmentId === location.deptId && (f.parentId || null) === location.folderId)
           .map((f) => ({ kind: 'folder' as const, id: f.id, name: f.name, folder: f })),
-        ...documents
+        ...allDocuments
           .filter((d) => d.departmentId === location.deptId && (d.folderId || null) === location.folderId)
           .map((d) => ({ kind: 'doc' as const, id: d.id, name: d.name, doc: d })),
       ];
@@ -489,20 +499,31 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       if (cmp === 0) cmp = a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' });
       return cmp * dir;
     });
-  }, [query, location, departments, folders, documents, sortKey, sortAsc, folderSize, flatView]);
+  }, [query, location, departments, folders, allDocuments, sortKey, sortAsc, folderSize, flatView]);
 
   const selectedItem = selected ? items.find((i) => i.kind === selected.kind && i.id === selected.id) || null : null;
   const selectedDoc = selectedItem?.kind === 'doc' ? selectedItem.doc : null;
   const selectedFolder = selectedItem?.kind === 'folder' ? selectedItem.folder : null;
 
+  const isPendingDoc = (it: Item | null) => it?.kind === 'doc' && (syncStates[it.id] === 'pending' || syncStates[it.id] === 'uploading');
+
   const activate = (item: Item) => {
+    if (isPendingDoc(item)) {
+      onAccessDenied(
+        syncStates[item.id] === 'uploading'
+          ? 'Este arquivo ainda está sendo enviado. Aguarde a confirmação (✓).'
+          : 'Este arquivo está guardado neste navegador e será enviado automaticamente quando a conexão com o servidor voltar.',
+        item.name
+      );
+      return;
+    }
     if (item.kind === 'dept') openDept(item.dept);
     else if (item.kind === 'folder') openFolder(item.folder);
     else openDoc(item.doc);
   };
 
   const requestDelete = (item: Item | null) => {
-    if (!item) return;
+    if (!item || isPendingDoc(item)) return;
     if (item.kind === 'doc') {
       if (!canDeleteDoc(item.doc)) {
         onAccessDenied('Você não tem permissão para excluir este arquivo.', item.name);
@@ -587,7 +608,41 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   const iconSize = viewMode === 'large' ? 72 : 44;
 
+  /** Setas girando (enviando / na fila) e check verde ao concluir — discretos, no canto do ícone */
+  const SyncBadge: React.FC<{ id: string; size: number }> = ({ id, size }) => {
+    const st = syncStates[id];
+    if (!st) return null;
+    const px = Math.max(12, Math.round(size * 0.3));
+    const title =
+      st === 'uploading'
+        ? 'Enviando…'
+        : st === 'pending'
+        ? 'Aguardando conexão: será enviado automaticamente'
+        : st === 'error'
+        ? 'Falha no envio'
+        : 'Sincronizado';
+    return (
+      <span title={title} className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white shadow-sm" style={{ width: px, height: px }}>
+        {st === 'synced' ? (
+          <CheckCircle2 className="w-full h-full text-emerald-500 animate-in zoom-in duration-200" />
+        ) : st === 'error' ? (
+          <AlertTriangle className="w-full h-full text-rose-500" />
+        ) : (
+          <RefreshCw className={`w-full h-full p-[1px] animate-spin [animation-duration:1.6s] ${st === 'pending' ? 'text-amber-500' : 'text-sky-500'}`} />
+        )}
+      </span>
+    );
+  };
+
   const renderIcon = (it: Item, size: number) => {
+    if (it.kind === 'doc' && syncStates[it.id]) {
+      return (
+        <span className={`relative inline-flex ${syncStates[it.id] === 'pending' ? 'opacity-70' : ''}`}>
+          <FileGlyph ext={it.doc.extension} size={size} />
+          <SyncBadge id={it.id} size={size} />
+        </span>
+      );
+    }
     if (it.kind === 'dept') return <DriveGlyph size={size} locked={!hasDeptAccess(it.dept)} />;
     if (it.kind === 'folder') return <FolderGlyph size={size} locked={it.folder.isLocked} />;
     return <FileGlyph ext={it.doc.extension} size={size} />;
@@ -640,7 +695,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     <div className="h-full select-none">
       <div className="bg-white flex flex-col h-full min-h-[60dvh] overflow-hidden">
         {/* BARRA DE COMANDOS (como a do Explorador do Windows) */}
-        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-200 overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-slate-200 relative z-20">
           <div className="relative">
             <button
               type="button"
@@ -1040,6 +1095,12 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           <span>
             {items.length} {items.length === 1 ? 'item' : 'itens'}
           </span>
+          {pendingDocs.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-amber-700" title="Arquivos guardados neste navegador aguardando a conexão com o servidor">
+              <RefreshCw className="w-3 h-3 animate-spin [animation-duration:1.6s]" />
+              {pendingDocs.length} aguardando envio
+            </span>
+          )}
           {selectedItem && (
             <span className="truncate">
               1 item selecionado {selectedItem.kind !== 'dept' || hasDeptAccess(selectedItem.dept) ? formatBytes(itemSize(selectedItem)) : ''}

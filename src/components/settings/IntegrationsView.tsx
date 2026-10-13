@@ -64,6 +64,8 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
 
   const [sessionTtlHours, setSessionTtlHours] = useState('8');
   const [maxUploadMb, setMaxUploadMb] = useState('25');
+  const [lockIdleMinutes, setLockIdleMinutes] = useState('10');
+  const [pinMaxAttempts, setPinMaxAttempts] = useState('5');
 
   const [adminEmail, setAdminEmail] = useState('');
 
@@ -156,6 +158,8 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
 
       setSessionTtlHours(draft?.sessionTtlHours !== undefined ? draft.sessionTtlHours : (getVal('SESSION_TTL_HOURS') || '8'));
       setMaxUploadMb(draft?.maxUploadMb !== undefined ? draft.maxUploadMb : (getVal('MAX_UPLOAD_MB') || '25'));
+      setLockIdleMinutes(getVal('LOCK_IDLE_MINUTES') || '10');
+      setPinMaxAttempts(getVal('PIN_MAX_ATTEMPTS') || '5');
 
       setAdminEmail(draft?.adminEmail !== undefined ? draft.adminEmail : getVal('ADMIN_EMAIL'));
 
@@ -225,6 +229,8 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
         SMTP_FROM: smtpFrom,
         SESSION_TTL_HOURS: parseInt(sessionTtlHours, 10) || 8,
         MAX_UPLOAD_MB: parseInt(maxUploadMb, 10) || 25,
+        LOCK_IDLE_MINUTES: Number.isFinite(parseInt(lockIdleMinutes, 10)) ? parseInt(lockIdleMinutes, 10) : 10,
+        PIN_MAX_ATTEMPTS: parseInt(pinMaxAttempts, 10) || 5,
         ADMIN_EMAIL: adminEmail,
       };
 
@@ -738,6 +744,42 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
                 className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
               />
               <p className="text-[10px] text-slate-400 mt-1">Padrão: 25 MB (mínimo 1, máximo 500 MB).</p>
+            </div>
+
+            {/* LOCK_IDLE_MINUTES */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-700">Bloqueio por inatividade (minutos)</label>
+                {getSourceBadge('LOCK_IDLE_MINUTES')}
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="240"
+                value={lockIdleMinutes}
+                onChange={(e) => setLockIdleMinutes(e.target.value)}
+                placeholder="10"
+                className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Após esse tempo sem atividade, a tela entra em suspensão e pede o PIN. 0 = desligado.</p>
+            </div>
+
+            {/* PIN_MAX_ATTEMPTS */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-700">Tentativas de PIN antes de sair</label>
+                {getSourceBadge('PIN_MAX_ATTEMPTS')}
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={pinMaxAttempts}
+                onChange={(e) => setPinMaxAttempts(e.target.value)}
+                placeholder="5"
+                className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Errou o PIN esse número de vezes: o usuário é desconectado automaticamente.</p>
             </div>
           </div>
 
