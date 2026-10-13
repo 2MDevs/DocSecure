@@ -115,6 +115,28 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   });
 
   const explorerRef = useRef<HTMLDivElement>(null);
+  const [accessRevokedNotice, setAccessRevokedNotice] = useState<string | null>(null);
+
+  // Tempo real: se a pasta ou o setor aberto deixar de estar acessível (bloqueio, permissão
+  // retirada, exclusão), sai dele na hora e avisa o usuário.
+  useEffect(() => {
+    if (currentFolderId && !folders.some((f) => f.id === currentFolderId)) {
+      setCurrentFolderId(null);
+      setSelectedFolderId(null);
+      setAccessRevokedNotice('A pasta que você estava vendo foi bloqueada, excluída ou o seu acesso foi alterado.');
+    }
+    if (currentDeptId && !departments.some((d) => d.id === currentDeptId)) {
+      setCurrentDeptId(null);
+      setCurrentFolderId(null);
+      setAccessRevokedNotice('O setor que você estava vendo não está mais disponível para você.');
+    }
+  }, [folders, departments]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!accessRevokedNotice) return;
+    const t = setTimeout(() => setAccessRevokedNotice(null), 8000);
+    return () => clearTimeout(t);
+  }, [accessRevokedNotice]);
 
   const currentDepartment = departments.find((d) => d.id === currentDeptId);
   const currentFolder = folders.find((f) => f.id === currentFolderId);
@@ -380,6 +402,16 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       onContextMenu={handleBlankAreaContextMenu}
       className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-150 select-none min-h-[600px] relative"
     >
+      {accessRevokedNotice && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2 animate-in fade-in">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+          <span className="flex-1">{accessRevokedNotice}</span>
+          <button type="button" onClick={() => setAccessRevokedNotice(null)} className="text-amber-700 hover:text-amber-900 font-semibold">
+            OK
+          </button>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

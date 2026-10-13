@@ -7,6 +7,8 @@ interface TrashViewProps {
   currentUser: User;
   departments: Department[];
   onRestore: (doc: DocumentItem) => Promise<DocumentItem>;
+  /** Muda quando o servidor avisa que algo foi alterado (atualização em tempo real) */
+  refreshKey?: number;
 }
 
 const formatSize = (bytes: number) =>
@@ -32,7 +34,7 @@ function remainingLabel(purgeAt?: string | null): { text: string; urgent: boolea
  * Lixeira separada por setor: cada setor só enxerga a própria lixeira.
  * Itens ficam 7 dias (prazo de arrependimento) e depois são apagados do servidor automaticamente.
  */
-export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, onRestore }) => {
+export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, onRestore, refreshKey }) => {
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [retentionDays, setRetentionDays] = useState(7);
   const [loading, setLoading] = useState(true);
@@ -78,6 +80,15 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Atualização em tempo real: recarrega sem mostrar o "carregando"
+  useEffect(() => {
+    if (!refreshKey || !selectedDeptId) return;
+    apiClient
+      .getTrash(selectedDeptId)
+      .then((res) => setItems(res.items.filter((i) => i.departmentId === selectedDeptId)))
+      .catch(() => {});
+  }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRestore = async (doc: DocumentItem) => {
     try {

@@ -19,6 +19,8 @@ import { apiKeysRouter, webhooksRouter } from './server/routes/apiKeys';
 import { systemRouter } from './server/routes/system';
 import { integrationsRouter } from './server/routes/integrations';
 import { systemUpdateRouter } from './server/routes/systemUpdate';
+import { eventsHandler, realtimeChangeNotifier } from './server/services/realtime';
+import { requireAuth } from './server/auth/middleware';
 
 dotenv.config();
 
@@ -56,6 +58,10 @@ app.get('/api/health', (_req, res) => {
 });
 
 // 4. Montagem das Rotas da API
+// Tempo real: avisa os navegadores abertos sempre que algo é alterado
+app.get('/api/events', requireAuth, eventsHandler);
+app.use(realtimeChangeNotifier);
+
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/departments', departmentsRouter);
