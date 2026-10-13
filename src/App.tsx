@@ -94,7 +94,7 @@ export const TAB_TO_TITLE: Record<NavigationTab, string> = {
   shared: 'Documentos Compartilhados',
   trash: 'Lixeira',
   users: 'Gestão de Usuários',
-  sectors: 'Gestão de Setores',
+  sectors: 'Setores & Armazenamento',
   permissions: 'Matriz de Permissões',
   devices: 'Dispositivos Autorizados',
   storage: 'Armazenamento & Quota',
@@ -124,8 +124,8 @@ export function getTabFromPath(pathname: string): NavigationTab {
       return 'permissions';
     case '/dispositivos':
       return 'devices';
-    case '/armazenamento':
-      return 'storage';
+    case '/armazenamento': // tela unificada com Setores
+      return 'sectors';
     case '/auditoria':
       return 'audit_logs';
     case '/sistema':
@@ -418,6 +418,13 @@ export default function App() {
       });
     }
   }, [currentUser, location.pathname, searchParams, initialSetupMode, navigate]);
+
+  // 3b. Tela "Armazenamento" foi unificada com "Setores"
+  useEffect(() => {
+    if (location.pathname === '/armazenamento') {
+      navigate('/setores', { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
   // 4. Troca obrigatória de senha (mustChangePassword === true)
   useEffect(() => {
@@ -892,7 +899,7 @@ export default function App() {
     });
 
     const newUser: User = {
-      id: 'user-' + Date.now(),
+      id: '',
       name: newUserData.name || 'Novo Usuário',
       email: newUserData.email || '',
       matricula: newUserData.matricula || 'MAT-000',
@@ -909,21 +916,36 @@ export default function App() {
       granularPermissions: initialGranular,
     };
 
-    setUsers((prev) => [newUser, ...prev]);
-
-    try {
-      await apiClient.createUser(newUser);
-    } catch (e) {
-      console.warn('[Create User API Persist]', e);
-    }
+    // Grava no servidor primeiro: é ele que gera o ID, a senha provisória e envia o e-mail
+    const { id: _ignored, ...payload } = newUser;
+    const created = await apiClient.createUser(payload);
+    const { emailSent, temporaryPassword, ...savedUser } = created;
+    setUsers((prev) => [savedUser as User, ...prev]);
 
     logSecurityEvent(
       currentUser,
       'USER_CREATED',
-      newUser.name,
-      `Usuário gravado no banco de dados com papel ${newUser.role} no setor ${newUser.departmentName}.`,
+      savedUser.name,
+      `Usuário gravado no banco de dados com papel ${savedUser.role} no setor ${savedUser.departmentName}. ` +
+        (emailSent ? 'Senha provisória enviada por e-mail.' : 'Falha no envio do e-mail de acesso.'),
       'SUCCESS'
     );
+
+    return { emailSent: Boolean(emailSent), temporaryPassword };
+  };
+
+  // Reenviar acesso: nova senha provisória por e-mail + troca obrigatória no próximo login
+  const handleResendAccess = async (userId: string) => {
+    const res = await apiClient.resendUserAccess(userId);
+    const target = users.find((u) => u.id === userId);
+    logSecurityEvent(
+      currentUser,
+      'USER_EDITED',
+      target?.name || userId,
+      res.emailSent ? 'Nova senha provisória enviada por e-mail.' : 'Nova senha provisória gerada (falha no envio do e-mail).',
+      'SUCCESS'
+    );
+    return { emailSent: res.emailSent, temporaryPassword: res.temporaryPassword };
   };
 
   // Toggle User Status (Persisted to PostgreSQL)
@@ -977,6 +999,15 @@ export default function App() {
     }
 
     logSecurityEvent(currentUser, 'DEPARTMENT_CREATED', newDept.name, 'Novo setor provisionado no PostgreSQL.', 'SUCCESS');
+  };
+
+  // Department Delete (somente setores vazios; o servidor valida)
+  const handleDeleteDepartment = async (deptId: string) => {
+    const dept = departments.find((d) => d.id === deptId);
+    await apiClient.deleteDepartment(deptId);
+    setDepartments((prev) => prev.filter((d) => d.id !== deptId));
+    setFolders((prev) => prev.filter((f) => f.departmentId !== deptId));
+    logSecurityEvent(currentUser, 'DEPARTMENT_EDITED', dept?.name || deptId, 'Setor vazio removido do PostgreSQL.', 'SUCCESS');
   };
 
   // Department Update (Persisted to PostgreSQL)
@@ -1283,6 +1314,7 @@ export default function App() {
               users={users}
               departments={departments}
               onCreateUser={handleCreateUser}
+              onResendAccess={handleResendAccess}
               onToggleUserStatus={handleToggleUserStatus}
               onReset2FA={(userId) => {
                 const u = users.find((x) => x.id === userId);
@@ -1298,6 +1330,7 @@ export default function App() {
               currentUser={currentUser}
               onUpdateDepartment={handleUpdateDepartment}
               onCreateDepartment={handleCreateDepartment}
+              onDeleteDepartment={handleDeleteDepartment}
             />
           )}
 
@@ -1317,16 +1350,6 @@ export default function App() {
               onApproveDevice={handleApproveDevice}
               onBlockDevice={handleBlockDevice}
               onRevokeDevice={handleRevokeDevice}
-            />
-          )}
-
-          {activeTab === 'storage' && (
-            <SectorsManagement
-              departments={departments}
-              users={users}
-              currentUser={currentUser}
-              onUpdateDepartment={handleUpdateDepartment}
-              onCreateDepartment={handleCreateDepartment}
             />
           )}
 

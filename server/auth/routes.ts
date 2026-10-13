@@ -70,7 +70,7 @@ authRouter.post('/login', authRateLimiter, async (req: Request, res: Response) =
     // Usuário sem senha cadastrada (precisa do primeiro acesso)
     if (!user.password_hash) {
       return res.status(400).json({
-        error: 'Senha ainda não definida. Utilize o link enviado para seu e-mail para cadastrar a primeira senha.',
+        error: 'Senha ainda não definida para esta conta. Peça ao administrador para reenviar o acesso.',
       });
     }
 
@@ -554,6 +554,11 @@ authRouter.post('/change-password', requireAuth, authRateLimiter, async (req: Re
       if (!isMatch) {
         return res.status(400).json({ error: 'Senha atual incorreta.' });
       }
+    }
+
+    // A nova senha não pode ser igual à atual (ex.: repetir a senha provisória recebida por e-mail)
+    if (dbUser.password_hash && (await bcrypt.compare(newPassword, dbUser.password_hash))) {
+      return res.status(400).json({ error: 'A nova senha deve ser diferente da senha atual/provisória.' });
     }
 
     const hashed = await bcrypt.hash(newPassword, 12);

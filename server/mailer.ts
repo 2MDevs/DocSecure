@@ -291,3 +291,96 @@ export async function sendTestEmail(targetEmail: string, developerName: string):
     };
   }
 }
+
+/**
+ * Envia as credenciais de acesso (senha provisória) para um usuário recém-cadastrado
+ * ou para um usuário cujo acesso foi reenviado pelo administrador.
+ * No primeiro login o sistema exige a troca dessa senha.
+ */
+export async function sendAccessCredentialsEmail(
+  email: string,
+  nome: string,
+  temporaryPassword: string,
+  loginUrl: string,
+  isResend = false
+): Promise<boolean> {
+  const masked = maskEmail(email);
+  const transporter = await getDynamicTransporter();
+
+  if (!transporter) {
+    console.error(`[MAILER ERROR] Servidor SMTP não configurado. Credenciais de ${masked} não foram enviadas.`);
+    return false;
+  }
+
+  const fromAddress = (await getEffectiveSetting('SMTP_FROM')).value || 'DocSecure <nao-responda@docsecure.io>';
+  const escape = (s: string) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+  const safeName = escape(nome || 'Colaborador');
+  const title = isResend ? 'Nova senha provisória de acesso' : 'Bem-vindo(a) ao DocSecure';
+  const intro = isResend
+    ? 'O administrador gerou uma nova senha provisória para a sua conta na plataforma DocSecure.'
+    : 'Sua conta na plataforma DocSecure foi criada. Use os dados abaixo para fazer o seu primeiro acesso.';
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>[DocSecure] ${title}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b1426; color: #f1f5f9; margin: 0; padding: 24px; }
+        .card { max-width: 520px; margin: 0 auto; background-color: #0f1c38; border: 1px solid #1e3a8a; border-radius: 16px; padding: 32px; }
+        .logo { font-size: 20px; font-weight: bold; color: #3b82f6; margin-bottom: 24px; text-transform: uppercase; }
+        .title { font-size: 22px; font-weight: 700; color: #ffffff; margin-bottom: 12px; }
+        .text { font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 20px; }
+        .cred { background-color: #0b1426; border: 1px solid #1e3a8a; border-radius: 10px; padding: 16px; margin: 16px 0; font-size: 14px; color: #cbd5e1; }
+        .cred strong { color: #ffffff; }
+        .pass { font-family: 'Courier New', monospace; font-size: 20px; letter-spacing: 2px; color: #60a5fa; font-weight: bold; }
+        .btn { display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; margin: 8px 0 16px; }
+        .warning { font-size: 12px; color: #94a3b8; border-top: 1px solid #1e293b; padding-top: 18px; margin-top: 24px; line-height: 1.5; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="logo">DocSecure Enterprise</div>
+        <div class="title">${title}</div>
+        <div class="text">Olá, <strong>${safeName}</strong>.<br>${intro}</div>
+        <div class="cred">
+          <div>Usuário: <strong>${escape(email)}</strong></div>
+          <div style="margin-top: 10px;">Senha provisória:</div>
+          <div class="pass">${escape(temporaryPassword)}</div>
+        </div>
+        <div style="text-align: center;">
+          <a href="${loginUrl}" class="btn">Acessar o DocSecure</a>
+        </div>
+        <div class="text" style="font-size: 13px;">
+          Ao entrar, você receberá um código de verificação por e-mail e, em seguida, o sistema pedirá que você
+          <strong>crie uma nova senha pessoal</strong>. A senha provisória deixa de funcionar após a troca.
+        </div>
+        <div class="warning">
+          Não compartilhe esta senha com ninguém. Caso não reconheça este cadastro, ignore esta mensagem
+          e avise o administrador do sistema. Se não encontrar nossos e-mails, verifique a pasta de Spam.
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: fromAddress,
+      to: email,
+      subject: isResend ? '[DocSecure] Nova senha provisória de acesso' : '[DocSecure] Seus dados de acesso',
+      text:
+        `Olá ${nome || 'Colaborador'}, ${intro}\n\n` +
+        `Usuário: ${email}\nSenha provisória: ${temporaryPassword}\nAcesse: ${loginUrl}\n\n` +
+        'No primeiro acesso o sistema pedirá que você crie uma nova senha pessoal.',
+      html,
+    });
+    console.log(`[MAILER] Credenciais de acesso enviadas para ${masked}.`);
+    return true;
+  } catch (error: any) {
+    console.error(`[MAILER ERROR] Falha ao enviar credenciais para ${masked}:`, error.message);
+    return false;
+  }
+}

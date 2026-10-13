@@ -15,15 +15,24 @@ import {
   Smartphone,
   AlertCircle,
   X,
+  Mail,
+  Copy,
+  Loader2,
 } from 'lucide-react';
 import { User, UserRole, UserStatus, Department } from '../../types';
 import { Avatar } from '../common/Avatar';
+
+export interface UserAccessResult {
+  emailSent: boolean;
+  temporaryPassword?: string;
+}
 
 interface UsersManagementProps {
   currentUser: User;
   users: User[];
   departments: Department[];
-  onCreateUser: (userData: Partial<User>) => void;
+  onCreateUser: (userData: Partial<User>) => Promise<UserAccessResult>;
+  onResendAccess: (userId: string) => Promise<UserAccessResult>;
   onToggleUserStatus: (userId: string) => void;
   onReset2FA: (userId: string) => void;
 }
@@ -33,6 +42,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
   users,
   departments,
   onCreateUser,
+  onResendAccess,
   onToggleUserStatus,
   onReset2FA,
 }) => {
@@ -50,6 +60,35 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
   const [newCargo, setNewCargo] = useState('');
   const [require2FA, setRequire2FA] = useState(true);
 
+  // Envio de credenciais (cadastro / reenvio de acesso)
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [accessResult, setAccessResult] = useState<
+    (UserAccessResult & { name: string; email: string; isResend: boolean }) | null
+  >(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const canManageAccess = currentUser.role === 'DEVELOPER' || currentUser.role === 'DIRECTOR' || currentUser.role === 'MANAGER';
+
+  const handleResendAccess = async (u: User) => {
+    if (!window.confirm(`Gerar uma nova senha provisória para ${u.name} e enviar para ${u.email}?\n\nA senha atual deixará de funcionar.`)) {
+      return;
+    }
+    try {
+      setResendingId(u.id);
+      setActionError(null);
+      const res = await onResendAccess(u.id);
+      setCopied(false);
+      setAccessResult({ ...res, name: u.name, email: u.email, isResend: true });
+    } catch (err: any) {
+      setActionError(err?.message || 'Não foi possível reenviar o acesso.');
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   // Filter users based on Manager scope or search
   const filteredUsers = users.filter((u) => {
     // If Manager, only show employees of their department
@@ -66,13 +105,12 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
     );
   });
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newEmail) return;
+    if (!newName || !newEmail || isSubmitting) return;
 
     const dept = departments.find((d) => d.id === newDeptId);
-
-    onCreateUser({
+    const userData: Partial<User> = {
       name: newName,
       email: newEmail,
       matricula: newMatricula || `MAT-${Math.floor(Math.random() * 900 + 100)}`,
@@ -86,14 +124,25 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
       failedLoginAttempts: 0,
       permittedFolderIds: [],
       granularPermissions: {},
-    });
+    };
 
-    setIsCreateModalOpen(false);
-    setNewName('');
-    setNewEmail('');
-    setNewMatricula('');
-    setNewCpf('');
-    setNewCargo('');
+    try {
+      setIsSubmitting(true);
+      setCreateError(null);
+      const res = await onCreateUser(userData);
+      setIsCreateModalOpen(false);
+      setCopied(false);
+      setAccessResult({ ...res, name: newName, email: newEmail.trim().toLowerCase(), isResend: false });
+      setNewName('');
+      setNewEmail('');
+      setNewMatricula('');
+      setNewCpf('');
+      setNewCargo('');
+    } catch (err: any) {
+      setCreateError(err?.message || 'Não foi possível cadastrar o usuário.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -113,13 +162,28 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
 
         <button
           type="button"
-          onClick={() => setIsCreateModalOpen(true)}
+          onClick={() => {
+            setCreateError(null);
+            setIsCreateModalOpen(true);
+          }}
           className="px-4 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center gap-2 transition-all cursor-pointer"
         >
           <UserPlus className="w-4 h-4" />
           <span>+ Novo {currentUser.role === 'MANAGER' ? 'Colaborador' : 'Usuário / Gestor'}</span>
         </button>
       </div>
+
+      {actionError && (
+        <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 flex items-start justify-between gap-2">
+          <span className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            {actionError}
+          </span>
+          <button type="button" onClick={() => setActionError(null)} className="text-rose-500 hover:text-rose-700" aria-label="Fechar">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
@@ -242,6 +306,19 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                   )}
                 </button>
 
+                {canManageAccess && u.id !== currentUser.id && (
+                  <button
+                    type="button"
+                    onClick={() => handleResendAccess(u)}
+                    disabled={resendingId === u.id}
+                    className="py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px] disabled:opacity-50"
+                    title="Gerar nova senha provisória e enviar por e-mail"
+                  >
+                    {resendingId === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4 text-slate-500" />}
+                    <span>Reenviar acesso</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => onReset2FA(u.id)}
@@ -347,6 +424,22 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                       >
                         {u.status === 'ACTIVE' ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
                       </button>
+
+                      {canManageAccess && u.id !== currentUser.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleResendAccess(u)}
+                          disabled={resendingId === u.id}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                          title="Reenviar acesso (nova senha provisória por e-mail)"
+                        >
+                          {resendingId === u.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Mail className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -489,10 +582,22 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                   />
                   <span className="font-semibold">Exigir 2FA no Primeiro Acesso</span>
                 </label>
-                <p className="text-[11px] text-slate-500 pl-6">
-                  Senha temporária gerada: <strong className="font-mono text-slate-800">DocSecure@2025</strong>
-                </p>
               </div>
+
+              <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-[11px] text-blue-900 flex items-start gap-2">
+                <Mail className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <span>
+                  Uma <strong>senha provisória aleatória</strong> será gerada e enviada para o e-mail cadastrado. No primeiro
+                  acesso, o usuário será obrigado a criar a própria senha.
+                </span>
+              </div>
+
+              {createError && (
+                <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{createError}</span>
+                </div>
+              )}
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
                 <button
@@ -504,13 +609,78 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={!newName || !newEmail}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20"
+                  disabled={!newName || !newEmail || isSubmitting}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center gap-2"
                 >
-                  Salvar e Criar Credenciais
+                  {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {isSubmitting ? 'Cadastrando e enviando e-mail...' : 'Salvar e Enviar Acesso'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Resultado do envio de credenciais */}
+      {accessResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  accessResult.emailSent ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                }`}
+              >
+                {accessResult.emailSent ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {accessResult.isResend ? 'Acesso reenviado' : 'Usuário cadastrado'}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {accessResult.emailSent ? (
+                    <>
+                      A senha provisória de <strong>{accessResult.name}</strong> foi enviada para{' '}
+                      <strong>{accessResult.email}</strong>. No primeiro acesso, o sistema pedirá que ele(a) crie uma nova senha.
+                    </>
+                  ) : (
+                    <>
+                      Não foi possível enviar o e-mail para <strong>{accessResult.email}</strong>. Verifique o SMTP na tela
+                      Integração e repasse a senha provisória abaixo ao usuário por um canal seguro.
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {!accessResult.emailSent && accessResult.temporaryPassword && (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Senha provisória</div>
+                  <div className="font-mono text-base font-bold text-slate-900 select-all">{accessResult.temporaryPassword}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(accessResult.temporaryPassword || '').then(() => setCopied(true)).catch(() => {});
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 inline-flex items-center gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  {copied ? 'Copiada' : 'Copiar'}
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setAccessResult(null)}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold"
+              >
+                Entendi
+              </button>
+            </div>
           </div>
         </div>
       )}

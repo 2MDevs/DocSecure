@@ -134,3 +134,37 @@ departmentsRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'),
     return res.status(500).json({ error: 'Erro ao atualizar setor.' });
   }
 });
+
+// Excluir setor (somente se estiver vazio: sem documentos e sem usuários vinculados)
+departmentsRouter.delete('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const exists = await pool.query('SELECT id, name FROM departments WHERE id = $1', [id]);
+    if (exists.rows.length === 0) {
+      return res.status(404).json({ error: 'Setor não encontrado.' });
+    }
+
+    const docs = await pool.query('SELECT COUNT(*)::int AS total FROM documents WHERE department_id = $1', [id]);
+    if (docs.rows[0].total > 0) {
+      return res.status(409).json({
+        error: `Este setor possui ${docs.rows[0].total} documento(s), incluindo os da lixeira. Mova ou exclua os documentos antes de remover o setor.`,
+      });
+    }
+
+    const members = await pool.query('SELECT COUNT(*)::int AS total FROM users WHERE department_id = $1', [id]);
+    if (members.rows[0].total > 0) {
+      return res.status(409).json({
+        error: `Este setor possui ${members.rows[0].total} usuário(s) vinculado(s). Transfira-os para outro setor antes de removê-lo.`,
+      });
+    }
+
+    await pool.query('DELETE FROM folders WHERE department_id = $1', [id]);
+    await pool.query('DELETE FROM departments WHERE id = $1', [id]);
+
+    return res.json({ success: true, deletedId: id });
+  } catch (err: any) {
+    console.error('[DEPARTMENTS DELETE ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao excluir setor.' });
+  }
+});
