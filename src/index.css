@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "./styles/dark-theme.css";
+
+/* As classes "dark:" do Tailwind seguem o botão de tema (classe .dark no <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   html, body {
@@ -55,4 +59,21 @@
   textarea {
     font-size: 16px;
   }
+}
+
+/* ------------------------------------------------------------------
+   Modo escuro: base (as conversões de cor ficam em styles/dark-theme.css)
+   ------------------------------------------------------------------ */
+html.dark {
+  color-scheme: dark;
+}
+html.dark body {
+  background-color: #0b1220;
+  color: #e6eaf1;
+}
+html.dark .ds-app {
+  color: #e6eaf1;
+}
+html.dark .ds-app ::-webkit-scrollbar-thumb {
+  background-color: #334155;
 }
