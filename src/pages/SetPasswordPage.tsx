@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { DocSecureLogo } from '../components/common/DocSecureLogo';
+import { BrandLockup } from '../components/common/BrandLockup';
 import { apiClient } from '../services/apiClient';
 import { User } from '../types';
 import {
@@ -152,19 +152,19 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#08101e] text-slate-100 flex items-center justify-center p-4 sm:p-6 lg:p-10 relative overflow-hidden select-none">
+    <div className="ds-brand-login min-h-screen w-full bg-[#141413] text-slate-100 flex items-center justify-center p-4 sm:p-6 lg:p-10 relative overflow-hidden select-none">
       {/* Background glow effects */}
       <div className="absolute top-1/4 -left-40 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 right-0 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main card container */}
-      <div className="w-full max-w-4xl bg-[#0c172c] border border-slate-800/80 rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[580px] relative z-10">
+      <div className="w-full max-w-4xl bg-[#1d1d1b] border border-slate-800/80 rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[580px] relative z-10">
         {/* Left Visual Area */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-[#0e1e3b] via-[#09152b] to-[#060c18] p-8 lg:p-10 flex flex-col justify-between relative border-b lg:border-b-0 lg:border-r border-slate-800/80 overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(#1e3a8a_1px,transparent_1px)] [background-size:16px_16px] opacity-25" />
+        <div className="lg:col-span-5 bg-gradient-to-br from-[#2a2724] via-[#1d1d1b] to-[#121211] p-8 lg:p-10 flex flex-col justify-between relative border-b lg:border-b-0 lg:border-r border-slate-800/80 overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(#4a3f33_1px,transparent_1px)] [background-size:16px_16px] opacity-25" />
 
           <div className="relative z-10">
-            <DocSecureLogo size="lg" showSubtitle={true} />
+            <BrandLockup />
           </div>
 
           <div className="relative z-10 my-8 py-6 flex flex-col items-center justify-center">
@@ -203,7 +203,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
         </div>
 
         {/* Right Form Area */}
-        <div className="lg:col-span-7 p-5 sm:p-10 lg:p-12 flex flex-col justify-between bg-[#0b1426]">
+        <div className="lg:col-span-7 p-5 sm:p-10 lg:p-12 flex flex-col justify-between bg-[#1a1918]">
           {isSuccess ? (
             /* SUCCESS STATE */
             <div className="my-auto text-center py-6 animate-in fade-in zoom-in-95 duration-300">
@@ -310,7 +310,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
                         setErrorMessage(null);
                       }}
                       placeholder="Mínimo 10 caracteres (letras e números)"
-                      className="w-full py-3 pl-4 pr-11 bg-[#08101e] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-base sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      className="w-full py-3 pl-4 pr-11 bg-[#141413] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-base sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     />
                     <button
                       type="button"
@@ -337,7 +337,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
                         setErrorMessage(null);
                       }}
                       placeholder="Repita a nova senha"
-                      className="w-full py-3 pl-4 pr-11 bg-[#08101e] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-base sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      className="w-full py-3 pl-4 pr-11 bg-[#141413] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-base sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     />
                     <button
                       type="button"
@@ -383,7 +383,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
                 <button
                   type="submit"
                   disabled={isLoading || !isFormValid}
-                  className="w-full py-3.5 px-4 bg-[#2563eb] hover:bg-[#1d4ed8] active:bg-[#1e40af] disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer mt-4"
+                  className="w-full py-3.5 px-4 bg-[#ea3324] hover:bg-[#d42a1c] active:bg-[#b8261a] disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer mt-4"
                 >
                   {isLoading ? (
                     <>
@@ -421,7 +421,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
       {/* Forgot Password Modal for requesting new reset link */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-[#0c172c] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-[#1d1d1b] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-blue-400" />
@@ -471,7 +471,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   placeholder="seu.nome@empresa.com.br"
-                  className="w-full py-2.5 px-3 bg-[#08101e] border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500"
+                  className="w-full py-2.5 px-3 bg-[#141413] border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500"
                 />
               </div>
 

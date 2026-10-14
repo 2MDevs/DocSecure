@@ -16,7 +16,7 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
-import { DocSecureLogo } from '../common/DocSecureLogo';
+import { BrandLockup } from '../common/BrandLockup';
 import { User as UserType } from '../../types';
 import { apiClient } from '../../services/apiClient';
 
@@ -186,21 +186,21 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen min-h-[100dvh] w-full bg-[#08101e] text-slate-100 flex items-stretch sm:items-center justify-center p-0 sm:p-6 lg:p-10 relative overflow-hidden select-none">
+    <div className="ds-brand-login min-h-screen min-h-[100dvh] w-full bg-[#141413] text-slate-100 flex items-stretch sm:items-center justify-center p-0 sm:p-6 lg:p-10 relative overflow-hidden select-none">
       {/* Ambient background glow effects */}
       <div className="absolute top-1/4 -left-40 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 right-0 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main card container */}
-      <div className="w-full max-w-4xl bg-[#0c172c] sm:border border-slate-800/80 sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:grid lg:grid-cols-12 sm:min-h-[580px]">
+      <div className="w-full max-w-4xl bg-[#1d1d1b] sm:border border-slate-800/80 sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:grid lg:grid-cols-12 sm:min-h-[580px]">
         {/* Left Visual Area - 3D Padlock & Security Theme */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-[#0e1e3b] via-[#09152b] to-[#060c18] px-6 pb-6 pt-[max(2rem,env(safe-area-inset-top))] sm:p-8 lg:p-10 flex flex-col justify-between relative border-b lg:border-b-0 lg:border-r border-slate-800/80 overflow-hidden">
+        <div className="lg:col-span-5 bg-gradient-to-br from-[#2a2724] via-[#1d1d1b] to-[#121211] px-6 pb-6 pt-[max(2rem,env(safe-area-inset-top))] sm:p-8 lg:p-10 flex flex-col justify-between relative border-b lg:border-b-0 lg:border-r border-slate-800/80 overflow-hidden">
           {/* Subtle geometric pattern overlay */}
-          <div className="absolute inset-0 bg-[radial-gradient(#1e3a8a_1px,transparent_1px)] [background-size:16px_16px] opacity-25" />
+          <div className="absolute inset-0 bg-[radial-gradient(#4a3f33_1px,transparent_1px)] [background-size:16px_16px] opacity-25" />
 
           {/* Top Logo */}
           <div className="relative z-10">
-            <DocSecureLogo size="lg" showSubtitle={true} />
+            <BrandLockup />
           </div>
 
           {/* Center 3D Security Graphic */}
@@ -256,7 +256,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         </div>
 
         {/* Right Form Area */}
-        <div className="lg:col-span-7 flex-1 px-6 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-10 lg:p-12 flex flex-col justify-between bg-[#0b1426]">
+        <div className="lg:col-span-7 flex-1 px-6 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-10 lg:p-12 flex flex-col justify-between bg-[#1a1918]">
           {step === 'LOGIN' ? (
             /* STEP 1: CREDENTIALS FORM */
             <div>
@@ -309,7 +309,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         if (sessionExpiredNotice) onClearSessionExpiredNotice?.();
                       }}
                       placeholder="seu.email@empresa.com.br ou matrícula"
-                      className="w-full pl-10 pr-4 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-base sm:text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
+                      className="w-full pl-10 pr-4 py-3 bg-[#141413] border border-slate-700/80 rounded-xl text-white text-base sm:text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -333,7 +333,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         if (sessionExpiredNotice) onClearSessionExpiredNotice?.();
                       }}
                       placeholder="••••••••••••"
-                      className="w-full pl-10 pr-11 py-3 bg-[#08101e] border border-slate-700/80 rounded-xl text-white text-base sm:text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-mono disabled:opacity-50"
+                      className="w-full pl-10 pr-11 py-3 bg-[#141413] border border-slate-700/80 rounded-xl text-white text-base sm:text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-mono disabled:opacity-50"
                     />
                     <button
                       type="button"
@@ -374,7 +374,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3.5 px-4 bg-[#2563eb] hover:bg-[#1d4ed8] active:bg-[#1e40af] disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer mt-4"
+                  className="w-full py-3.5 px-4 bg-[#ea3324] hover:bg-[#d42a1c] active:bg-[#b8261a] disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer mt-4"
                 >
                   {isLoading ? (
                     <>
@@ -468,7 +468,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       value={twoFactorCode}
                       onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
                       placeholder="000000"
-                      className="w-full py-3.5 px-4 text-center text-2xl font-mono font-bold tracking-[0.5em] bg-[#08101e] border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
+                      className="w-full py-3.5 px-4 text-center text-2xl font-mono font-bold tracking-[0.5em] bg-[#141413] border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -554,7 +554,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       {/* Forgot Password Modal (Parte 2 & 4) */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-[#0c172c] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-[#1d1d1b] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Lock className="w-4 h-4 text-blue-400" />
@@ -604,7 +604,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   placeholder="usuario@empresa.com.br"
-                  className="w-full py-2.5 px-3 bg-[#08101e] border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500"
+                  className="w-full py-2.5 px-3 bg-[#141413] border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-blue-500"
                 />
               </div>
 
