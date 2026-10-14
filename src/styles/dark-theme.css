@@ -1,0 +1,763 @@
+/* =============================================================================
+   MODO ESCURO — gerado por scripts/gen-dark-theme.py (não editar à mão).
+   Converte as classes claras do Tailwind usadas no app (fundo branco, textos
+   cinza-escuro, bordas claras, tons pastel) para a paleta escura quando a
+   página tem <html class="dark">. Telas novas: rode
+       python3 scripts/gen-dark-theme.py
+   ============================================================================= */
+html.dark .ds-app .active\:bg-slate-100:active, html.dark .ds-app.active\:bg-slate-100:active{background-color:#1a2436}
+html.dark .ds-app .active\:bg-slate-200:active, html.dark .ds-app.active\:bg-slate-200:active{background-color:#243046}
+html.dark .ds-app .bg-\[\#eef1f5\], html.dark .ds-app.bg-\[\#eef1f5\]{background-color:#0b1220}
+html.dark .ds-app .bg-\[\#f8fafc\], html.dark .ds-app.bg-\[\#f8fafc\]{background-color:#0b1220}
+html.dark .ds-app .bg-\[\#f9fafb\], html.dark .ds-app.bg-\[\#f9fafb\]{background-color:#0e1626}
+html.dark .ds-app .bg-amber-100, html.dark .ds-app.bg-amber-100{background-color:rgb(245 158 11 / 0.16)}
+html.dark .ds-app .bg-amber-100\/50, html.dark .ds-app.bg-amber-100\/50{background-color:rgb(245 158 11 / 0.1)}
+html.dark .ds-app .bg-amber-100\/60, html.dark .ds-app.bg-amber-100\/60{background-color:rgb(245 158 11 / 0.116)}
+html.dark .ds-app .bg-amber-100\/70, html.dark .ds-app.bg-amber-100\/70{background-color:rgb(245 158 11 / 0.132)}
+html.dark .ds-app .bg-amber-100\/80, html.dark .ds-app.bg-amber-100\/80{background-color:rgb(245 158 11 / 0.148)}
+html.dark .ds-app .bg-amber-200, html.dark .ds-app.bg-amber-200{background-color:rgb(245 158 11 / 0.24)}
+html.dark .ds-app .bg-amber-200\/50, html.dark .ds-app.bg-amber-200\/50{background-color:rgb(245 158 11 / 0.14)}
+html.dark .ds-app .bg-amber-200\/60, html.dark .ds-app.bg-amber-200\/60{background-color:rgb(245 158 11 / 0.164)}
+html.dark .ds-app .bg-amber-200\/70, html.dark .ds-app.bg-amber-200\/70{background-color:rgb(245 158 11 / 0.188)}
+html.dark .ds-app .bg-amber-200\/80, html.dark .ds-app.bg-amber-200\/80{background-color:rgb(245 158 11 / 0.212)}
+html.dark .ds-app .bg-amber-50, html.dark .ds-app.bg-amber-50{background-color:rgb(245 158 11 / 0.1)}
+html.dark .ds-app .bg-amber-50\/20, html.dark .ds-app.bg-amber-50\/20{background-color:rgb(245 158 11 / 0.04)}
+html.dark .ds-app .bg-amber-50\/50, html.dark .ds-app.bg-amber-50\/50{background-color:rgb(245 158 11 / 0.07)}
+html.dark .ds-app .bg-amber-50\/60, html.dark .ds-app.bg-amber-50\/60{background-color:rgb(245 158 11 / 0.08)}
+html.dark .ds-app .bg-amber-50\/70, html.dark .ds-app.bg-amber-50\/70{background-color:rgb(245 158 11 / 0.09)}
+html.dark .ds-app .bg-amber-50\/80, html.dark .ds-app.bg-amber-50\/80{background-color:rgb(245 158 11 / 0.1)}
+html.dark .ds-app .bg-blue-100, html.dark .ds-app.bg-blue-100{background-color:rgb(59 130 246 / 0.16)}
+html.dark .ds-app .bg-blue-100\/50, html.dark .ds-app.bg-blue-100\/50{background-color:rgb(59 130 246 / 0.1)}
+html.dark .ds-app .bg-blue-100\/60, html.dark .ds-app.bg-blue-100\/60{background-color:rgb(59 130 246 / 0.116)}
+html.dark .ds-app .bg-blue-100\/70, html.dark .ds-app.bg-blue-100\/70{background-color:rgb(59 130 246 / 0.132)}
+html.dark .ds-app .bg-blue-100\/80, html.dark .ds-app.bg-blue-100\/80{background-color:rgb(59 130 246 / 0.148)}
+html.dark .ds-app .bg-blue-200, html.dark .ds-app.bg-blue-200{background-color:rgb(59 130 246 / 0.24)}
+html.dark .ds-app .bg-blue-200\/50, html.dark .ds-app.bg-blue-200\/50{background-color:rgb(59 130 246 / 0.14)}
+html.dark .ds-app .bg-blue-200\/60, html.dark .ds-app.bg-blue-200\/60{background-color:rgb(59 130 246 / 0.164)}
+html.dark .ds-app .bg-blue-200\/70, html.dark .ds-app.bg-blue-200\/70{background-color:rgb(59 130 246 / 0.188)}
+html.dark .ds-app .bg-blue-200\/80, html.dark .ds-app.bg-blue-200\/80{background-color:rgb(59 130 246 / 0.212)}
+html.dark .ds-app .bg-blue-50, html.dark .ds-app.bg-blue-50{background-color:rgb(59 130 246 / 0.1)}
+html.dark .ds-app .bg-blue-50\/50, html.dark .ds-app.bg-blue-50\/50{background-color:rgb(59 130 246 / 0.07)}
+html.dark .ds-app .bg-blue-50\/60, html.dark .ds-app.bg-blue-50\/60{background-color:rgb(59 130 246 / 0.08)}
+html.dark .ds-app .bg-blue-50\/70, html.dark .ds-app.bg-blue-50\/70{background-color:rgb(59 130 246 / 0.09)}
+html.dark .ds-app .bg-blue-50\/80, html.dark .ds-app.bg-blue-50\/80{background-color:rgb(59 130 246 / 0.1)}
+html.dark .ds-app .bg-cyan-100, html.dark .ds-app.bg-cyan-100{background-color:rgb(6 182 212 / 0.16)}
+html.dark .ds-app .bg-cyan-100\/50, html.dark .ds-app.bg-cyan-100\/50{background-color:rgb(6 182 212 / 0.1)}
+html.dark .ds-app .bg-cyan-100\/60, html.dark .ds-app.bg-cyan-100\/60{background-color:rgb(6 182 212 / 0.116)}
+html.dark .ds-app .bg-cyan-100\/70, html.dark .ds-app.bg-cyan-100\/70{background-color:rgb(6 182 212 / 0.132)}
+html.dark .ds-app .bg-cyan-100\/80, html.dark .ds-app.bg-cyan-100\/80{background-color:rgb(6 182 212 / 0.148)}
+html.dark .ds-app .bg-cyan-200, html.dark .ds-app.bg-cyan-200{background-color:rgb(6 182 212 / 0.24)}
+html.dark .ds-app .bg-cyan-200\/50, html.dark .ds-app.bg-cyan-200\/50{background-color:rgb(6 182 212 / 0.14)}
+html.dark .ds-app .bg-cyan-200\/60, html.dark .ds-app.bg-cyan-200\/60{background-color:rgb(6 182 212 / 0.164)}
+html.dark .ds-app .bg-cyan-200\/70, html.dark .ds-app.bg-cyan-200\/70{background-color:rgb(6 182 212 / 0.188)}
+html.dark .ds-app .bg-cyan-200\/80, html.dark .ds-app.bg-cyan-200\/80{background-color:rgb(6 182 212 / 0.212)}
+html.dark .ds-app .bg-cyan-50, html.dark .ds-app.bg-cyan-50{background-color:rgb(6 182 212 / 0.1)}
+html.dark .ds-app .bg-cyan-50\/50, html.dark .ds-app.bg-cyan-50\/50{background-color:rgb(6 182 212 / 0.07)}
+html.dark .ds-app .bg-cyan-50\/60, html.dark .ds-app.bg-cyan-50\/60{background-color:rgb(6 182 212 / 0.08)}
+html.dark .ds-app .bg-cyan-50\/70, html.dark .ds-app.bg-cyan-50\/70{background-color:rgb(6 182 212 / 0.09)}
+html.dark .ds-app .bg-cyan-50\/80, html.dark .ds-app.bg-cyan-50\/80{background-color:rgb(6 182 212 / 0.1)}
+html.dark .ds-app .bg-emerald-100, html.dark .ds-app.bg-emerald-100{background-color:rgb(16 185 129 / 0.16)}
+html.dark .ds-app .bg-emerald-100\/50, html.dark .ds-app.bg-emerald-100\/50{background-color:rgb(16 185 129 / 0.1)}
+html.dark .ds-app .bg-emerald-100\/60, html.dark .ds-app.bg-emerald-100\/60{background-color:rgb(16 185 129 / 0.116)}
+html.dark .ds-app .bg-emerald-100\/70, html.dark .ds-app.bg-emerald-100\/70{background-color:rgb(16 185 129 / 0.132)}
+html.dark .ds-app .bg-emerald-100\/80, html.dark .ds-app.bg-emerald-100\/80{background-color:rgb(16 185 129 / 0.148)}
+html.dark .ds-app .bg-emerald-200, html.dark .ds-app.bg-emerald-200{background-color:rgb(16 185 129 / 0.24)}
+html.dark .ds-app .bg-emerald-200\/50, html.dark .ds-app.bg-emerald-200\/50{background-color:rgb(16 185 129 / 0.14)}
+html.dark .ds-app .bg-emerald-200\/60, html.dark .ds-app.bg-emerald-200\/60{background-color:rgb(16 185 129 / 0.164)}
+html.dark .ds-app .bg-emerald-200\/70, html.dark .ds-app.bg-emerald-200\/70{background-color:rgb(16 185 129 / 0.188)}
+html.dark .ds-app .bg-emerald-200\/80, html.dark .ds-app.bg-emerald-200\/80{background-color:rgb(16 185 129 / 0.212)}
+html.dark .ds-app .bg-emerald-50, html.dark .ds-app.bg-emerald-50{background-color:rgb(16 185 129 / 0.1)}
+html.dark .ds-app .bg-emerald-50\/50, html.dark .ds-app.bg-emerald-50\/50{background-color:rgb(16 185 129 / 0.07)}
+html.dark .ds-app .bg-emerald-50\/60, html.dark .ds-app.bg-emerald-50\/60{background-color:rgb(16 185 129 / 0.08)}
+html.dark .ds-app .bg-emerald-50\/70, html.dark .ds-app.bg-emerald-50\/70{background-color:rgb(16 185 129 / 0.09)}
+html.dark .ds-app .bg-emerald-50\/80, html.dark .ds-app.bg-emerald-50\/80{background-color:rgb(16 185 129 / 0.1)}
+html.dark .ds-app .bg-fuchsia-100, html.dark .ds-app.bg-fuchsia-100{background-color:rgb(217 70 239 / 0.16)}
+html.dark .ds-app .bg-fuchsia-100\/50, html.dark .ds-app.bg-fuchsia-100\/50{background-color:rgb(217 70 239 / 0.1)}
+html.dark .ds-app .bg-fuchsia-100\/60, html.dark .ds-app.bg-fuchsia-100\/60{background-color:rgb(217 70 239 / 0.116)}
+html.dark .ds-app .bg-fuchsia-100\/70, html.dark .ds-app.bg-fuchsia-100\/70{background-color:rgb(217 70 239 / 0.132)}
+html.dark .ds-app .bg-fuchsia-100\/80, html.dark .ds-app.bg-fuchsia-100\/80{background-color:rgb(217 70 239 / 0.148)}
+html.dark .ds-app .bg-fuchsia-200, html.dark .ds-app.bg-fuchsia-200{background-color:rgb(217 70 239 / 0.24)}
+html.dark .ds-app .bg-fuchsia-200\/50, html.dark .ds-app.bg-fuchsia-200\/50{background-color:rgb(217 70 239 / 0.14)}
+html.dark .ds-app .bg-fuchsia-200\/60, html.dark .ds-app.bg-fuchsia-200\/60{background-color:rgb(217 70 239 / 0.164)}
+html.dark .ds-app .bg-fuchsia-200\/70, html.dark .ds-app.bg-fuchsia-200\/70{background-color:rgb(217 70 239 / 0.188)}
+html.dark .ds-app .bg-fuchsia-200\/80, html.dark .ds-app.bg-fuchsia-200\/80{background-color:rgb(217 70 239 / 0.212)}
+html.dark .ds-app .bg-fuchsia-50, html.dark .ds-app.bg-fuchsia-50{background-color:rgb(217 70 239 / 0.1)}
+html.dark .ds-app .bg-fuchsia-50\/50, html.dark .ds-app.bg-fuchsia-50\/50{background-color:rgb(217 70 239 / 0.07)}
+html.dark .ds-app .bg-fuchsia-50\/60, html.dark .ds-app.bg-fuchsia-50\/60{background-color:rgb(217 70 239 / 0.08)}
+html.dark .ds-app .bg-fuchsia-50\/70, html.dark .ds-app.bg-fuchsia-50\/70{background-color:rgb(217 70 239 / 0.09)}
+html.dark .ds-app .bg-fuchsia-50\/80, html.dark .ds-app.bg-fuchsia-50\/80{background-color:rgb(217 70 239 / 0.1)}
+html.dark .ds-app .bg-gray-100, html.dark .ds-app.bg-gray-100{background-color:#1a2436}
+html.dark .ds-app .bg-gray-100\/50, html.dark .ds-app.bg-gray-100\/50{background-color:#1a2436}
+html.dark .ds-app .bg-gray-100\/60, html.dark .ds-app.bg-gray-100\/60{background-color:#1a2436}
+html.dark .ds-app .bg-gray-100\/70, html.dark .ds-app.bg-gray-100\/70{background-color:#1a2436}
+html.dark .ds-app .bg-gray-100\/80, html.dark .ds-app.bg-gray-100\/80{background-color:#1a2436}
+html.dark .ds-app .bg-gray-200, html.dark .ds-app.bg-gray-200{background-color:#243046}
+html.dark .ds-app .bg-gray-200\/50, html.dark .ds-app.bg-gray-200\/50{background-color:#243046}
+html.dark .ds-app .bg-gray-200\/60, html.dark .ds-app.bg-gray-200\/60{background-color:#243046}
+html.dark .ds-app .bg-gray-200\/70, html.dark .ds-app.bg-gray-200\/70{background-color:#243046}
+html.dark .ds-app .bg-gray-200\/80, html.dark .ds-app.bg-gray-200\/80{background-color:#243046}
+html.dark .ds-app .bg-gray-50, html.dark .ds-app.bg-gray-50{background-color:#0e1524}
+html.dark .ds-app .bg-gray-50\/50, html.dark .ds-app.bg-gray-50\/50{background-color:#0e1524}
+html.dark .ds-app .bg-gray-50\/60, html.dark .ds-app.bg-gray-50\/60{background-color:#0e1524}
+html.dark .ds-app .bg-gray-50\/70, html.dark .ds-app.bg-gray-50\/70{background-color:#0e1524}
+html.dark .ds-app .bg-gray-50\/80, html.dark .ds-app.bg-gray-50\/80{background-color:#0e1524}
+html.dark .ds-app .bg-green-100, html.dark .ds-app.bg-green-100{background-color:rgb(34 197 94 / 0.16)}
+html.dark .ds-app .bg-green-100\/50, html.dark .ds-app.bg-green-100\/50{background-color:rgb(34 197 94 / 0.1)}
+html.dark .ds-app .bg-green-100\/60, html.dark .ds-app.bg-green-100\/60{background-color:rgb(34 197 94 / 0.116)}
+html.dark .ds-app .bg-green-100\/70, html.dark .ds-app.bg-green-100\/70{background-color:rgb(34 197 94 / 0.132)}
+html.dark .ds-app .bg-green-100\/80, html.dark .ds-app.bg-green-100\/80{background-color:rgb(34 197 94 / 0.148)}
+html.dark .ds-app .bg-green-200, html.dark .ds-app.bg-green-200{background-color:rgb(34 197 94 / 0.24)}
+html.dark .ds-app .bg-green-200\/50, html.dark .ds-app.bg-green-200\/50{background-color:rgb(34 197 94 / 0.14)}
+html.dark .ds-app .bg-green-200\/60, html.dark .ds-app.bg-green-200\/60{background-color:rgb(34 197 94 / 0.164)}
+html.dark .ds-app .bg-green-200\/70, html.dark .ds-app.bg-green-200\/70{background-color:rgb(34 197 94 / 0.188)}
+html.dark .ds-app .bg-green-200\/80, html.dark .ds-app.bg-green-200\/80{background-color:rgb(34 197 94 / 0.212)}
+html.dark .ds-app .bg-green-50, html.dark .ds-app.bg-green-50{background-color:rgb(34 197 94 / 0.1)}
+html.dark .ds-app .bg-green-50\/50, html.dark .ds-app.bg-green-50\/50{background-color:rgb(34 197 94 / 0.07)}
+html.dark .ds-app .bg-green-50\/60, html.dark .ds-app.bg-green-50\/60{background-color:rgb(34 197 94 / 0.08)}
+html.dark .ds-app .bg-green-50\/70, html.dark .ds-app.bg-green-50\/70{background-color:rgb(34 197 94 / 0.09)}
+html.dark .ds-app .bg-green-50\/80, html.dark .ds-app.bg-green-50\/80{background-color:rgb(34 197 94 / 0.1)}
+html.dark .ds-app .bg-indigo-100, html.dark .ds-app.bg-indigo-100{background-color:rgb(99 102 241 / 0.16)}
+html.dark .ds-app .bg-indigo-100\/50, html.dark .ds-app.bg-indigo-100\/50{background-color:rgb(99 102 241 / 0.1)}
+html.dark .ds-app .bg-indigo-100\/60, html.dark .ds-app.bg-indigo-100\/60{background-color:rgb(99 102 241 / 0.116)}
+html.dark .ds-app .bg-indigo-100\/70, html.dark .ds-app.bg-indigo-100\/70{background-color:rgb(99 102 241 / 0.132)}
+html.dark .ds-app .bg-indigo-100\/80, html.dark .ds-app.bg-indigo-100\/80{background-color:rgb(99 102 241 / 0.148)}
+html.dark .ds-app .bg-indigo-200, html.dark .ds-app.bg-indigo-200{background-color:rgb(99 102 241 / 0.24)}
+html.dark .ds-app .bg-indigo-200\/50, html.dark .ds-app.bg-indigo-200\/50{background-color:rgb(99 102 241 / 0.14)}
+html.dark .ds-app .bg-indigo-200\/60, html.dark .ds-app.bg-indigo-200\/60{background-color:rgb(99 102 241 / 0.164)}
+html.dark .ds-app .bg-indigo-200\/70, html.dark .ds-app.bg-indigo-200\/70{background-color:rgb(99 102 241 / 0.188)}
+html.dark .ds-app .bg-indigo-200\/80, html.dark .ds-app.bg-indigo-200\/80{background-color:rgb(99 102 241 / 0.212)}
+html.dark .ds-app .bg-indigo-50, html.dark .ds-app.bg-indigo-50{background-color:rgb(99 102 241 / 0.1)}
+html.dark .ds-app .bg-indigo-50\/50, html.dark .ds-app.bg-indigo-50\/50{background-color:rgb(99 102 241 / 0.07)}
+html.dark .ds-app .bg-indigo-50\/60, html.dark .ds-app.bg-indigo-50\/60{background-color:rgb(99 102 241 / 0.08)}
+html.dark .ds-app .bg-indigo-50\/70, html.dark .ds-app.bg-indigo-50\/70{background-color:rgb(99 102 241 / 0.09)}
+html.dark .ds-app .bg-indigo-50\/80, html.dark .ds-app.bg-indigo-50\/80{background-color:rgb(99 102 241 / 0.1)}
+html.dark .ds-app .bg-lime-100, html.dark .ds-app.bg-lime-100{background-color:rgb(132 204 22 / 0.16)}
+html.dark .ds-app .bg-lime-100\/50, html.dark .ds-app.bg-lime-100\/50{background-color:rgb(132 204 22 / 0.1)}
+html.dark .ds-app .bg-lime-100\/60, html.dark .ds-app.bg-lime-100\/60{background-color:rgb(132 204 22 / 0.116)}
+html.dark .ds-app .bg-lime-100\/70, html.dark .ds-app.bg-lime-100\/70{background-color:rgb(132 204 22 / 0.132)}
+html.dark .ds-app .bg-lime-100\/80, html.dark .ds-app.bg-lime-100\/80{background-color:rgb(132 204 22 / 0.148)}
+html.dark .ds-app .bg-lime-200, html.dark .ds-app.bg-lime-200{background-color:rgb(132 204 22 / 0.24)}
+html.dark .ds-app .bg-lime-200\/50, html.dark .ds-app.bg-lime-200\/50{background-color:rgb(132 204 22 / 0.14)}
+html.dark .ds-app .bg-lime-200\/60, html.dark .ds-app.bg-lime-200\/60{background-color:rgb(132 204 22 / 0.164)}
+html.dark .ds-app .bg-lime-200\/70, html.dark .ds-app.bg-lime-200\/70{background-color:rgb(132 204 22 / 0.188)}
+html.dark .ds-app .bg-lime-200\/80, html.dark .ds-app.bg-lime-200\/80{background-color:rgb(132 204 22 / 0.212)}
+html.dark .ds-app .bg-lime-50, html.dark .ds-app.bg-lime-50{background-color:rgb(132 204 22 / 0.1)}
+html.dark .ds-app .bg-lime-50\/50, html.dark .ds-app.bg-lime-50\/50{background-color:rgb(132 204 22 / 0.07)}
+html.dark .ds-app .bg-lime-50\/60, html.dark .ds-app.bg-lime-50\/60{background-color:rgb(132 204 22 / 0.08)}
+html.dark .ds-app .bg-lime-50\/70, html.dark .ds-app.bg-lime-50\/70{background-color:rgb(132 204 22 / 0.09)}
+html.dark .ds-app .bg-lime-50\/80, html.dark .ds-app.bg-lime-50\/80{background-color:rgb(132 204 22 / 0.1)}
+html.dark .ds-app .bg-orange-100, html.dark .ds-app.bg-orange-100{background-color:rgb(249 115 22 / 0.16)}
+html.dark .ds-app .bg-orange-100\/50, html.dark .ds-app.bg-orange-100\/50{background-color:rgb(249 115 22 / 0.1)}
+html.dark .ds-app .bg-orange-100\/60, html.dark .ds-app.bg-orange-100\/60{background-color:rgb(249 115 22 / 0.116)}
+html.dark .ds-app .bg-orange-100\/70, html.dark .ds-app.bg-orange-100\/70{background-color:rgb(249 115 22 / 0.132)}
+html.dark .ds-app .bg-orange-100\/80, html.dark .ds-app.bg-orange-100\/80{background-color:rgb(249 115 22 / 0.148)}
+html.dark .ds-app .bg-orange-200, html.dark .ds-app.bg-orange-200{background-color:rgb(249 115 22 / 0.24)}
+html.dark .ds-app .bg-orange-200\/50, html.dark .ds-app.bg-orange-200\/50{background-color:rgb(249 115 22 / 0.14)}
+html.dark .ds-app .bg-orange-200\/60, html.dark .ds-app.bg-orange-200\/60{background-color:rgb(249 115 22 / 0.164)}
+html.dark .ds-app .bg-orange-200\/70, html.dark .ds-app.bg-orange-200\/70{background-color:rgb(249 115 22 / 0.188)}
+html.dark .ds-app .bg-orange-200\/80, html.dark .ds-app.bg-orange-200\/80{background-color:rgb(249 115 22 / 0.212)}
+html.dark .ds-app .bg-orange-50, html.dark .ds-app.bg-orange-50{background-color:rgb(249 115 22 / 0.1)}
+html.dark .ds-app .bg-orange-50\/50, html.dark .ds-app.bg-orange-50\/50{background-color:rgb(249 115 22 / 0.07)}
+html.dark .ds-app .bg-orange-50\/60, html.dark .ds-app.bg-orange-50\/60{background-color:rgb(249 115 22 / 0.08)}
+html.dark .ds-app .bg-orange-50\/70, html.dark .ds-app.bg-orange-50\/70{background-color:rgb(249 115 22 / 0.09)}
+html.dark .ds-app .bg-orange-50\/80, html.dark .ds-app.bg-orange-50\/80{background-color:rgb(249 115 22 / 0.1)}
+html.dark .ds-app .bg-pink-100, html.dark .ds-app.bg-pink-100{background-color:rgb(236 72 153 / 0.16)}
+html.dark .ds-app .bg-pink-100\/50, html.dark .ds-app.bg-pink-100\/50{background-color:rgb(236 72 153 / 0.1)}
+html.dark .ds-app .bg-pink-100\/60, html.dark .ds-app.bg-pink-100\/60{background-color:rgb(236 72 153 / 0.116)}
+html.dark .ds-app .bg-pink-100\/70, html.dark .ds-app.bg-pink-100\/70{background-color:rgb(236 72 153 / 0.132)}
+html.dark .ds-app .bg-pink-100\/80, html.dark .ds-app.bg-pink-100\/80{background-color:rgb(236 72 153 / 0.148)}
+html.dark .ds-app .bg-pink-200, html.dark .ds-app.bg-pink-200{background-color:rgb(236 72 153 / 0.24)}
+html.dark .ds-app .bg-pink-200\/50, html.dark .ds-app.bg-pink-200\/50{background-color:rgb(236 72 153 / 0.14)}
+html.dark .ds-app .bg-pink-200\/60, html.dark .ds-app.bg-pink-200\/60{background-color:rgb(236 72 153 / 0.164)}
+html.dark .ds-app .bg-pink-200\/70, html.dark .ds-app.bg-pink-200\/70{background-color:rgb(236 72 153 / 0.188)}
+html.dark .ds-app .bg-pink-200\/80, html.dark .ds-app.bg-pink-200\/80{background-color:rgb(236 72 153 / 0.212)}
+html.dark .ds-app .bg-pink-50, html.dark .ds-app.bg-pink-50{background-color:rgb(236 72 153 / 0.1)}
+html.dark .ds-app .bg-pink-50\/50, html.dark .ds-app.bg-pink-50\/50{background-color:rgb(236 72 153 / 0.07)}
+html.dark .ds-app .bg-pink-50\/60, html.dark .ds-app.bg-pink-50\/60{background-color:rgb(236 72 153 / 0.08)}
+html.dark .ds-app .bg-pink-50\/70, html.dark .ds-app.bg-pink-50\/70{background-color:rgb(236 72 153 / 0.09)}
+html.dark .ds-app .bg-pink-50\/80, html.dark .ds-app.bg-pink-50\/80{background-color:rgb(236 72 153 / 0.1)}
+html.dark .ds-app .bg-purple-100, html.dark .ds-app.bg-purple-100{background-color:rgb(168 85 247 / 0.16)}
+html.dark .ds-app .bg-purple-100\/50, html.dark .ds-app.bg-purple-100\/50{background-color:rgb(168 85 247 / 0.1)}
+html.dark .ds-app .bg-purple-100\/60, html.dark .ds-app.bg-purple-100\/60{background-color:rgb(168 85 247 / 0.116)}
+html.dark .ds-app .bg-purple-100\/70, html.dark .ds-app.bg-purple-100\/70{background-color:rgb(168 85 247 / 0.132)}
+html.dark .ds-app .bg-purple-100\/80, html.dark .ds-app.bg-purple-100\/80{background-color:rgb(168 85 247 / 0.148)}
+html.dark .ds-app .bg-purple-200, html.dark .ds-app.bg-purple-200{background-color:rgb(168 85 247 / 0.24)}
+html.dark .ds-app .bg-purple-200\/50, html.dark .ds-app.bg-purple-200\/50{background-color:rgb(168 85 247 / 0.14)}
+html.dark .ds-app .bg-purple-200\/60, html.dark .ds-app.bg-purple-200\/60{background-color:rgb(168 85 247 / 0.164)}
+html.dark .ds-app .bg-purple-200\/70, html.dark .ds-app.bg-purple-200\/70{background-color:rgb(168 85 247 / 0.188)}
+html.dark .ds-app .bg-purple-200\/80, html.dark .ds-app.bg-purple-200\/80{background-color:rgb(168 85 247 / 0.212)}
+html.dark .ds-app .bg-purple-50, html.dark .ds-app.bg-purple-50{background-color:rgb(168 85 247 / 0.1)}
+html.dark .ds-app .bg-purple-50\/50, html.dark .ds-app.bg-purple-50\/50{background-color:rgb(168 85 247 / 0.07)}
+html.dark .ds-app .bg-purple-50\/60, html.dark .ds-app.bg-purple-50\/60{background-color:rgb(168 85 247 / 0.08)}
+html.dark .ds-app .bg-purple-50\/70, html.dark .ds-app.bg-purple-50\/70{background-color:rgb(168 85 247 / 0.09)}
+html.dark .ds-app .bg-purple-50\/80, html.dark .ds-app.bg-purple-50\/80{background-color:rgb(168 85 247 / 0.1)}
+html.dark .ds-app .bg-red-100, html.dark .ds-app.bg-red-100{background-color:rgb(239 68 68 / 0.16)}
+html.dark .ds-app .bg-red-100\/50, html.dark .ds-app.bg-red-100\/50{background-color:rgb(239 68 68 / 0.1)}
+html.dark .ds-app .bg-red-100\/60, html.dark .ds-app.bg-red-100\/60{background-color:rgb(239 68 68 / 0.116)}
+html.dark .ds-app .bg-red-100\/70, html.dark .ds-app.bg-red-100\/70{background-color:rgb(239 68 68 / 0.132)}
+html.dark .ds-app .bg-red-100\/80, html.dark .ds-app.bg-red-100\/80{background-color:rgb(239 68 68 / 0.148)}
+html.dark .ds-app .bg-red-200, html.dark .ds-app.bg-red-200{background-color:rgb(239 68 68 / 0.24)}
+html.dark .ds-app .bg-red-200\/50, html.dark .ds-app.bg-red-200\/50{background-color:rgb(239 68 68 / 0.14)}
+html.dark .ds-app .bg-red-200\/60, html.dark .ds-app.bg-red-200\/60{background-color:rgb(239 68 68 / 0.164)}
+html.dark .ds-app .bg-red-200\/70, html.dark .ds-app.bg-red-200\/70{background-color:rgb(239 68 68 / 0.188)}
+html.dark .ds-app .bg-red-200\/80, html.dark .ds-app.bg-red-200\/80{background-color:rgb(239 68 68 / 0.212)}
+html.dark .ds-app .bg-red-50, html.dark .ds-app.bg-red-50{background-color:rgb(239 68 68 / 0.1)}
+html.dark .ds-app .bg-red-50\/50, html.dark .ds-app.bg-red-50\/50{background-color:rgb(239 68 68 / 0.07)}
+html.dark .ds-app .bg-red-50\/60, html.dark .ds-app.bg-red-50\/60{background-color:rgb(239 68 68 / 0.08)}
+html.dark .ds-app .bg-red-50\/70, html.dark .ds-app.bg-red-50\/70{background-color:rgb(239 68 68 / 0.09)}
+html.dark .ds-app .bg-red-50\/80, html.dark .ds-app.bg-red-50\/80{background-color:rgb(239 68 68 / 0.1)}
+html.dark .ds-app .bg-rose-100, html.dark .ds-app.bg-rose-100{background-color:rgb(244 63 94 / 0.16)}
+html.dark .ds-app .bg-rose-100\/50, html.dark .ds-app.bg-rose-100\/50{background-color:rgb(244 63 94 / 0.1)}
+html.dark .ds-app .bg-rose-100\/60, html.dark .ds-app.bg-rose-100\/60{background-color:rgb(244 63 94 / 0.116)}
+html.dark .ds-app .bg-rose-100\/70, html.dark .ds-app.bg-rose-100\/70{background-color:rgb(244 63 94 / 0.132)}
+html.dark .ds-app .bg-rose-100\/80, html.dark .ds-app.bg-rose-100\/80{background-color:rgb(244 63 94 / 0.148)}
+html.dark .ds-app .bg-rose-200, html.dark .ds-app.bg-rose-200{background-color:rgb(244 63 94 / 0.24)}
+html.dark .ds-app .bg-rose-200\/50, html.dark .ds-app.bg-rose-200\/50{background-color:rgb(244 63 94 / 0.14)}
+html.dark .ds-app .bg-rose-200\/60, html.dark .ds-app.bg-rose-200\/60{background-color:rgb(244 63 94 / 0.164)}
+html.dark .ds-app .bg-rose-200\/70, html.dark .ds-app.bg-rose-200\/70{background-color:rgb(244 63 94 / 0.188)}
+html.dark .ds-app .bg-rose-200\/80, html.dark .ds-app.bg-rose-200\/80{background-color:rgb(244 63 94 / 0.212)}
+html.dark .ds-app .bg-rose-50, html.dark .ds-app.bg-rose-50{background-color:rgb(244 63 94 / 0.1)}
+html.dark .ds-app .bg-rose-50\/20, html.dark .ds-app.bg-rose-50\/20{background-color:rgb(244 63 94 / 0.04)}
+html.dark .ds-app .bg-rose-50\/50, html.dark .ds-app.bg-rose-50\/50{background-color:rgb(244 63 94 / 0.07)}
+html.dark .ds-app .bg-rose-50\/60, html.dark .ds-app.bg-rose-50\/60{background-color:rgb(244 63 94 / 0.08)}
+html.dark .ds-app .bg-rose-50\/70, html.dark .ds-app.bg-rose-50\/70{background-color:rgb(244 63 94 / 0.09)}
+html.dark .ds-app .bg-rose-50\/80, html.dark .ds-app.bg-rose-50\/80{background-color:rgb(244 63 94 / 0.1)}
+html.dark .ds-app .bg-sky-100, html.dark .ds-app.bg-sky-100{background-color:rgb(14 165 233 / 0.16)}
+html.dark .ds-app .bg-sky-100\/50, html.dark .ds-app.bg-sky-100\/50{background-color:rgb(14 165 233 / 0.1)}
+html.dark .ds-app .bg-sky-100\/60, html.dark .ds-app.bg-sky-100\/60{background-color:rgb(14 165 233 / 0.116)}
+html.dark .ds-app .bg-sky-100\/70, html.dark .ds-app.bg-sky-100\/70{background-color:rgb(14 165 233 / 0.132)}
+html.dark .ds-app .bg-sky-100\/80, html.dark .ds-app.bg-sky-100\/80{background-color:rgb(14 165 233 / 0.148)}
+html.dark .ds-app .bg-sky-200, html.dark .ds-app.bg-sky-200{background-color:rgb(14 165 233 / 0.24)}
+html.dark .ds-app .bg-sky-200\/50, html.dark .ds-app.bg-sky-200\/50{background-color:rgb(14 165 233 / 0.14)}
+html.dark .ds-app .bg-sky-200\/60, html.dark .ds-app.bg-sky-200\/60{background-color:rgb(14 165 233 / 0.164)}
+html.dark .ds-app .bg-sky-200\/70, html.dark .ds-app.bg-sky-200\/70{background-color:rgb(14 165 233 / 0.188)}
+html.dark .ds-app .bg-sky-200\/80, html.dark .ds-app.bg-sky-200\/80{background-color:rgb(14 165 233 / 0.212)}
+html.dark .ds-app .bg-sky-50, html.dark .ds-app.bg-sky-50{background-color:rgb(14 165 233 / 0.1)}
+html.dark .ds-app .bg-sky-50\/50, html.dark .ds-app.bg-sky-50\/50{background-color:rgb(14 165 233 / 0.07)}
+html.dark .ds-app .bg-sky-50\/60, html.dark .ds-app.bg-sky-50\/60{background-color:rgb(14 165 233 / 0.08)}
+html.dark .ds-app .bg-sky-50\/70, html.dark .ds-app.bg-sky-50\/70{background-color:rgb(14 165 233 / 0.09)}
+html.dark .ds-app .bg-sky-50\/80, html.dark .ds-app.bg-sky-50\/80{background-color:rgb(14 165 233 / 0.1)}
+html.dark .ds-app .bg-slate-100, html.dark .ds-app.bg-slate-100{background-color:#1a2436}
+html.dark .ds-app .bg-slate-100\/50, html.dark .ds-app.bg-slate-100\/50{background-color:#1a2436}
+html.dark .ds-app .bg-slate-100\/60, html.dark .ds-app.bg-slate-100\/60{background-color:#1a2436}
+html.dark .ds-app .bg-slate-100\/70, html.dark .ds-app.bg-slate-100\/70{background-color:#1a2436}
+html.dark .ds-app .bg-slate-100\/80, html.dark .ds-app.bg-slate-100\/80{background-color:#1a2436}
+html.dark .ds-app .bg-slate-200, html.dark .ds-app.bg-slate-200{background-color:#243046}
+html.dark .ds-app .bg-slate-200\/50, html.dark .ds-app.bg-slate-200\/50{background-color:#243046}
+html.dark .ds-app .bg-slate-200\/60, html.dark .ds-app.bg-slate-200\/60{background-color:#243046}
+html.dark .ds-app .bg-slate-200\/70, html.dark .ds-app.bg-slate-200\/70{background-color:#243046}
+html.dark .ds-app .bg-slate-200\/80, html.dark .ds-app.bg-slate-200\/80{background-color:#243046}
+html.dark .ds-app .bg-slate-300, html.dark .ds-app.bg-slate-300{background-color:#334155}
+html.dark .ds-app .bg-slate-50, html.dark .ds-app.bg-slate-50{background-color:#0e1524}
+html.dark .ds-app .bg-slate-50\/30, html.dark .ds-app.bg-slate-50\/30{background-color:#0e1524}
+html.dark .ds-app .bg-slate-50\/40, html.dark .ds-app.bg-slate-50\/40{background-color:#0e1524}
+html.dark .ds-app .bg-slate-50\/50, html.dark .ds-app.bg-slate-50\/50{background-color:#0e1524}
+html.dark .ds-app .bg-slate-50\/60, html.dark .ds-app.bg-slate-50\/60{background-color:#0e1524}
+html.dark .ds-app .bg-slate-50\/70, html.dark .ds-app.bg-slate-50\/70{background-color:#0e1524}
+html.dark .ds-app .bg-slate-50\/80, html.dark .ds-app.bg-slate-50\/80{background-color:#0e1524}
+html.dark .ds-app .bg-teal-100, html.dark .ds-app.bg-teal-100{background-color:rgb(20 184 166 / 0.16)}
+html.dark .ds-app .bg-teal-100\/50, html.dark .ds-app.bg-teal-100\/50{background-color:rgb(20 184 166 / 0.1)}
+html.dark .ds-app .bg-teal-100\/60, html.dark .ds-app.bg-teal-100\/60{background-color:rgb(20 184 166 / 0.116)}
+html.dark .ds-app .bg-teal-100\/70, html.dark .ds-app.bg-teal-100\/70{background-color:rgb(20 184 166 / 0.132)}
+html.dark .ds-app .bg-teal-100\/80, html.dark .ds-app.bg-teal-100\/80{background-color:rgb(20 184 166 / 0.148)}
+html.dark .ds-app .bg-teal-200, html.dark .ds-app.bg-teal-200{background-color:rgb(20 184 166 / 0.24)}
+html.dark .ds-app .bg-teal-200\/50, html.dark .ds-app.bg-teal-200\/50{background-color:rgb(20 184 166 / 0.14)}
+html.dark .ds-app .bg-teal-200\/60, html.dark .ds-app.bg-teal-200\/60{background-color:rgb(20 184 166 / 0.164)}
+html.dark .ds-app .bg-teal-200\/70, html.dark .ds-app.bg-teal-200\/70{background-color:rgb(20 184 166 / 0.188)}
+html.dark .ds-app .bg-teal-200\/80, html.dark .ds-app.bg-teal-200\/80{background-color:rgb(20 184 166 / 0.212)}
+html.dark .ds-app .bg-teal-50, html.dark .ds-app.bg-teal-50{background-color:rgb(20 184 166 / 0.1)}
+html.dark .ds-app .bg-teal-50\/50, html.dark .ds-app.bg-teal-50\/50{background-color:rgb(20 184 166 / 0.07)}
+html.dark .ds-app .bg-teal-50\/60, html.dark .ds-app.bg-teal-50\/60{background-color:rgb(20 184 166 / 0.08)}
+html.dark .ds-app .bg-teal-50\/70, html.dark .ds-app.bg-teal-50\/70{background-color:rgb(20 184 166 / 0.09)}
+html.dark .ds-app .bg-teal-50\/80, html.dark .ds-app.bg-teal-50\/80{background-color:rgb(20 184 166 / 0.1)}
+html.dark .ds-app .bg-violet-100, html.dark .ds-app.bg-violet-100{background-color:rgb(139 92 246 / 0.16)}
+html.dark .ds-app .bg-violet-100\/50, html.dark .ds-app.bg-violet-100\/50{background-color:rgb(139 92 246 / 0.1)}
+html.dark .ds-app .bg-violet-100\/60, html.dark .ds-app.bg-violet-100\/60{background-color:rgb(139 92 246 / 0.116)}
+html.dark .ds-app .bg-violet-100\/70, html.dark .ds-app.bg-violet-100\/70{background-color:rgb(139 92 246 / 0.132)}
+html.dark .ds-app .bg-violet-100\/80, html.dark .ds-app.bg-violet-100\/80{background-color:rgb(139 92 246 / 0.148)}
+html.dark .ds-app .bg-violet-200, html.dark .ds-app.bg-violet-200{background-color:rgb(139 92 246 / 0.24)}
+html.dark .ds-app .bg-violet-200\/50, html.dark .ds-app.bg-violet-200\/50{background-color:rgb(139 92 246 / 0.14)}
+html.dark .ds-app .bg-violet-200\/60, html.dark .ds-app.bg-violet-200\/60{background-color:rgb(139 92 246 / 0.164)}
+html.dark .ds-app .bg-violet-200\/70, html.dark .ds-app.bg-violet-200\/70{background-color:rgb(139 92 246 / 0.188)}
+html.dark .ds-app .bg-violet-200\/80, html.dark .ds-app.bg-violet-200\/80{background-color:rgb(139 92 246 / 0.212)}
+html.dark .ds-app .bg-violet-50, html.dark .ds-app.bg-violet-50{background-color:rgb(139 92 246 / 0.1)}
+html.dark .ds-app .bg-violet-50\/50, html.dark .ds-app.bg-violet-50\/50{background-color:rgb(139 92 246 / 0.07)}
+html.dark .ds-app .bg-violet-50\/60, html.dark .ds-app.bg-violet-50\/60{background-color:rgb(139 92 246 / 0.08)}
+html.dark .ds-app .bg-violet-50\/70, html.dark .ds-app.bg-violet-50\/70{background-color:rgb(139 92 246 / 0.09)}
+html.dark .ds-app .bg-violet-50\/80, html.dark .ds-app.bg-violet-50\/80{background-color:rgb(139 92 246 / 0.1)}
+html.dark .ds-app .bg-white, html.dark .ds-app.bg-white{background-color:#111a2b}
+html.dark .ds-app .bg-white\/80, html.dark .ds-app.bg-white\/80{background-color:rgb(17 26 43 / 0.8)}
+html.dark .ds-app .bg-white\/95, html.dark .ds-app.bg-white\/95{background-color:rgb(17 26 43 / 0.95)}
+html.dark .ds-app .bg-yellow-100, html.dark .ds-app.bg-yellow-100{background-color:rgb(234 179 8 / 0.16)}
+html.dark .ds-app .bg-yellow-100\/50, html.dark .ds-app.bg-yellow-100\/50{background-color:rgb(234 179 8 / 0.1)}
+html.dark .ds-app .bg-yellow-100\/60, html.dark .ds-app.bg-yellow-100\/60{background-color:rgb(234 179 8 / 0.116)}
+html.dark .ds-app .bg-yellow-100\/70, html.dark .ds-app.bg-yellow-100\/70{background-color:rgb(234 179 8 / 0.132)}
+html.dark .ds-app .bg-yellow-100\/80, html.dark .ds-app.bg-yellow-100\/80{background-color:rgb(234 179 8 / 0.148)}
+html.dark .ds-app .bg-yellow-200, html.dark .ds-app.bg-yellow-200{background-color:rgb(234 179 8 / 0.24)}
+html.dark .ds-app .bg-yellow-200\/50, html.dark .ds-app.bg-yellow-200\/50{background-color:rgb(234 179 8 / 0.14)}
+html.dark .ds-app .bg-yellow-200\/60, html.dark .ds-app.bg-yellow-200\/60{background-color:rgb(234 179 8 / 0.164)}
+html.dark .ds-app .bg-yellow-200\/70, html.dark .ds-app.bg-yellow-200\/70{background-color:rgb(234 179 8 / 0.188)}
+html.dark .ds-app .bg-yellow-200\/80, html.dark .ds-app.bg-yellow-200\/80{background-color:rgb(234 179 8 / 0.212)}
+html.dark .ds-app .bg-yellow-50, html.dark .ds-app.bg-yellow-50{background-color:rgb(234 179 8 / 0.1)}
+html.dark .ds-app .bg-yellow-50\/50, html.dark .ds-app.bg-yellow-50\/50{background-color:rgb(234 179 8 / 0.07)}
+html.dark .ds-app .bg-yellow-50\/60, html.dark .ds-app.bg-yellow-50\/60{background-color:rgb(234 179 8 / 0.08)}
+html.dark .ds-app .bg-yellow-50\/70, html.dark .ds-app.bg-yellow-50\/70{background-color:rgb(234 179 8 / 0.09)}
+html.dark .ds-app .bg-yellow-50\/80, html.dark .ds-app.bg-yellow-50\/80{background-color:rgb(234 179 8 / 0.1)}
+html.dark .ds-app .border-amber-100, html.dark .ds-app.border-amber-100{border-color:rgb(245 158 11 / 0.22)}
+html.dark .ds-app .border-amber-200, html.dark .ds-app.border-amber-200{border-color:rgb(245 158 11 / 0.32)}
+html.dark .ds-app .border-amber-300, html.dark .ds-app.border-amber-300{border-color:rgb(245 158 11 / 0.32)}
+html.dark .ds-app .border-amber-50, html.dark .ds-app.border-amber-50{border-color:rgb(245 158 11 / 0.22)}
+html.dark .ds-app .border-blue-100, html.dark .ds-app.border-blue-100{border-color:rgb(59 130 246 / 0.22)}
+html.dark .ds-app .border-blue-200, html.dark .ds-app.border-blue-200{border-color:rgb(59 130 246 / 0.32)}
+html.dark .ds-app .border-blue-200\/80, html.dark .ds-app.border-blue-200\/80{border-color:rgb(59 130 246 / 0.32)}
+html.dark .ds-app .border-blue-300, html.dark .ds-app.border-blue-300{border-color:rgb(59 130 246 / 0.32)}
+html.dark .ds-app .border-blue-50, html.dark .ds-app.border-blue-50{border-color:rgb(59 130 246 / 0.22)}
+html.dark .ds-app .border-cyan-100, html.dark .ds-app.border-cyan-100{border-color:rgb(6 182 212 / 0.22)}
+html.dark .ds-app .border-cyan-200, html.dark .ds-app.border-cyan-200{border-color:rgb(6 182 212 / 0.32)}
+html.dark .ds-app .border-cyan-300, html.dark .ds-app.border-cyan-300{border-color:rgb(6 182 212 / 0.32)}
+html.dark .ds-app .border-cyan-50, html.dark .ds-app.border-cyan-50{border-color:rgb(6 182 212 / 0.22)}
+html.dark .ds-app .border-emerald-100, html.dark .ds-app.border-emerald-100{border-color:rgb(16 185 129 / 0.22)}
+html.dark .ds-app .border-emerald-200, html.dark .ds-app.border-emerald-200{border-color:rgb(16 185 129 / 0.32)}
+html.dark .ds-app .border-emerald-300, html.dark .ds-app.border-emerald-300{border-color:rgb(16 185 129 / 0.32)}
+html.dark .ds-app .border-emerald-50, html.dark .ds-app.border-emerald-50{border-color:rgb(16 185 129 / 0.22)}
+html.dark .ds-app .border-fuchsia-100, html.dark .ds-app.border-fuchsia-100{border-color:rgb(217 70 239 / 0.22)}
+html.dark .ds-app .border-fuchsia-200, html.dark .ds-app.border-fuchsia-200{border-color:rgb(217 70 239 / 0.32)}
+html.dark .ds-app .border-fuchsia-300, html.dark .ds-app.border-fuchsia-300{border-color:rgb(217 70 239 / 0.32)}
+html.dark .ds-app .border-fuchsia-50, html.dark .ds-app.border-fuchsia-50{border-color:rgb(217 70 239 / 0.22)}
+html.dark .ds-app .border-gray-100, html.dark .ds-app.border-gray-100{border-color:#1c2638}
+html.dark .ds-app .border-gray-200, html.dark .ds-app.border-gray-200{border-color:#243046}
+html.dark .ds-app .border-gray-300, html.dark .ds-app.border-gray-300{border-color:#33405a}
+html.dark .ds-app .border-gray-50, html.dark .ds-app.border-gray-50{border-color:#18212f}
+html.dark .ds-app .border-green-100, html.dark .ds-app.border-green-100{border-color:rgb(34 197 94 / 0.22)}
+html.dark .ds-app .border-green-200, html.dark .ds-app.border-green-200{border-color:rgb(34 197 94 / 0.32)}
+html.dark .ds-app .border-green-300, html.dark .ds-app.border-green-300{border-color:rgb(34 197 94 / 0.32)}
+html.dark .ds-app .border-green-50, html.dark .ds-app.border-green-50{border-color:rgb(34 197 94 / 0.22)}
+html.dark .ds-app .border-indigo-100, html.dark .ds-app.border-indigo-100{border-color:rgb(99 102 241 / 0.22)}
+html.dark .ds-app .border-indigo-200, html.dark .ds-app.border-indigo-200{border-color:rgb(99 102 241 / 0.32)}
+html.dark .ds-app .border-indigo-300, html.dark .ds-app.border-indigo-300{border-color:rgb(99 102 241 / 0.32)}
+html.dark .ds-app .border-indigo-50, html.dark .ds-app.border-indigo-50{border-color:rgb(99 102 241 / 0.22)}
+html.dark .ds-app .border-lime-100, html.dark .ds-app.border-lime-100{border-color:rgb(132 204 22 / 0.22)}
+html.dark .ds-app .border-lime-200, html.dark .ds-app.border-lime-200{border-color:rgb(132 204 22 / 0.32)}
+html.dark .ds-app .border-lime-300, html.dark .ds-app.border-lime-300{border-color:rgb(132 204 22 / 0.32)}
+html.dark .ds-app .border-lime-50, html.dark .ds-app.border-lime-50{border-color:rgb(132 204 22 / 0.22)}
+html.dark .ds-app .border-orange-100, html.dark .ds-app.border-orange-100{border-color:rgb(249 115 22 / 0.22)}
+html.dark .ds-app .border-orange-200, html.dark .ds-app.border-orange-200{border-color:rgb(249 115 22 / 0.32)}
+html.dark .ds-app .border-orange-300, html.dark .ds-app.border-orange-300{border-color:rgb(249 115 22 / 0.32)}
+html.dark .ds-app .border-orange-50, html.dark .ds-app.border-orange-50{border-color:rgb(249 115 22 / 0.22)}
+html.dark .ds-app .border-pink-100, html.dark .ds-app.border-pink-100{border-color:rgb(236 72 153 / 0.22)}
+html.dark .ds-app .border-pink-200, html.dark .ds-app.border-pink-200{border-color:rgb(236 72 153 / 0.32)}
+html.dark .ds-app .border-pink-300, html.dark .ds-app.border-pink-300{border-color:rgb(236 72 153 / 0.32)}
+html.dark .ds-app .border-pink-50, html.dark .ds-app.border-pink-50{border-color:rgb(236 72 153 / 0.22)}
+html.dark .ds-app .border-purple-100, html.dark .ds-app.border-purple-100{border-color:rgb(168 85 247 / 0.22)}
+html.dark .ds-app .border-purple-200, html.dark .ds-app.border-purple-200{border-color:rgb(168 85 247 / 0.32)}
+html.dark .ds-app .border-purple-300, html.dark .ds-app.border-purple-300{border-color:rgb(168 85 247 / 0.32)}
+html.dark .ds-app .border-purple-50, html.dark .ds-app.border-purple-50{border-color:rgb(168 85 247 / 0.22)}
+html.dark .ds-app .border-red-100, html.dark .ds-app.border-red-100{border-color:rgb(239 68 68 / 0.22)}
+html.dark .ds-app .border-red-200, html.dark .ds-app.border-red-200{border-color:rgb(239 68 68 / 0.32)}
+html.dark .ds-app .border-red-300, html.dark .ds-app.border-red-300{border-color:rgb(239 68 68 / 0.32)}
+html.dark .ds-app .border-red-50, html.dark .ds-app.border-red-50{border-color:rgb(239 68 68 / 0.22)}
+html.dark .ds-app .border-rose-100, html.dark .ds-app.border-rose-100{border-color:rgb(244 63 94 / 0.22)}
+html.dark .ds-app .border-rose-200, html.dark .ds-app.border-rose-200{border-color:rgb(244 63 94 / 0.32)}
+html.dark .ds-app .border-rose-300, html.dark .ds-app.border-rose-300{border-color:rgb(244 63 94 / 0.32)}
+html.dark .ds-app .border-rose-50, html.dark .ds-app.border-rose-50{border-color:rgb(244 63 94 / 0.22)}
+html.dark .ds-app .border-sky-100, html.dark .ds-app.border-sky-100{border-color:rgb(14 165 233 / 0.22)}
+html.dark .ds-app .border-sky-200, html.dark .ds-app.border-sky-200{border-color:rgb(14 165 233 / 0.32)}
+html.dark .ds-app .border-sky-300, html.dark .ds-app.border-sky-300{border-color:rgb(14 165 233 / 0.32)}
+html.dark .ds-app .border-sky-50, html.dark .ds-app.border-sky-50{border-color:rgb(14 165 233 / 0.22)}
+html.dark .ds-app .border-slate-100, html.dark .ds-app.border-slate-100{border-color:#1c2638}
+html.dark .ds-app .border-slate-200, html.dark .ds-app.border-slate-200{border-color:#243046}
+html.dark .ds-app .border-slate-200\/60, html.dark .ds-app.border-slate-200\/60{border-color:#243046}
+html.dark .ds-app .border-slate-200\/70, html.dark .ds-app.border-slate-200\/70{border-color:#243046}
+html.dark .ds-app .border-slate-200\/80, html.dark .ds-app.border-slate-200\/80{border-color:#243046}
+html.dark .ds-app .border-slate-300, html.dark .ds-app.border-slate-300{border-color:#33405a}
+html.dark .ds-app .border-slate-50, html.dark .ds-app.border-slate-50{border-color:#18212f}
+html.dark .ds-app .border-teal-100, html.dark .ds-app.border-teal-100{border-color:rgb(20 184 166 / 0.22)}
+html.dark .ds-app .border-teal-200, html.dark .ds-app.border-teal-200{border-color:rgb(20 184 166 / 0.32)}
+html.dark .ds-app .border-teal-300, html.dark .ds-app.border-teal-300{border-color:rgb(20 184 166 / 0.32)}
+html.dark .ds-app .border-teal-50, html.dark .ds-app.border-teal-50{border-color:rgb(20 184 166 / 0.22)}
+html.dark .ds-app .border-violet-100, html.dark .ds-app.border-violet-100{border-color:rgb(139 92 246 / 0.22)}
+html.dark .ds-app .border-violet-200, html.dark .ds-app.border-violet-200{border-color:rgb(139 92 246 / 0.32)}
+html.dark .ds-app .border-violet-300, html.dark .ds-app.border-violet-300{border-color:rgb(139 92 246 / 0.32)}
+html.dark .ds-app .border-violet-50, html.dark .ds-app.border-violet-50{border-color:rgb(139 92 246 / 0.22)}
+html.dark .ds-app .border-white, html.dark .ds-app.border-white{border-color:#1c2638}
+html.dark .ds-app .border-white\/20, html.dark .ds-app.border-white\/20{border-color:#1c2638}
+html.dark .ds-app .border-white\/30, html.dark .ds-app.border-white\/30{border-color:#1c2638}
+html.dark .ds-app .border-yellow-100, html.dark .ds-app.border-yellow-100{border-color:rgb(234 179 8 / 0.22)}
+html.dark .ds-app .border-yellow-200, html.dark .ds-app.border-yellow-200{border-color:rgb(234 179 8 / 0.32)}
+html.dark .ds-app .border-yellow-300, html.dark .ds-app.border-yellow-300{border-color:rgb(234 179 8 / 0.32)}
+html.dark .ds-app .border-yellow-50, html.dark .ds-app.border-yellow-50{border-color:rgb(234 179 8 / 0.22)}
+html.dark .ds-app .divide-amber-100 > :not(:last-child){border-color:rgb(245 158 11 / 0.22)}
+html.dark .ds-app .divide-amber-200 > :not(:last-child){border-color:rgb(245 158 11 / 0.32)}
+html.dark .ds-app .divide-amber-300 > :not(:last-child){border-color:rgb(245 158 11 / 0.32)}
+html.dark .ds-app .divide-amber-50 > :not(:last-child){border-color:rgb(245 158 11 / 0.22)}
+html.dark .ds-app .divide-blue-100 > :not(:last-child){border-color:rgb(59 130 246 / 0.22)}
+html.dark .ds-app .divide-blue-200 > :not(:last-child){border-color:rgb(59 130 246 / 0.32)}
+html.dark .ds-app .divide-blue-300 > :not(:last-child){border-color:rgb(59 130 246 / 0.32)}
+html.dark .ds-app .divide-blue-50 > :not(:last-child){border-color:rgb(59 130 246 / 0.22)}
+html.dark .ds-app .divide-cyan-100 > :not(:last-child){border-color:rgb(6 182 212 / 0.22)}
+html.dark .ds-app .divide-cyan-200 > :not(:last-child){border-color:rgb(6 182 212 / 0.32)}
+html.dark .ds-app .divide-cyan-300 > :not(:last-child){border-color:rgb(6 182 212 / 0.32)}
+html.dark .ds-app .divide-cyan-50 > :not(:last-child){border-color:rgb(6 182 212 / 0.22)}
+html.dark .ds-app .divide-emerald-100 > :not(:last-child){border-color:rgb(16 185 129 / 0.22)}
+html.dark .ds-app .divide-emerald-200 > :not(:last-child){border-color:rgb(16 185 129 / 0.32)}
+html.dark .ds-app .divide-emerald-300 > :not(:last-child){border-color:rgb(16 185 129 / 0.32)}
+html.dark .ds-app .divide-emerald-50 > :not(:last-child){border-color:rgb(16 185 129 / 0.22)}
+html.dark .ds-app .divide-fuchsia-100 > :not(:last-child){border-color:rgb(217 70 239 / 0.22)}
+html.dark .ds-app .divide-fuchsia-200 > :not(:last-child){border-color:rgb(217 70 239 / 0.32)}
+html.dark .ds-app .divide-fuchsia-300 > :not(:last-child){border-color:rgb(217 70 239 / 0.32)}
+html.dark .ds-app .divide-fuchsia-50 > :not(:last-child){border-color:rgb(217 70 239 / 0.22)}
+html.dark .ds-app .divide-gray-100 > :not(:last-child){border-color:#1c2638}
+html.dark .ds-app .divide-gray-200 > :not(:last-child){border-color:#243046}
+html.dark .ds-app .divide-gray-300 > :not(:last-child){border-color:#33405a}
+html.dark .ds-app .divide-gray-50 > :not(:last-child){border-color:#18212f}
+html.dark .ds-app .divide-green-100 > :not(:last-child){border-color:rgb(34 197 94 / 0.22)}
+html.dark .ds-app .divide-green-200 > :not(:last-child){border-color:rgb(34 197 94 / 0.32)}
+html.dark .ds-app .divide-green-300 > :not(:last-child){border-color:rgb(34 197 94 / 0.32)}
+html.dark .ds-app .divide-green-50 > :not(:last-child){border-color:rgb(34 197 94 / 0.22)}
+html.dark .ds-app .divide-indigo-100 > :not(:last-child){border-color:rgb(99 102 241 / 0.22)}
+html.dark .ds-app .divide-indigo-200 > :not(:last-child){border-color:rgb(99 102 241 / 0.32)}
+html.dark .ds-app .divide-indigo-300 > :not(:last-child){border-color:rgb(99 102 241 / 0.32)}
+html.dark .ds-app .divide-indigo-50 > :not(:last-child){border-color:rgb(99 102 241 / 0.22)}
+html.dark .ds-app .divide-lime-100 > :not(:last-child){border-color:rgb(132 204 22 / 0.22)}
+html.dark .ds-app .divide-lime-200 > :not(:last-child){border-color:rgb(132 204 22 / 0.32)}
+html.dark .ds-app .divide-lime-300 > :not(:last-child){border-color:rgb(132 204 22 / 0.32)}
+html.dark .ds-app .divide-lime-50 > :not(:last-child){border-color:rgb(132 204 22 / 0.22)}
+html.dark .ds-app .divide-orange-100 > :not(:last-child){border-color:rgb(249 115 22 / 0.22)}
+html.dark .ds-app .divide-orange-200 > :not(:last-child){border-color:rgb(249 115 22 / 0.32)}
+html.dark .ds-app .divide-orange-300 > :not(:last-child){border-color:rgb(249 115 22 / 0.32)}
+html.dark .ds-app .divide-orange-50 > :not(:last-child){border-color:rgb(249 115 22 / 0.22)}
+html.dark .ds-app .divide-pink-100 > :not(:last-child){border-color:rgb(236 72 153 / 0.22)}
+html.dark .ds-app .divide-pink-200 > :not(:last-child){border-color:rgb(236 72 153 / 0.32)}
+html.dark .ds-app .divide-pink-300 > :not(:last-child){border-color:rgb(236 72 153 / 0.32)}
+html.dark .ds-app .divide-pink-50 > :not(:last-child){border-color:rgb(236 72 153 / 0.22)}
+html.dark .ds-app .divide-purple-100 > :not(:last-child){border-color:rgb(168 85 247 / 0.22)}
+html.dark .ds-app .divide-purple-200 > :not(:last-child){border-color:rgb(168 85 247 / 0.32)}
+html.dark .ds-app .divide-purple-300 > :not(:last-child){border-color:rgb(168 85 247 / 0.32)}
+html.dark .ds-app .divide-purple-50 > :not(:last-child){border-color:rgb(168 85 247 / 0.22)}
+html.dark .ds-app .divide-red-100 > :not(:last-child){border-color:rgb(239 68 68 / 0.22)}
+html.dark .ds-app .divide-red-200 > :not(:last-child){border-color:rgb(239 68 68 / 0.32)}
+html.dark .ds-app .divide-red-300 > :not(:last-child){border-color:rgb(239 68 68 / 0.32)}
+html.dark .ds-app .divide-red-50 > :not(:last-child){border-color:rgb(239 68 68 / 0.22)}
+html.dark .ds-app .divide-rose-100 > :not(:last-child){border-color:rgb(244 63 94 / 0.22)}
+html.dark .ds-app .divide-rose-200 > :not(:last-child){border-color:rgb(244 63 94 / 0.32)}
+html.dark .ds-app .divide-rose-300 > :not(:last-child){border-color:rgb(244 63 94 / 0.32)}
+html.dark .ds-app .divide-rose-50 > :not(:last-child){border-color:rgb(244 63 94 / 0.22)}
+html.dark .ds-app .divide-sky-100 > :not(:last-child){border-color:rgb(14 165 233 / 0.22)}
+html.dark .ds-app .divide-sky-200 > :not(:last-child){border-color:rgb(14 165 233 / 0.32)}
+html.dark .ds-app .divide-sky-300 > :not(:last-child){border-color:rgb(14 165 233 / 0.32)}
+html.dark .ds-app .divide-sky-50 > :not(:last-child){border-color:rgb(14 165 233 / 0.22)}
+html.dark .ds-app .divide-slate-100 > :not(:last-child){border-color:#1c2638}
+html.dark .ds-app .divide-slate-200 > :not(:last-child){border-color:#243046}
+html.dark .ds-app .divide-slate-300 > :not(:last-child){border-color:#33405a}
+html.dark .ds-app .divide-slate-50 > :not(:last-child){border-color:#18212f}
+html.dark .ds-app .divide-teal-100 > :not(:last-child){border-color:rgb(20 184 166 / 0.22)}
+html.dark .ds-app .divide-teal-200 > :not(:last-child){border-color:rgb(20 184 166 / 0.32)}
+html.dark .ds-app .divide-teal-300 > :not(:last-child){border-color:rgb(20 184 166 / 0.32)}
+html.dark .ds-app .divide-teal-50 > :not(:last-child){border-color:rgb(20 184 166 / 0.22)}
+html.dark .ds-app .divide-violet-100 > :not(:last-child){border-color:rgb(139 92 246 / 0.22)}
+html.dark .ds-app .divide-violet-200 > :not(:last-child){border-color:rgb(139 92 246 / 0.32)}
+html.dark .ds-app .divide-violet-300 > :not(:last-child){border-color:rgb(139 92 246 / 0.32)}
+html.dark .ds-app .divide-violet-50 > :not(:last-child){border-color:rgb(139 92 246 / 0.22)}
+html.dark .ds-app .divide-yellow-100 > :not(:last-child){border-color:rgb(234 179 8 / 0.22)}
+html.dark .ds-app .divide-yellow-200 > :not(:last-child){border-color:rgb(234 179 8 / 0.32)}
+html.dark .ds-app .divide-yellow-300 > :not(:last-child){border-color:rgb(234 179 8 / 0.32)}
+html.dark .ds-app .divide-yellow-50 > :not(:last-child){border-color:rgb(234 179 8 / 0.22)}
+html.dark .ds-app .focus\:bg-white:focus, html.dark .ds-app.focus\:bg-white:focus{background-color:#111a2b}
+html.dark .ds-app .from-blue-50, html.dark .ds-app.from-blue-50{--tw-gradient-from:rgb(59 130 246 / 0.18)}
+html.dark .ds-app .from-sky-100, html.dark .ds-app.from-sky-100{--tw-gradient-from:rgb(14 165 233 / 0.18)}
+html.dark .ds-app .hover\:bg-amber-100:hover, html.dark .ds-app.hover\:bg-amber-100:hover{background-color:rgb(245 158 11 / 0.16)}
+html.dark .ds-app .hover\:bg-amber-200:hover, html.dark .ds-app.hover\:bg-amber-200:hover{background-color:rgb(245 158 11 / 0.24)}
+html.dark .ds-app .hover\:bg-amber-50:hover, html.dark .ds-app.hover\:bg-amber-50:hover{background-color:rgb(245 158 11 / 0.1)}
+html.dark .ds-app .hover\:bg-blue-100:hover, html.dark .ds-app.hover\:bg-blue-100:hover{background-color:rgb(59 130 246 / 0.16)}
+html.dark .ds-app .hover\:bg-blue-200:hover, html.dark .ds-app.hover\:bg-blue-200:hover{background-color:rgb(59 130 246 / 0.24)}
+html.dark .ds-app .hover\:bg-blue-50:hover, html.dark .ds-app.hover\:bg-blue-50:hover{background-color:rgb(59 130 246 / 0.1)}
+html.dark .ds-app .hover\:bg-blue-50\/30:hover, html.dark .ds-app.hover\:bg-blue-50\/30:hover{background-color:rgb(59 130 246 / 0.05)}
+html.dark .ds-app .hover\:bg-cyan-100:hover, html.dark .ds-app.hover\:bg-cyan-100:hover{background-color:rgb(6 182 212 / 0.16)}
+html.dark .ds-app .hover\:bg-cyan-200:hover, html.dark .ds-app.hover\:bg-cyan-200:hover{background-color:rgb(6 182 212 / 0.24)}
+html.dark .ds-app .hover\:bg-cyan-50:hover, html.dark .ds-app.hover\:bg-cyan-50:hover{background-color:rgb(6 182 212 / 0.1)}
+html.dark .ds-app .hover\:bg-emerald-100:hover, html.dark .ds-app.hover\:bg-emerald-100:hover{background-color:rgb(16 185 129 / 0.16)}
+html.dark .ds-app .hover\:bg-emerald-200:hover, html.dark .ds-app.hover\:bg-emerald-200:hover{background-color:rgb(16 185 129 / 0.24)}
+html.dark .ds-app .hover\:bg-emerald-50:hover, html.dark .ds-app.hover\:bg-emerald-50:hover{background-color:rgb(16 185 129 / 0.1)}
+html.dark .ds-app .hover\:bg-fuchsia-100:hover, html.dark .ds-app.hover\:bg-fuchsia-100:hover{background-color:rgb(217 70 239 / 0.16)}
+html.dark .ds-app .hover\:bg-fuchsia-200:hover, html.dark .ds-app.hover\:bg-fuchsia-200:hover{background-color:rgb(217 70 239 / 0.24)}
+html.dark .ds-app .hover\:bg-fuchsia-50:hover, html.dark .ds-app.hover\:bg-fuchsia-50:hover{background-color:rgb(217 70 239 / 0.1)}
+html.dark .ds-app .hover\:bg-gray-100:hover, html.dark .ds-app.hover\:bg-gray-100:hover{background-color:#1a2436}
+html.dark .ds-app .hover\:bg-gray-200:hover, html.dark .ds-app.hover\:bg-gray-200:hover{background-color:#243046}
+html.dark .ds-app .hover\:bg-gray-50:hover, html.dark .ds-app.hover\:bg-gray-50:hover{background-color:#0e1524}
+html.dark .ds-app .hover\:bg-green-100:hover, html.dark .ds-app.hover\:bg-green-100:hover{background-color:rgb(34 197 94 / 0.16)}
+html.dark .ds-app .hover\:bg-green-200:hover, html.dark .ds-app.hover\:bg-green-200:hover{background-color:rgb(34 197 94 / 0.24)}
+html.dark .ds-app .hover\:bg-green-50:hover, html.dark .ds-app.hover\:bg-green-50:hover{background-color:rgb(34 197 94 / 0.1)}
+html.dark .ds-app .hover\:bg-indigo-100:hover, html.dark .ds-app.hover\:bg-indigo-100:hover{background-color:rgb(99 102 241 / 0.16)}
+html.dark .ds-app .hover\:bg-indigo-200:hover, html.dark .ds-app.hover\:bg-indigo-200:hover{background-color:rgb(99 102 241 / 0.24)}
+html.dark .ds-app .hover\:bg-indigo-50:hover, html.dark .ds-app.hover\:bg-indigo-50:hover{background-color:rgb(99 102 241 / 0.1)}
+html.dark .ds-app .hover\:bg-lime-100:hover, html.dark .ds-app.hover\:bg-lime-100:hover{background-color:rgb(132 204 22 / 0.16)}
+html.dark .ds-app .hover\:bg-lime-200:hover, html.dark .ds-app.hover\:bg-lime-200:hover{background-color:rgb(132 204 22 / 0.24)}
+html.dark .ds-app .hover\:bg-lime-50:hover, html.dark .ds-app.hover\:bg-lime-50:hover{background-color:rgb(132 204 22 / 0.1)}
+html.dark .ds-app .hover\:bg-orange-100:hover, html.dark .ds-app.hover\:bg-orange-100:hover{background-color:rgb(249 115 22 / 0.16)}
+html.dark .ds-app .hover\:bg-orange-200:hover, html.dark .ds-app.hover\:bg-orange-200:hover{background-color:rgb(249 115 22 / 0.24)}
+html.dark .ds-app .hover\:bg-orange-50:hover, html.dark .ds-app.hover\:bg-orange-50:hover{background-color:rgb(249 115 22 / 0.1)}
+html.dark .ds-app .hover\:bg-pink-100:hover, html.dark .ds-app.hover\:bg-pink-100:hover{background-color:rgb(236 72 153 / 0.16)}
+html.dark .ds-app .hover\:bg-pink-200:hover, html.dark .ds-app.hover\:bg-pink-200:hover{background-color:rgb(236 72 153 / 0.24)}
+html.dark .ds-app .hover\:bg-pink-50:hover, html.dark .ds-app.hover\:bg-pink-50:hover{background-color:rgb(236 72 153 / 0.1)}
+html.dark .ds-app .hover\:bg-purple-100:hover, html.dark .ds-app.hover\:bg-purple-100:hover{background-color:rgb(168 85 247 / 0.16)}
+html.dark .ds-app .hover\:bg-purple-200:hover, html.dark .ds-app.hover\:bg-purple-200:hover{background-color:rgb(168 85 247 / 0.24)}
+html.dark .ds-app .hover\:bg-purple-50:hover, html.dark .ds-app.hover\:bg-purple-50:hover{background-color:rgb(168 85 247 / 0.1)}
+html.dark .ds-app .hover\:bg-red-100:hover, html.dark .ds-app.hover\:bg-red-100:hover{background-color:rgb(239 68 68 / 0.16)}
+html.dark .ds-app .hover\:bg-red-200:hover, html.dark .ds-app.hover\:bg-red-200:hover{background-color:rgb(239 68 68 / 0.24)}
+html.dark .ds-app .hover\:bg-red-50:hover, html.dark .ds-app.hover\:bg-red-50:hover{background-color:rgb(239 68 68 / 0.1)}
+html.dark .ds-app .hover\:bg-rose-100:hover, html.dark .ds-app.hover\:bg-rose-100:hover{background-color:rgb(244 63 94 / 0.16)}
+html.dark .ds-app .hover\:bg-rose-200:hover, html.dark .ds-app.hover\:bg-rose-200:hover{background-color:rgb(244 63 94 / 0.24)}
+html.dark .ds-app .hover\:bg-rose-50:hover, html.dark .ds-app.hover\:bg-rose-50:hover{background-color:rgb(244 63 94 / 0.1)}
+html.dark .ds-app .hover\:bg-sky-100:hover, html.dark .ds-app.hover\:bg-sky-100:hover{background-color:rgb(14 165 233 / 0.16)}
+html.dark .ds-app .hover\:bg-sky-200:hover, html.dark .ds-app.hover\:bg-sky-200:hover{background-color:rgb(14 165 233 / 0.24)}
+html.dark .ds-app .hover\:bg-sky-50:hover, html.dark .ds-app.hover\:bg-sky-50:hover{background-color:rgb(14 165 233 / 0.1)}
+html.dark .ds-app .hover\:bg-slate-100:hover, html.dark .ds-app.hover\:bg-slate-100:hover{background-color:#1a2436}
+html.dark .ds-app .hover\:bg-slate-200:hover, html.dark .ds-app.hover\:bg-slate-200:hover{background-color:#243046}
+html.dark .ds-app .hover\:bg-slate-50:hover, html.dark .ds-app.hover\:bg-slate-50:hover{background-color:#0e1524}
+html.dark .ds-app .hover\:bg-slate-50\/80:hover, html.dark .ds-app.hover\:bg-slate-50\/80:hover{background-color:#0e1524}
+html.dark .ds-app .hover\:bg-teal-100:hover, html.dark .ds-app.hover\:bg-teal-100:hover{background-color:rgb(20 184 166 / 0.16)}
+html.dark .ds-app .hover\:bg-teal-200:hover, html.dark .ds-app.hover\:bg-teal-200:hover{background-color:rgb(20 184 166 / 0.24)}
+html.dark .ds-app .hover\:bg-teal-50:hover, html.dark .ds-app.hover\:bg-teal-50:hover{background-color:rgb(20 184 166 / 0.1)}
+html.dark .ds-app .hover\:bg-violet-100:hover, html.dark .ds-app.hover\:bg-violet-100:hover{background-color:rgb(139 92 246 / 0.16)}
+html.dark .ds-app .hover\:bg-violet-200:hover, html.dark .ds-app.hover\:bg-violet-200:hover{background-color:rgb(139 92 246 / 0.24)}
+html.dark .ds-app .hover\:bg-violet-50:hover, html.dark .ds-app.hover\:bg-violet-50:hover{background-color:rgb(139 92 246 / 0.1)}
+html.dark .ds-app .hover\:bg-white:hover, html.dark .ds-app.hover\:bg-white:hover{background-color:#111a2b}
+html.dark .ds-app .hover\:bg-yellow-100:hover, html.dark .ds-app.hover\:bg-yellow-100:hover{background-color:rgb(234 179 8 / 0.16)}
+html.dark .ds-app .hover\:bg-yellow-200:hover, html.dark .ds-app.hover\:bg-yellow-200:hover{background-color:rgb(234 179 8 / 0.24)}
+html.dark .ds-app .hover\:bg-yellow-50:hover, html.dark .ds-app.hover\:bg-yellow-50:hover{background-color:rgb(234 179 8 / 0.1)}
+html.dark .ds-app .hover\:border-amber-100:hover, html.dark .ds-app.hover\:border-amber-100:hover{border-color:rgb(245 158 11 / 0.22)}
+html.dark .ds-app .hover\:border-amber-200:hover, html.dark .ds-app.hover\:border-amber-200:hover{border-color:rgb(245 158 11 / 0.32)}
+html.dark .ds-app .hover\:border-amber-300:hover, html.dark .ds-app.hover\:border-amber-300:hover{border-color:rgb(245 158 11 / 0.32)}
+html.dark .ds-app .hover\:border-amber-50:hover, html.dark .ds-app.hover\:border-amber-50:hover{border-color:rgb(245 158 11 / 0.22)}
+html.dark .ds-app .hover\:border-blue-100:hover, html.dark .ds-app.hover\:border-blue-100:hover{border-color:rgb(59 130 246 / 0.22)}
+html.dark .ds-app .hover\:border-blue-200:hover, html.dark .ds-app.hover\:border-blue-200:hover{border-color:rgb(59 130 246 / 0.32)}
+html.dark .ds-app .hover\:border-blue-300:hover, html.dark .ds-app.hover\:border-blue-300:hover{border-color:rgb(59 130 246 / 0.32)}
+html.dark .ds-app .hover\:border-blue-50:hover, html.dark .ds-app.hover\:border-blue-50:hover{border-color:rgb(59 130 246 / 0.22)}
+html.dark .ds-app .hover\:border-cyan-100:hover, html.dark .ds-app.hover\:border-cyan-100:hover{border-color:rgb(6 182 212 / 0.22)}
+html.dark .ds-app .hover\:border-cyan-200:hover, html.dark .ds-app.hover\:border-cyan-200:hover{border-color:rgb(6 182 212 / 0.32)}
+html.dark .ds-app .hover\:border-cyan-300:hover, html.dark .ds-app.hover\:border-cyan-300:hover{border-color:rgb(6 182 212 / 0.32)}
+html.dark .ds-app .hover\:border-cyan-50:hover, html.dark .ds-app.hover\:border-cyan-50:hover{border-color:rgb(6 182 212 / 0.22)}
+html.dark .ds-app .hover\:border-emerald-100:hover, html.dark .ds-app.hover\:border-emerald-100:hover{border-color:rgb(16 185 129 / 0.22)}
+html.dark .ds-app .hover\:border-emerald-200:hover, html.dark .ds-app.hover\:border-emerald-200:hover{border-color:rgb(16 185 129 / 0.32)}
+html.dark .ds-app .hover\:border-emerald-300:hover, html.dark .ds-app.hover\:border-emerald-300:hover{border-color:rgb(16 185 129 / 0.32)}
+html.dark .ds-app .hover\:border-emerald-50:hover, html.dark .ds-app.hover\:border-emerald-50:hover{border-color:rgb(16 185 129 / 0.22)}
+html.dark .ds-app .hover\:border-fuchsia-100:hover, html.dark .ds-app.hover\:border-fuchsia-100:hover{border-color:rgb(217 70 239 / 0.22)}
+html.dark .ds-app .hover\:border-fuchsia-200:hover, html.dark .ds-app.hover\:border-fuchsia-200:hover{border-color:rgb(217 70 239 / 0.32)}
+html.dark .ds-app .hover\:border-fuchsia-300:hover, html.dark .ds-app.hover\:border-fuchsia-300:hover{border-color:rgb(217 70 239 / 0.32)}
+html.dark .ds-app .hover\:border-fuchsia-50:hover, html.dark .ds-app.hover\:border-fuchsia-50:hover{border-color:rgb(217 70 239 / 0.22)}
+html.dark .ds-app .hover\:border-gray-100:hover, html.dark .ds-app.hover\:border-gray-100:hover{border-color:#1c2638}
+html.dark .ds-app .hover\:border-gray-200:hover, html.dark .ds-app.hover\:border-gray-200:hover{border-color:#243046}
+html.dark .ds-app .hover\:border-gray-300:hover, html.dark .ds-app.hover\:border-gray-300:hover{border-color:#33405a}
+html.dark .ds-app .hover\:border-gray-50:hover, html.dark .ds-app.hover\:border-gray-50:hover{border-color:#18212f}
+html.dark .ds-app .hover\:border-green-100:hover, html.dark .ds-app.hover\:border-green-100:hover{border-color:rgb(34 197 94 / 0.22)}
+html.dark .ds-app .hover\:border-green-200:hover, html.dark .ds-app.hover\:border-green-200:hover{border-color:rgb(34 197 94 / 0.32)}
+html.dark .ds-app .hover\:border-green-300:hover, html.dark .ds-app.hover\:border-green-300:hover{border-color:rgb(34 197 94 / 0.32)}
+html.dark .ds-app .hover\:border-green-50:hover, html.dark .ds-app.hover\:border-green-50:hover{border-color:rgb(34 197 94 / 0.22)}
+html.dark .ds-app .hover\:border-indigo-100:hover, html.dark .ds-app.hover\:border-indigo-100:hover{border-color:rgb(99 102 241 / 0.22)}
+html.dark .ds-app .hover\:border-indigo-200:hover, html.dark .ds-app.hover\:border-indigo-200:hover{border-color:rgb(99 102 241 / 0.32)}
+html.dark .ds-app .hover\:border-indigo-300:hover, html.dark .ds-app.hover\:border-indigo-300:hover{border-color:rgb(99 102 241 / 0.32)}
+html.dark .ds-app .hover\:border-indigo-50:hover, html.dark .ds-app.hover\:border-indigo-50:hover{border-color:rgb(99 102 241 / 0.22)}
+html.dark .ds-app .hover\:border-lime-100:hover, html.dark .ds-app.hover\:border-lime-100:hover{border-color:rgb(132 204 22 / 0.22)}
+html.dark .ds-app .hover\:border-lime-200:hover, html.dark .ds-app.hover\:border-lime-200:hover{border-color:rgb(132 204 22 / 0.32)}
+html.dark .ds-app .hover\:border-lime-300:hover, html.dark .ds-app.hover\:border-lime-300:hover{border-color:rgb(132 204 22 / 0.32)}
+html.dark .ds-app .hover\:border-lime-50:hover, html.dark .ds-app.hover\:border-lime-50:hover{border-color:rgb(132 204 22 / 0.22)}
+html.dark .ds-app .hover\:border-orange-100:hover, html.dark .ds-app.hover\:border-orange-100:hover{border-color:rgb(249 115 22 / 0.22)}
+html.dark .ds-app .hover\:border-orange-200:hover, html.dark .ds-app.hover\:border-orange-200:hover{border-color:rgb(249 115 22 / 0.32)}
+html.dark .ds-app .hover\:border-orange-300:hover, html.dark .ds-app.hover\:border-orange-300:hover{border-color:rgb(249 115 22 / 0.32)}
+html.dark .ds-app .hover\:border-orange-50:hover, html.dark .ds-app.hover\:border-orange-50:hover{border-color:rgb(249 115 22 / 0.22)}
+html.dark .ds-app .hover\:border-pink-100:hover, html.dark .ds-app.hover\:border-pink-100:hover{border-color:rgb(236 72 153 / 0.22)}
+html.dark .ds-app .hover\:border-pink-200:hover, html.dark .ds-app.hover\:border-pink-200:hover{border-color:rgb(236 72 153 / 0.32)}
+html.dark .ds-app .hover\:border-pink-300:hover, html.dark .ds-app.hover\:border-pink-300:hover{border-color:rgb(236 72 153 / 0.32)}
+html.dark .ds-app .hover\:border-pink-50:hover, html.dark .ds-app.hover\:border-pink-50:hover{border-color:rgb(236 72 153 / 0.22)}
+html.dark .ds-app .hover\:border-purple-100:hover, html.dark .ds-app.hover\:border-purple-100:hover{border-color:rgb(168 85 247 / 0.22)}
+html.dark .ds-app .hover\:border-purple-200:hover, html.dark .ds-app.hover\:border-purple-200:hover{border-color:rgb(168 85 247 / 0.32)}
+html.dark .ds-app .hover\:border-purple-300:hover, html.dark .ds-app.hover\:border-purple-300:hover{border-color:rgb(168 85 247 / 0.32)}
+html.dark .ds-app .hover\:border-purple-50:hover, html.dark .ds-app.hover\:border-purple-50:hover{border-color:rgb(168 85 247 / 0.22)}
+html.dark .ds-app .hover\:border-red-100:hover, html.dark .ds-app.hover\:border-red-100:hover{border-color:rgb(239 68 68 / 0.22)}
+html.dark .ds-app .hover\:border-red-200:hover, html.dark .ds-app.hover\:border-red-200:hover{border-color:rgb(239 68 68 / 0.32)}
+html.dark .ds-app .hover\:border-red-300:hover, html.dark .ds-app.hover\:border-red-300:hover{border-color:rgb(239 68 68 / 0.32)}
+html.dark .ds-app .hover\:border-red-50:hover, html.dark .ds-app.hover\:border-red-50:hover{border-color:rgb(239 68 68 / 0.22)}
+html.dark .ds-app .hover\:border-rose-100:hover, html.dark .ds-app.hover\:border-rose-100:hover{border-color:rgb(244 63 94 / 0.22)}
+html.dark .ds-app .hover\:border-rose-200:hover, html.dark .ds-app.hover\:border-rose-200:hover{border-color:rgb(244 63 94 / 0.32)}
+html.dark .ds-app .hover\:border-rose-300:hover, html.dark .ds-app.hover\:border-rose-300:hover{border-color:rgb(244 63 94 / 0.32)}
+html.dark .ds-app .hover\:border-rose-50:hover, html.dark .ds-app.hover\:border-rose-50:hover{border-color:rgb(244 63 94 / 0.22)}
+html.dark .ds-app .hover\:border-sky-100:hover, html.dark .ds-app.hover\:border-sky-100:hover{border-color:rgb(14 165 233 / 0.22)}
+html.dark .ds-app .hover\:border-sky-200:hover, html.dark .ds-app.hover\:border-sky-200:hover{border-color:rgb(14 165 233 / 0.32)}
+html.dark .ds-app .hover\:border-sky-300:hover, html.dark .ds-app.hover\:border-sky-300:hover{border-color:rgb(14 165 233 / 0.32)}
+html.dark .ds-app .hover\:border-sky-50:hover, html.dark .ds-app.hover\:border-sky-50:hover{border-color:rgb(14 165 233 / 0.22)}
+html.dark .ds-app .hover\:border-slate-100:hover, html.dark .ds-app.hover\:border-slate-100:hover{border-color:#1c2638}
+html.dark .ds-app .hover\:border-slate-200:hover, html.dark .ds-app.hover\:border-slate-200:hover{border-color:#243046}
+html.dark .ds-app .hover\:border-slate-300:hover, html.dark .ds-app.hover\:border-slate-300:hover{border-color:#33405a}
+html.dark .ds-app .hover\:border-slate-50:hover, html.dark .ds-app.hover\:border-slate-50:hover{border-color:#18212f}
+html.dark .ds-app .hover\:border-teal-100:hover, html.dark .ds-app.hover\:border-teal-100:hover{border-color:rgb(20 184 166 / 0.22)}
+html.dark .ds-app .hover\:border-teal-200:hover, html.dark .ds-app.hover\:border-teal-200:hover{border-color:rgb(20 184 166 / 0.32)}
+html.dark .ds-app .hover\:border-teal-300:hover, html.dark .ds-app.hover\:border-teal-300:hover{border-color:rgb(20 184 166 / 0.32)}
+html.dark .ds-app .hover\:border-teal-50:hover, html.dark .ds-app.hover\:border-teal-50:hover{border-color:rgb(20 184 166 / 0.22)}
+html.dark .ds-app .hover\:border-violet-100:hover, html.dark .ds-app.hover\:border-violet-100:hover{border-color:rgb(139 92 246 / 0.22)}
+html.dark .ds-app .hover\:border-violet-200:hover, html.dark .ds-app.hover\:border-violet-200:hover{border-color:rgb(139 92 246 / 0.32)}
+html.dark .ds-app .hover\:border-violet-300:hover, html.dark .ds-app.hover\:border-violet-300:hover{border-color:rgb(139 92 246 / 0.32)}
+html.dark .ds-app .hover\:border-violet-50:hover, html.dark .ds-app.hover\:border-violet-50:hover{border-color:rgb(139 92 246 / 0.22)}
+html.dark .ds-app .hover\:border-yellow-100:hover, html.dark .ds-app.hover\:border-yellow-100:hover{border-color:rgb(234 179 8 / 0.22)}
+html.dark .ds-app .hover\:border-yellow-200:hover, html.dark .ds-app.hover\:border-yellow-200:hover{border-color:rgb(234 179 8 / 0.32)}
+html.dark .ds-app .hover\:border-yellow-300:hover, html.dark .ds-app.hover\:border-yellow-300:hover{border-color:rgb(234 179 8 / 0.32)}
+html.dark .ds-app .hover\:border-yellow-50:hover, html.dark .ds-app.hover\:border-yellow-50:hover{border-color:rgb(234 179 8 / 0.22)}
+html.dark .ds-app .hover\:text-amber-600:hover, html.dark .ds-app.hover\:text-amber-600:hover{color:#fbbf24}
+html.dark .ds-app .hover\:text-amber-700:hover, html.dark .ds-app.hover\:text-amber-700:hover{color:#fcd34d}
+html.dark .ds-app .hover\:text-amber-800:hover, html.dark .ds-app.hover\:text-amber-800:hover{color:#fcd34d}
+html.dark .ds-app .hover\:text-amber-900:hover, html.dark .ds-app.hover\:text-amber-900:hover{color:#fcd34d}
+html.dark .ds-app .hover\:text-amber-950:hover, html.dark .ds-app.hover\:text-amber-950:hover{color:#fcd34d}
+html.dark .ds-app .hover\:text-blue-600:hover, html.dark .ds-app.hover\:text-blue-600:hover{color:#60a5fa}
+html.dark .ds-app .hover\:text-blue-700:hover, html.dark .ds-app.hover\:text-blue-700:hover{color:#93c5fd}
+html.dark .ds-app .hover\:text-blue-800:hover, html.dark .ds-app.hover\:text-blue-800:hover{color:#93c5fd}
+html.dark .ds-app .hover\:text-blue-900:hover, html.dark .ds-app.hover\:text-blue-900:hover{color:#93c5fd}
+html.dark .ds-app .hover\:text-cyan-600:hover, html.dark .ds-app.hover\:text-cyan-600:hover{color:#22d3ee}
+html.dark .ds-app .hover\:text-cyan-700:hover, html.dark .ds-app.hover\:text-cyan-700:hover{color:#67e8f9}
+html.dark .ds-app .hover\:text-cyan-800:hover, html.dark .ds-app.hover\:text-cyan-800:hover{color:#67e8f9}
+html.dark .ds-app .hover\:text-cyan-900:hover, html.dark .ds-app.hover\:text-cyan-900:hover{color:#67e8f9}
+html.dark .ds-app .hover\:text-emerald-600:hover, html.dark .ds-app.hover\:text-emerald-600:hover{color:#34d399}
+html.dark .ds-app .hover\:text-emerald-700:hover, html.dark .ds-app.hover\:text-emerald-700:hover{color:#6ee7b7}
+html.dark .ds-app .hover\:text-emerald-800:hover, html.dark .ds-app.hover\:text-emerald-800:hover{color:#6ee7b7}
+html.dark .ds-app .hover\:text-emerald-900:hover, html.dark .ds-app.hover\:text-emerald-900:hover{color:#6ee7b7}
+html.dark .ds-app .hover\:text-fuchsia-600:hover, html.dark .ds-app.hover\:text-fuchsia-600:hover{color:#e879f9}
+html.dark .ds-app .hover\:text-fuchsia-700:hover, html.dark .ds-app.hover\:text-fuchsia-700:hover{color:#f0abfc}
+html.dark .ds-app .hover\:text-fuchsia-800:hover, html.dark .ds-app.hover\:text-fuchsia-800:hover{color:#f0abfc}
+html.dark .ds-app .hover\:text-fuchsia-900:hover, html.dark .ds-app.hover\:text-fuchsia-900:hover{color:#f0abfc}
+html.dark .ds-app .hover\:text-gray-600:hover, html.dark .ds-app.hover\:text-gray-600:hover{color:#a2adbf}
+html.dark .ds-app .hover\:text-gray-700:hover, html.dark .ds-app.hover\:text-gray-700:hover{color:#c0c8d5}
+html.dark .ds-app .hover\:text-gray-800:hover, html.dark .ds-app.hover\:text-gray-800:hover{color:#d5dbe5}
+html.dark .ds-app .hover\:text-gray-900:hover, html.dark .ds-app.hover\:text-gray-900:hover{color:#e6eaf1}
+html.dark .ds-app .hover\:text-green-600:hover, html.dark .ds-app.hover\:text-green-600:hover{color:#4ade80}
+html.dark .ds-app .hover\:text-green-700:hover, html.dark .ds-app.hover\:text-green-700:hover{color:#86efac}
+html.dark .ds-app .hover\:text-green-800:hover, html.dark .ds-app.hover\:text-green-800:hover{color:#86efac}
+html.dark .ds-app .hover\:text-green-900:hover, html.dark .ds-app.hover\:text-green-900:hover{color:#86efac}
+html.dark .ds-app .hover\:text-indigo-600:hover, html.dark .ds-app.hover\:text-indigo-600:hover{color:#818cf8}
+html.dark .ds-app .hover\:text-indigo-700:hover, html.dark .ds-app.hover\:text-indigo-700:hover{color:#a5b4fc}
+html.dark .ds-app .hover\:text-indigo-800:hover, html.dark .ds-app.hover\:text-indigo-800:hover{color:#a5b4fc}
+html.dark .ds-app .hover\:text-indigo-900:hover, html.dark .ds-app.hover\:text-indigo-900:hover{color:#a5b4fc}
+html.dark .ds-app .hover\:text-lime-600:hover, html.dark .ds-app.hover\:text-lime-600:hover{color:#a3e635}
+html.dark .ds-app .hover\:text-lime-700:hover, html.dark .ds-app.hover\:text-lime-700:hover{color:#bef264}
+html.dark .ds-app .hover\:text-lime-800:hover, html.dark .ds-app.hover\:text-lime-800:hover{color:#bef264}
+html.dark .ds-app .hover\:text-lime-900:hover, html.dark .ds-app.hover\:text-lime-900:hover{color:#bef264}
+html.dark .ds-app .hover\:text-orange-600:hover, html.dark .ds-app.hover\:text-orange-600:hover{color:#fb923c}
+html.dark .ds-app .hover\:text-orange-700:hover, html.dark .ds-app.hover\:text-orange-700:hover{color:#fdba74}
+html.dark .ds-app .hover\:text-orange-800:hover, html.dark .ds-app.hover\:text-orange-800:hover{color:#fdba74}
+html.dark .ds-app .hover\:text-orange-900:hover, html.dark .ds-app.hover\:text-orange-900:hover{color:#fdba74}
+html.dark .ds-app .hover\:text-pink-600:hover, html.dark .ds-app.hover\:text-pink-600:hover{color:#f472b6}
+html.dark .ds-app .hover\:text-pink-700:hover, html.dark .ds-app.hover\:text-pink-700:hover{color:#f9a8d4}
+html.dark .ds-app .hover\:text-pink-800:hover, html.dark .ds-app.hover\:text-pink-800:hover{color:#f9a8d4}
+html.dark .ds-app .hover\:text-pink-900:hover, html.dark .ds-app.hover\:text-pink-900:hover{color:#f9a8d4}
+html.dark .ds-app .hover\:text-purple-600:hover, html.dark .ds-app.hover\:text-purple-600:hover{color:#c084fc}
+html.dark .ds-app .hover\:text-purple-700:hover, html.dark .ds-app.hover\:text-purple-700:hover{color:#d8b4fe}
+html.dark .ds-app .hover\:text-purple-800:hover, html.dark .ds-app.hover\:text-purple-800:hover{color:#d8b4fe}
+html.dark .ds-app .hover\:text-purple-900:hover, html.dark .ds-app.hover\:text-purple-900:hover{color:#d8b4fe}
+html.dark .ds-app .hover\:text-red-600:hover, html.dark .ds-app.hover\:text-red-600:hover{color:#f87171}
+html.dark .ds-app .hover\:text-red-700:hover, html.dark .ds-app.hover\:text-red-700:hover{color:#fca5a5}
+html.dark .ds-app .hover\:text-red-800:hover, html.dark .ds-app.hover\:text-red-800:hover{color:#fca5a5}
+html.dark .ds-app .hover\:text-red-900:hover, html.dark .ds-app.hover\:text-red-900:hover{color:#fca5a5}
+html.dark .ds-app .hover\:text-rose-600:hover, html.dark .ds-app.hover\:text-rose-600:hover{color:#fb7185}
+html.dark .ds-app .hover\:text-rose-700:hover, html.dark .ds-app.hover\:text-rose-700:hover{color:#fda4af}
+html.dark .ds-app .hover\:text-rose-800:hover, html.dark .ds-app.hover\:text-rose-800:hover{color:#fda4af}
+html.dark .ds-app .hover\:text-rose-900:hover, html.dark .ds-app.hover\:text-rose-900:hover{color:#fda4af}
+html.dark .ds-app .hover\:text-sky-600:hover, html.dark .ds-app.hover\:text-sky-600:hover{color:#38bdf8}
+html.dark .ds-app .hover\:text-sky-700:hover, html.dark .ds-app.hover\:text-sky-700:hover{color:#7dd3fc}
+html.dark .ds-app .hover\:text-sky-800:hover, html.dark .ds-app.hover\:text-sky-800:hover{color:#7dd3fc}
+html.dark .ds-app .hover\:text-sky-900:hover, html.dark .ds-app.hover\:text-sky-900:hover{color:#7dd3fc}
+html.dark .ds-app .hover\:text-slate-600:hover, html.dark .ds-app.hover\:text-slate-600:hover{color:#a2adbf}
+html.dark .ds-app .hover\:text-slate-700:hover, html.dark .ds-app.hover\:text-slate-700:hover{color:#c0c8d5}
+html.dark .ds-app .hover\:text-slate-800:hover, html.dark .ds-app.hover\:text-slate-800:hover{color:#d5dbe5}
+html.dark .ds-app .hover\:text-slate-900:hover, html.dark .ds-app.hover\:text-slate-900:hover{color:#e6eaf1}
+html.dark .ds-app .hover\:text-teal-600:hover, html.dark .ds-app.hover\:text-teal-600:hover{color:#2dd4bf}
+html.dark .ds-app .hover\:text-teal-700:hover, html.dark .ds-app.hover\:text-teal-700:hover{color:#5eead4}
+html.dark .ds-app .hover\:text-teal-800:hover, html.dark .ds-app.hover\:text-teal-800:hover{color:#5eead4}
+html.dark .ds-app .hover\:text-teal-900:hover, html.dark .ds-app.hover\:text-teal-900:hover{color:#5eead4}
+html.dark .ds-app .hover\:text-violet-600:hover, html.dark .ds-app.hover\:text-violet-600:hover{color:#a78bfa}
+html.dark .ds-app .hover\:text-violet-700:hover, html.dark .ds-app.hover\:text-violet-700:hover{color:#c4b5fd}
+html.dark .ds-app .hover\:text-violet-800:hover, html.dark .ds-app.hover\:text-violet-800:hover{color:#c4b5fd}
+html.dark .ds-app .hover\:text-violet-900:hover, html.dark .ds-app.hover\:text-violet-900:hover{color:#c4b5fd}
+html.dark .ds-app .hover\:text-yellow-600:hover, html.dark .ds-app.hover\:text-yellow-600:hover{color:#facc15}
+html.dark .ds-app .hover\:text-yellow-700:hover, html.dark .ds-app.hover\:text-yellow-700:hover{color:#fde047}
+html.dark .ds-app .hover\:text-yellow-800:hover, html.dark .ds-app.hover\:text-yellow-800:hover{color:#fde047}
+html.dark .ds-app .hover\:text-yellow-900:hover, html.dark .ds-app.hover\:text-yellow-900:hover{color:#fde047}
+html.dark .ds-app .placeholder\:text-slate-500::placeholder, html.dark .ds-app.placeholder\:text-slate-500::placeholder{color:#8b97ab}
+html.dark .ds-app .text-amber-600, html.dark .ds-app.text-amber-600{color:#fbbf24}
+html.dark .ds-app .text-amber-700, html.dark .ds-app.text-amber-700{color:#fcd34d}
+html.dark .ds-app .text-amber-800, html.dark .ds-app.text-amber-800{color:#fcd34d}
+html.dark .ds-app .text-amber-900, html.dark .ds-app.text-amber-900{color:#fcd34d}
+html.dark .ds-app .text-amber-900\/70, html.dark .ds-app.text-amber-900\/70{color:#fcd34d}
+html.dark .ds-app .text-amber-950, html.dark .ds-app.text-amber-950{color:#fcd34d}
+html.dark .ds-app .text-blue-600, html.dark .ds-app.text-blue-600{color:#60a5fa}
+html.dark .ds-app .text-blue-700, html.dark .ds-app.text-blue-700{color:#93c5fd}
+html.dark .ds-app .text-blue-800, html.dark .ds-app.text-blue-800{color:#93c5fd}
+html.dark .ds-app .text-blue-900, html.dark .ds-app.text-blue-900{color:#93c5fd}
+html.dark .ds-app .text-blue-950, html.dark .ds-app.text-blue-950{color:#93c5fd}
+html.dark .ds-app .text-cyan-600, html.dark .ds-app.text-cyan-600{color:#22d3ee}
+html.dark .ds-app .text-cyan-700, html.dark .ds-app.text-cyan-700{color:#67e8f9}
+html.dark .ds-app .text-cyan-800, html.dark .ds-app.text-cyan-800{color:#67e8f9}
+html.dark .ds-app .text-cyan-900, html.dark .ds-app.text-cyan-900{color:#67e8f9}
+html.dark .ds-app .text-emerald-600, html.dark .ds-app.text-emerald-600{color:#34d399}
+html.dark .ds-app .text-emerald-700, html.dark .ds-app.text-emerald-700{color:#6ee7b7}
+html.dark .ds-app .text-emerald-800, html.dark .ds-app.text-emerald-800{color:#6ee7b7}
+html.dark .ds-app .text-emerald-900, html.dark .ds-app.text-emerald-900{color:#6ee7b7}
+html.dark .ds-app .text-fuchsia-600, html.dark .ds-app.text-fuchsia-600{color:#e879f9}
+html.dark .ds-app .text-fuchsia-700, html.dark .ds-app.text-fuchsia-700{color:#f0abfc}
+html.dark .ds-app .text-fuchsia-800, html.dark .ds-app.text-fuchsia-800{color:#f0abfc}
+html.dark .ds-app .text-fuchsia-900, html.dark .ds-app.text-fuchsia-900{color:#f0abfc}
+html.dark .ds-app .text-gray-600, html.dark .ds-app.text-gray-600{color:#a2adbf}
+html.dark .ds-app .text-gray-700, html.dark .ds-app.text-gray-700{color:#c0c8d5}
+html.dark .ds-app .text-gray-800, html.dark .ds-app.text-gray-800{color:#d5dbe5}
+html.dark .ds-app .text-gray-900, html.dark .ds-app.text-gray-900{color:#e6eaf1}
+html.dark .ds-app .text-green-600, html.dark .ds-app.text-green-600{color:#4ade80}
+html.dark .ds-app .text-green-700, html.dark .ds-app.text-green-700{color:#86efac}
+html.dark .ds-app .text-green-800, html.dark .ds-app.text-green-800{color:#86efac}
+html.dark .ds-app .text-green-900, html.dark .ds-app.text-green-900{color:#86efac}
+html.dark .ds-app .text-indigo-600, html.dark .ds-app.text-indigo-600{color:#818cf8}
+html.dark .ds-app .text-indigo-700, html.dark .ds-app.text-indigo-700{color:#a5b4fc}
+html.dark .ds-app .text-indigo-800, html.dark .ds-app.text-indigo-800{color:#a5b4fc}
+html.dark .ds-app .text-indigo-900, html.dark .ds-app.text-indigo-900{color:#a5b4fc}
+html.dark .ds-app .text-lime-600, html.dark .ds-app.text-lime-600{color:#a3e635}
+html.dark .ds-app .text-lime-700, html.dark .ds-app.text-lime-700{color:#bef264}
+html.dark .ds-app .text-lime-800, html.dark .ds-app.text-lime-800{color:#bef264}
+html.dark .ds-app .text-lime-900, html.dark .ds-app.text-lime-900{color:#bef264}
+html.dark .ds-app .text-orange-600, html.dark .ds-app.text-orange-600{color:#fb923c}
+html.dark .ds-app .text-orange-700, html.dark .ds-app.text-orange-700{color:#fdba74}
+html.dark .ds-app .text-orange-800, html.dark .ds-app.text-orange-800{color:#fdba74}
+html.dark .ds-app .text-orange-900, html.dark .ds-app.text-orange-900{color:#fdba74}
+html.dark .ds-app .text-pink-600, html.dark .ds-app.text-pink-600{color:#f472b6}
+html.dark .ds-app .text-pink-700, html.dark .ds-app.text-pink-700{color:#f9a8d4}
+html.dark .ds-app .text-pink-800, html.dark .ds-app.text-pink-800{color:#f9a8d4}
+html.dark .ds-app .text-pink-900, html.dark .ds-app.text-pink-900{color:#f9a8d4}
+html.dark .ds-app .text-purple-600, html.dark .ds-app.text-purple-600{color:#c084fc}
+html.dark .ds-app .text-purple-700, html.dark .ds-app.text-purple-700{color:#d8b4fe}
+html.dark .ds-app .text-purple-800, html.dark .ds-app.text-purple-800{color:#d8b4fe}
+html.dark .ds-app .text-purple-900, html.dark .ds-app.text-purple-900{color:#d8b4fe}
+html.dark .ds-app .text-red-600, html.dark .ds-app.text-red-600{color:#f87171}
+html.dark .ds-app .text-red-700, html.dark .ds-app.text-red-700{color:#fca5a5}
+html.dark .ds-app .text-red-800, html.dark .ds-app.text-red-800{color:#fca5a5}
+html.dark .ds-app .text-red-900, html.dark .ds-app.text-red-900{color:#fca5a5}
+html.dark .ds-app .text-rose-600, html.dark .ds-app.text-rose-600{color:#fb7185}
+html.dark .ds-app .text-rose-700, html.dark .ds-app.text-rose-700{color:#fda4af}
+html.dark .ds-app .text-rose-800, html.dark .ds-app.text-rose-800{color:#fda4af}
+html.dark .ds-app .text-rose-900, html.dark .ds-app.text-rose-900{color:#fda4af}
+html.dark .ds-app .text-sky-600, html.dark .ds-app.text-sky-600{color:#38bdf8}
+html.dark .ds-app .text-sky-700, html.dark .ds-app.text-sky-700{color:#7dd3fc}
+html.dark .ds-app .text-sky-800, html.dark .ds-app.text-sky-800{color:#7dd3fc}
+html.dark .ds-app .text-sky-900, html.dark .ds-app.text-sky-900{color:#7dd3fc}
+html.dark .ds-app .text-slate-500, html.dark .ds-app.text-slate-500{color:#8b97ab}
+html.dark .ds-app .text-slate-600, html.dark .ds-app.text-slate-600{color:#a2adbf}
+html.dark .ds-app .text-slate-700, html.dark .ds-app.text-slate-700{color:#c0c8d5}
+html.dark .ds-app .text-slate-800, html.dark .ds-app.text-slate-800{color:#d5dbe5}
+html.dark .ds-app .text-slate-900, html.dark .ds-app.text-slate-900{color:#e6eaf1}
+html.dark .ds-app .text-teal-600, html.dark .ds-app.text-teal-600{color:#2dd4bf}
+html.dark .ds-app .text-teal-700, html.dark .ds-app.text-teal-700{color:#5eead4}
+html.dark .ds-app .text-teal-800, html.dark .ds-app.text-teal-800{color:#5eead4}
+html.dark .ds-app .text-teal-900, html.dark .ds-app.text-teal-900{color:#5eead4}
+html.dark .ds-app .text-violet-600, html.dark .ds-app.text-violet-600{color:#a78bfa}
+html.dark .ds-app .text-violet-700, html.dark .ds-app.text-violet-700{color:#c4b5fd}
+html.dark .ds-app .text-violet-800, html.dark .ds-app.text-violet-800{color:#c4b5fd}
+html.dark .ds-app .text-violet-900, html.dark .ds-app.text-violet-900{color:#c4b5fd}
+html.dark .ds-app .text-yellow-600, html.dark .ds-app.text-yellow-600{color:#facc15}
+html.dark .ds-app .text-yellow-700, html.dark .ds-app.text-yellow-700{color:#fde047}
+html.dark .ds-app .text-yellow-800, html.dark .ds-app.text-yellow-800{color:#fde047}
+html.dark .ds-app .text-yellow-900, html.dark .ds-app.text-yellow-900{color:#fde047}
+html.dark .ds-app .to-indigo-100, html.dark .ds-app.to-indigo-100{--tw-gradient-to:rgb(99 102 241 / 0.18)}
+html.dark .ds-app .to-indigo-50, html.dark .ds-app.to-indigo-50{--tw-gradient-to:rgb(99 102 241 / 0.18)}

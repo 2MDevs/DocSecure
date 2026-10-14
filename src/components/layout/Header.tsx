@@ -13,10 +13,14 @@ import {
   CheckCircle2,
   Database,
   Sparkles,
+  Sun,
+  Moon,
+  MonitorSmartphone,
 } from 'lucide-react';
 import { Avatar } from '../common/Avatar';
 import { DocSecureLogo } from '../common/DocSecureLogo';
 import { ConnectionIndicator } from '../common/ConnectionIndicator';
+import { useTheme, ThemePreference } from '../../services/theme';
 import { User as UserType, SystemNotification } from '../../types';
 
 interface HeaderProps {
@@ -63,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
   dbStatus,
   pendingSyncCount = 0,
 }) => {
+  const { theme, preference, toggle: toggleTheme, setPreference } = useTheme();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
@@ -160,6 +165,17 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
         )}
+
+        {/* Alternar modo claro / escuro */}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors"
+          aria-label={theme === 'dark' ? 'Usar modo claro' : 'Usar modo escuro'}
+          title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+        >
+          {theme === 'dark' ? <Sun className="w-[18px] h-[18px] text-amber-300" /> : <Moon className="w-[18px] h-[18px]" />}
+        </button>
 
         {/* Notifications Bell */}
         <div className="relative" ref={notifRef}>
@@ -296,6 +312,28 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </>
               )}
+
+              <div className="px-1 pb-2">
+                <div className="px-1.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Aparência</div>
+                <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl">
+                  {([
+                    ['system', 'Sistema', MonitorSmartphone],
+                    ['light', 'Claro', Sun],
+                    ['dark', 'Escuro', Moon],
+                  ] as [ThemePreference, string, React.ElementType][]).map(([value, label, Icon]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setPreference(value)}
+                      className={`h-9 rounded-lg text-[11.5px] font-semibold flex items-center justify-center gap-1 transition-colors ${
+                        preference === value ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" /> {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="border-t border-slate-100 pt-1 space-y-0.5">
 {currentUser.role === 'DEVELOPER' && (
