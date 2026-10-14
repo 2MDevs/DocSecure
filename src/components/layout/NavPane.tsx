@@ -142,7 +142,7 @@ export const NavPane: React.FC<NavPaneProps> = ({
     onClose?.();
   };
 
-  const rowBase = 'w-full flex items-center gap-2 pr-2 h-8 text-[13px] rounded-md transition-colors';
+  const rowBase = 'w-full flex items-center gap-3 md:gap-2 pr-2 h-11 md:h-8 text-[15px] md:text-[13px] rounded-lg md:rounded-md transition-colors';
   const rowState = (active: boolean) => (active ? 'bg-blue-100/80 text-slate-900' : 'text-slate-700 hover:bg-slate-100');
 
   const renderFolder = (folder: Folder, depth: number): React.ReactNode => {
@@ -180,12 +180,12 @@ export const NavPane: React.FC<NavPaneProps> = ({
   );
 
   const pane = (
-    <div className="w-64 md:w-60 h-full bg-[#f9fafb] border-r border-slate-200 flex flex-col select-none">
+    <div className="w-[84vw] max-w-[320px] md:w-60 h-full bg-[#f9fafb] border-r border-slate-200 flex flex-col select-none">
       {/* Cabeçalho do menu no celular */}
-      <div className="md:hidden h-12 px-3 flex items-center justify-between border-b border-slate-200 bg-white">
-        <DocSecureLogo size="sm" showSubtitle={false} />
-        <button type="button" onClick={onClose} className="p-2 rounded-md hover:bg-slate-100" aria-label="Fechar menu">
-          <X className="w-4 h-4" />
+      <div className="md:hidden h-14 pt-[env(safe-area-inset-top)] px-4 flex items-center justify-between border-b border-slate-200 bg-white">
+        <DocSecureLogo size="sm" showSubtitle={false} tone="light" />
+        <button type="button" onClick={onClose} className="h-10 w-10 -mr-2 rounded-full active:bg-slate-100 flex items-center justify-center" aria-label="Fechar menu">
+          <X className="w-5 h-5" />
         </button>
       </div>
 
@@ -203,7 +203,7 @@ export const NavPane: React.FC<NavPaneProps> = ({
           <Trash2 className="w-4 h-4 text-slate-500" /> Lixeira
         </button>
 
-        <div className="pt-3 pb-1 px-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Setores</div>
+        <div className="pt-3 pb-1 px-2 text-[11.5px] md:text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Setores</div>
         {departments.length === 0 && <div className="px-2 py-1 text-xs text-slate-400">Nenhum setor cadastrado</div>}
         {departments.map((dept) => {
           const key = `d:${dept.id}`;
@@ -240,7 +240,7 @@ export const NavPane: React.FC<NavPaneProps> = ({
 
         {adminItems.length > 0 && (
           <>
-            <div className="pt-3 pb-1 px-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Administração</div>
+            <div className="pt-3 pb-1 px-2 text-[11.5px] md:text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Administração</div>
             {adminItems.map(({ tab, label, icon: Icon }) => (
               <button key={tab} type="button" onClick={() => go(tab)} className={`${rowBase} pl-2 ${rowState(activeTab === tab)}`}>
                 <Icon className="w-4 h-4 text-slate-500" /> {label}
@@ -250,7 +250,7 @@ export const NavPane: React.FC<NavPaneProps> = ({
         )}
       </nav>
 
-      <div className="border-t border-slate-200 px-2 py-2 space-y-0.5">
+      <div className="border-t border-slate-200 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] space-y-0.5">
         {allowedTabs.includes('settings') && (
           <button type="button" onClick={() => go('settings')} className={`${rowBase} pl-2 ${rowState(activeTab === 'settings')}`}>
             <Settings className="w-4 h-4 text-slate-500" /> Segurança da conta

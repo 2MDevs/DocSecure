@@ -186,15 +186,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#08101e] text-slate-100 flex items-center justify-center p-4 sm:p-6 lg:p-10 relative overflow-hidden select-none">
+    <div className="min-h-screen min-h-[100dvh] w-full bg-[#08101e] text-slate-100 flex items-stretch sm:items-center justify-center p-0 sm:p-6 lg:p-10 relative overflow-hidden select-none">
       {/* Ambient background glow effects */}
       <div className="absolute top-1/4 -left-40 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 right-0 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main card container */}
-      <div className="w-full max-w-4xl bg-[#0c172c] border border-slate-800/80 rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[580px]">
+      <div className="w-full max-w-4xl bg-[#0c172c] sm:border border-slate-800/80 sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:grid lg:grid-cols-12 sm:min-h-[580px]">
         {/* Left Visual Area - 3D Padlock & Security Theme */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-[#0e1e3b] via-[#09152b] to-[#060c18] p-8 lg:p-10 flex flex-col justify-between relative border-b lg:border-b-0 lg:border-r border-slate-800/80 overflow-hidden">
+        <div className="lg:col-span-5 bg-gradient-to-br from-[#0e1e3b] via-[#09152b] to-[#060c18] px-6 pb-6 pt-[max(2rem,env(safe-area-inset-top))] sm:p-8 lg:p-10 flex flex-col justify-between relative border-b lg:border-b-0 lg:border-r border-slate-800/80 overflow-hidden">
           {/* Subtle geometric pattern overlay */}
           <div className="absolute inset-0 bg-[radial-gradient(#1e3a8a_1px,transparent_1px)] [background-size:16px_16px] opacity-25" />
 
@@ -204,7 +204,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </div>
 
           {/* Center 3D Security Graphic */}
-          <div className="relative z-10 my-8 py-6 flex flex-col items-center justify-center">
+          <div className="relative z-10 my-8 py-6 hidden sm:flex flex-col items-center justify-center">
             <div className="relative w-44 h-44 flex items-center justify-center">
               {/* Glowing Outer Rings */}
               <div className="absolute inset-0 rounded-full bg-blue-500/10 blur-xl animate-pulse" />
@@ -243,7 +243,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </div>
 
           {/* Bottom Security Highlights */}
-          <div className="relative z-10 pt-4 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+          <div className="relative z-10 pt-4 border-t border-slate-800/80 hidden sm:grid grid-cols-2 gap-2 text-[11px] text-slate-400">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
               <span>2FA por E-mail</span>
@@ -256,7 +256,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         </div>
 
         {/* Right Form Area */}
-        <div className="lg:col-span-7 p-5 sm:p-10 lg:p-12 flex flex-col justify-between bg-[#0b1426]">
+        <div className="lg:col-span-7 flex-1 px-6 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-10 lg:p-12 flex flex-col justify-between bg-[#0b1426]">
           {step === 'LOGIN' ? (
             /* STEP 1: CREDENTIALS FORM */
             <div>

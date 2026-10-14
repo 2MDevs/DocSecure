@@ -392,11 +392,11 @@ export const SystemView: React.FC<SystemViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
               Sistema & Infraestrutura
             </h1>
-            <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full flex items-center gap-1">
+            <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full flex items-center gap-1 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
               Cluster Operacional (100%)
             </span>
@@ -407,11 +407,11 @@ export const SystemView: React.FC<SystemViewProps> = ({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center bg-white border border-slate-200 p-1 rounded-xl text-xs font-semibold shadow-2xs">
+        <div className="flex items-center bg-white border border-slate-200 p-1 rounded-xl text-xs font-semibold shadow-2xs overflow-x-auto max-w-full [scrollbar-width:none]">
           <button
             type="button"
             onClick={() => setActiveTab('metrics')}
-            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               activeTab === 'metrics' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -421,7 +421,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('updates')}
-            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               activeTab === 'updates' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -431,7 +431,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('api_webhooks')}
-            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               activeTab === 'api_webhooks' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -441,7 +441,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('logs')}
-            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               activeTab === 'logs' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >

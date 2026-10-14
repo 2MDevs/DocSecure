@@ -40,7 +40,7 @@ export const WindowDialog: React.FC<WindowDialogProps> = ({ title, icon, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/25 p-0 md:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/25 p-0 md:p-6 pt-[env(safe-area-inset-top)] md:pt-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         role="dialog"
         aria-label={title}
@@ -51,14 +51,14 @@ export const WindowDialog: React.FC<WindowDialogProps> = ({ title, icon, onClose
       >
         {/* Barra de título */}
         <div
-          className="h-10 shrink-0 bg-white border-b border-slate-200 flex items-center pl-3 select-none cursor-default"
+          className="h-12 md:h-10 shrink-0 bg-white border-b border-slate-200 flex items-center pl-3 select-none cursor-default"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onDoubleClick={() => setMaximized((m) => !m)}
         >
           <span className="w-4 h-4 flex items-center justify-center shrink-0">{icon}</span>
-          <span className="ml-2 text-[13px] text-slate-800 truncate flex-1">{title}</span>
+          <span className="ml-2 text-[15px] md:text-[13px] font-semibold md:font-normal text-slate-800 truncate flex-1">{title}</span>
           <button
             type="button"
             onClick={() => setMaximized((m) => !m)}
@@ -70,15 +70,15 @@ export const WindowDialog: React.FC<WindowDialogProps> = ({ title, icon, onClose
           <button
             type="button"
             onClick={onClose}
-            className="w-11 h-10 flex items-center justify-center text-slate-600 hover:bg-red-600 hover:text-white"
+            className="w-12 h-12 md:w-11 md:h-10 flex items-center justify-center text-slate-600 hover:bg-red-600 hover:text-white"
             title="Fechar (Esc)"
             aria-label="Fechar"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5 md:w-4 md:h-4" />
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto">{children}</div>
+        <div className="ds-window flex-1 min-h-0 overflow-auto">{children}</div>
       </div>
     </div>
   );

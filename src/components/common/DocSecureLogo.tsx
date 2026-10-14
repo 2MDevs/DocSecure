@@ -4,12 +4,15 @@ interface DocSecureLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showSubtitle?: boolean;
   className?: string;
+  /** 'light' = fundo claro (texto escuro); 'dark' = fundo escuro (texto branco) */
+  tone?: 'light' | 'dark';
 }
 
 export const DocSecureLogo: React.FC<DocSecureLogoProps> = ({
   size = 'md',
   showSubtitle = true,
   className = '',
+  tone = 'dark',
 }) => {
   const iconSizes = {
     sm: 'w-6 h-6',
@@ -33,7 +36,7 @@ export const DocSecureLogo: React.FC<DocSecureLogoProps> = ({
   };
 
   return (
-    <div className={`flex items-center gap-3 select-none ${className}`}>
+    <div className={`flex items-center gap-2.5 select-none ${className}`}>
       {/* 3D Modern Shield Icon matching reference image */}
       <div className={`relative ${iconSizes[size]} flex items-center justify-center shrink-0`}>
         <div className="absolute inset-0 bg-blue-500/20 rounded-xl blur-sm" />
@@ -81,8 +84,8 @@ export const DocSecureLogo: React.FC<DocSecureLogoProps> = ({
       </div>
 
       <div className="flex flex-col">
-        <span className={`font-bold tracking-tight text-white ${titleSizes[size]}`}>
-          Doc<span className="text-blue-400">Secure</span>
+        <span className={`font-bold tracking-tight ${tone === 'light' ? 'text-slate-900' : 'text-white'} ${titleSizes[size]}`}>
+          Doc<span className={tone === 'light' ? 'text-blue-600' : 'text-blue-400'}>Secure</span>
         </span>
         {showSubtitle && (
           <span className={`text-slate-400 font-normal leading-none ${subSizes[size]}`}>

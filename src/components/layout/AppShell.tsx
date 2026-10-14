@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Home } from 'lucide-react
 import { NavigationTab } from './Sidebar';
 import { Header } from './Header';
 import { NavPane, ExplorerLocation } from './NavPane';
+import { MobileTabBar } from './MobileTabBar';
 import { Department, Folder, User, SystemNotification } from '../../types';
 
 interface AppShellProps {
@@ -71,7 +72,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const btn = 'h-8 w-8 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-35 inline-flex items-center justify-center';
 
   return (
-    <div className="h-screen h-[100dvh] bg-[#eef1f5] text-slate-900 flex flex-col overflow-hidden">
+    <div className="ds-app h-screen h-[100dvh] bg-[#eef1f5] text-slate-900 flex flex-col overflow-hidden">
       {initialSetupBanner}
 
       <Header
@@ -113,7 +114,23 @@ export const AppShell: React.FC<AppShellProps> = ({
         <main className="flex-1 min-w-0 flex flex-col bg-white">
           {!isExplorer && (
             /* Barra de endereço das demais telas (mesmo visual do explorador) */
-            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-200 bg-white shrink-0">
+            <>
+            {/* Celular: barra de título compacta, como em um app */}
+            <div className="md:hidden h-12 flex items-center gap-1 px-1.5 border-b border-slate-200 bg-white shrink-0">
+              <button
+                type="button"
+                className="h-10 w-10 rounded-full text-slate-700 active:bg-slate-100 inline-flex items-center justify-center"
+                onClick={() => onOpenLocation({ deptId: null, folderId: null })}
+                aria-label="Voltar ao início"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="min-w-0 flex-1">
+                {isAdmin && <div className="text-[10.5px] uppercase tracking-wide text-slate-400 leading-none">Administração</div>}
+                <div className="text-[16px] font-semibold text-slate-900 truncate leading-tight">{currentTitle}</div>
+              </div>
+            </div>
+            <div className="hidden md:flex items-center gap-1 px-2 py-1.5 border-b border-slate-200 bg-white shrink-0">
               <button type="button" className={btn} onClick={() => window.history.back()} title="Voltar">
                 <ArrowLeft className="w-4 h-4" />
               </button>
@@ -141,11 +158,19 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <span className="px-1.5 font-medium text-slate-900">{currentTitle}</span>
               </div>
             </div>
+            </>
           )}
 
           <div className={`flex-1 min-h-0 overflow-auto ${isExplorer ? 'bg-white' : 'bg-[#f8fafc]'}`}>{children}</div>
         </main>
       </div>
+
+      <MobileTabBar
+        activeTab={activeTab}
+        onHome={() => onOpenLocation({ deptId: null, folderId: null })}
+        onSelectTab={onSelectTab}
+        onOpenMenu={() => setIsNavOpen(true)}
+      />
     </div>
   );
 };
