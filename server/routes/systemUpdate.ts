@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db';
 import { requireAuth, requireRole } from '../auth/middleware';
+import { broadcastEvent } from '../services/realtime';
 
 /**
  * Atualização do sistema pelo painel (exclusivo Desenvolvedor).
@@ -331,3 +332,30 @@ systemUpdateRouter.post('/', async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Não foi possível iniciar a atualização.' });
   }
 });
+
+/**
+ * Vigia o GitHub a cada 45 segundos (git ls-remote, sem limite de consultas).
+ * Quando surge uma versão nova (merge feito), avisa na hora todas as telas abertas:
+ * o sininho e o painel de atualização aparecem sem ninguém precisar recarregar a página.
+ */
+let watcherStarted = false;
+export function startUpdateWatcher() {
+  if (watcherStarted) return;
+  watcherStarted = true;
+  let announced = '';
+  const tick = async () => {
+    try {
+      const [current, latest] = await Promise.all([getCurrentCommit(), getLatestCommit()]);
+      if (!current || !latest || latest.commit === announced) return;
+      announced = latest.commit;
+      if (latest.commit !== current.commit) {
+        noticeCache = null; // monta o resumo da versão nova
+        broadcastEvent('update', { available: true });
+      }
+    } catch {
+      /* tenta de novo no próximo ciclo */
+    }
+  };
+  setTimeout(tick, 5_000);
+  setInterval(tick, 45_000).unref?.();
+}

@@ -20,7 +20,7 @@ import { devicesRouter } from './server/routes/devices';
 import { apiKeysRouter, webhooksRouter } from './server/routes/apiKeys';
 import { systemRouter } from './server/routes/system';
 import { integrationsRouter } from './server/routes/integrations';
-import { systemUpdateRouter } from './server/routes/systemUpdate';
+import { systemUpdateRouter, startUpdateWatcher } from './server/routes/systemUpdate';
 import { eventsHandler, realtimeChangeNotifier } from './server/services/realtime';
 import { requireAuth } from './server/auth/middleware';
 
@@ -131,6 +131,7 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[DocSecure Server] Executando em http://0.0.0.0:${PORT} (Modo: ${isProduction ? 'PRODUÇÃO' : 'DESENVOLVIMENTO'})`);
+    startUpdateWatcher(); // avisa as telas abertas quando surgir versão nova no GitHub
   });
 }
 
