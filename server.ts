@@ -123,8 +123,24 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
+    // index.html e manifesto: nunca guardar em cache (o app instalado/PWA precisa enxergar a versão nova);
+    // arquivos em /assets têm o nome com "hash" e mudam a cada versão, então podem ficar em cache por 1 ano.
+    const noCache = (res: express.Response) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    };
+    app.use(
+      express.static(distPath, {
+        index: false,
+        setHeaders: (res, filePath) => {
+          if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          else if (/\.(html|webmanifest)$/.test(filePath)) noCache(res);
+        },
+      })
+    );
     app.get('*', (_req, res) => {
+      noCache(res);
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }
