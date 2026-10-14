@@ -120,6 +120,10 @@ export interface DocumentItem {
   /** Data em que o arquivo será apagado definitivamente do servidor */
   purgeAt?: string | null;
   canPurge?: boolean;
+  /** Segurança do arquivo (Propriedades → Segurança) */
+  visibility?: 'folder' | 'private';
+  downloadPolicy?: 'folder' | 'owner' | 'none';
+  deletePolicy?: 'folder' | 'owner' | 'managers';
 }
 
 export interface Device {
@@ -155,6 +159,7 @@ export type AuditAction =
   | 'DOCUMENT_EDITED'
   | 'DOCUMENT_VERSION_RESTORED'
   | 'DOCUMENT_MOVED'
+  | 'DOCUMENT_SECURITY_CHANGED'
   | 'DOCUMENT_RESTORED'
   | 'DOCUMENT_PURGED'
   | 'FOLDER_CREATED'

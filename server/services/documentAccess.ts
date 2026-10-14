@@ -154,8 +154,38 @@ export async function visibleFolderIds(user: any, index?: FolderIndex): Promise<
   return out;
 }
 
-/** Documento visível: pela pasta, ou pela raiz do setor (próprio setor / responsável / diretoria). */
-export function documentVisible(user: any, doc: { department_id: string; folder_id: string | null }, visible: Set<string>): boolean {
+/**
+ * Segurança por arquivo (definida em Propriedades → Segurança pelo dono do arquivo ou pela gestão):
+ * - visibility:      'folder' = todos que acessam a pasta | 'private' = só quem enviou + gestão do setor + diretoria
+ * - download_policy: 'folder' = quem pode baixar na pasta | 'owner' = só quem enviou + gestão | 'none' = ninguém (só visualizar)
+ * - delete_policy:   'folder' = quem pode excluir na pasta + quem enviou | 'owner' = só quem enviou + gestão | 'managers' = só a gestão
+ * A gestão do setor e a diretoria nunca perdem a visão do arquivo.
+ */
+export type DocPolicyAction = 'view' | 'download' | 'delete';
+export const VISIBILITY_VALUES = ['folder', 'private'];
+export const DOWNLOAD_POLICY_VALUES = ['folder', 'owner', 'none'];
+export const DELETE_POLICY_VALUES = ['folder', 'owner', 'managers'];
+
+/** null = segue a regra normal da pasta; true/false = a regra do arquivo decide. */
+export function docPolicyDecision(user: any, doc: any, action: DocPolicyAction): boolean | null {
+  const manager = isDepartmentManager(user, doc.department_id);
+  const owner = doc.owner_id === user.id;
+  if (action === 'view') return doc.visibility === 'private' ? owner || manager : null;
+  if (action === 'download') {
+    if (doc.visibility === 'private' && !owner && !manager) return false;
+    if (doc.download_policy === 'none') return false;
+    if (doc.download_policy === 'owner') return owner || manager;
+    return null;
+  }
+  if (doc.visibility === 'private' && !owner && !manager) return false;
+  if (doc.delete_policy === 'managers') return manager;
+  if (doc.delete_policy === 'owner') return owner || manager;
+  return null;
+}
+
+/** Documento visível: pela pasta, ou pela raiz do setor (próprio setor / responsável / diretoria) — e pela regra do arquivo. */
+export function documentVisible(user: any, doc: any, visible: Set<string>): boolean {
+  if (docPolicyDecision(user, doc, 'view') === false) return false;
   if (doc.folder_id) return visible.has(doc.folder_id);
   return isDepartmentManager(user, doc.department_id) || doc.department_id === user.departmentId;
 }
@@ -179,6 +209,9 @@ export function toDocumentDto(doc: any) {
     isFavorite: Boolean(doc.is_favorite),
     isArchived: Boolean(doc.is_archived),
     isShared: Boolean(doc.is_shared),
+    visibility: doc.visibility || 'folder',
+    downloadPolicy: doc.download_policy || 'folder',
+    deletePolicy: doc.delete_policy || 'folder',
     contentSummary: doc.content_summary,
     status: doc.status,
     scanStatus: doc.scan_status,

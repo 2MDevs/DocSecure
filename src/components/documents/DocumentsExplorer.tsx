@@ -35,6 +35,7 @@ import {
 import { Department, Folder, DocumentItem, User, PermissionType } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
 import { FolderConfigModal } from './FolderConfigModal';
+import { PropertiesModal } from './PropertiesModal';
 import { canAccessDepartment } from '../layout/NavPane';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { BottomSheet } from '../common/BottomSheet';
@@ -53,6 +54,11 @@ interface DocumentsExplorerProps {
   onAccessDenied: (reason: string, resourceName: string) => void;
   onToggleFavorite: (docId: string) => void;
   onDeleteDocument: (docId: string) => void;
+  /** Propriedades → Segurança do arquivo */
+  onUpdateDocumentSecurity?: (
+    docId: string,
+    security: { visibility?: string; downloadPolicy?: string; deletePolicy?: string }
+  ) => Promise<unknown>;
   onUpdateUserPermissions: (userId: string, folderId: string, permissions: PermissionType[]) => void;
   onUpdateFolder?: (folderId: string, updates: Partial<Folder>) => void;
   onDeleteFolder?: (folderId: string) => void;
@@ -229,6 +235,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   onAccessDenied,
   onToggleFavorite,
   onDeleteDocument,
+  onUpdateDocumentSecurity,
   onUpdateUserPermissions,
   onUpdateFolder,
   onDeleteFolder,
@@ -271,6 +278,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const [deleteConfirmFolder, setDeleteConfirmFolder] = useState<Folder | null>(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState<DocumentItem | null>(null);
   const [configFolder, setConfigFolder] = useState<Folder | null>(null);
+  const [propsTarget, setPropsTarget] = useState<{ kind: 'doc' | 'folder'; id: string } | null>(null);
   const [accessRevokedNotice, setAccessRevokedNotice] = useState<string | null>(null);
   const [expandedDeptIds, setExpandedDeptIds] = useState<string[]>([]);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -296,11 +304,21 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const isManagerOf = (deptId?: string | null) =>
     isAdmin || ((role === 'MANAGER' || role === 'DEVELOPER') && !!deptId && currentUser.departmentId === deptId);
   const canEditFolderPrivacy = (f: Folder) => isManagerOf(f.departmentId) || f.createdBy === currentUser.id;
+  // Regras do próprio arquivo (Propriedades → Segurança); o servidor confere de novo
+  const docOwnerOrManager = (doc: DocumentItem) => doc.ownerId === currentUser.id || isManagerOf(doc.departmentId);
   const canDeleteDoc = (doc: DocumentItem) =>
-    doc.ownerId === currentUser.id ||
-    verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DELETE_DOCUMENT', doc.folderId || undefined).allowed;
+    doc.deletePolicy === 'managers'
+      ? isManagerOf(doc.departmentId)
+      : doc.deletePolicy === 'owner'
+      ? docOwnerOrManager(doc)
+      : doc.ownerId === currentUser.id ||
+        verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DELETE_DOCUMENT', doc.folderId || undefined).allowed;
   const canDownloadDoc = (doc: DocumentItem) =>
-    verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DOWNLOAD_DOCUMENT', doc.folderId || undefined).allowed;
+    doc.downloadPolicy === 'none'
+      ? false
+      : doc.downloadPolicy === 'owner'
+      ? docOwnerOrManager(doc)
+      : verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DOWNLOAD_DOCUMENT', doc.folderId || undefined).allowed;
 
   // ---------------------------------------------------------------- tamanhos
   const { folderSize, folderCount } = useMemo(() => {
@@ -377,7 +395,12 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   const downloadDoc = (doc: DocumentItem) => {
     if (!canDownloadDoc(doc)) {
-      onAccessDenied(`A permissão de download do arquivo ${doc.name} não está liberada para você.`, doc.name);
+      onAccessDenied(
+        doc.downloadPolicy === 'none'
+          ? `O download de ${doc.name} está bloqueado nas propriedades do arquivo: ele pode apenas ser visualizado.`
+          : `A permissão de download do arquivo ${doc.name} não está liberada para você.`,
+        doc.name
+      );
       return;
     }
     onDownloadDocument(doc);
@@ -562,12 +585,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     }
   };
 
-  const openProperties = (folder: Folder) => {
-    if (!isManagerOf(folder.departmentId)) {
-      onAccessDenied('Apenas o gestor do setor e a administração podem alterar propriedades e permissões da pasta.', folder.name);
-      return;
-    }
-    setConfigFolder(folder);
+  /** Propriedades (Geral + Segurança) de um arquivo ou pasta */
+  const openProperties = (folder: Folder) => setPropsTarget({ kind: 'folder', id: folder.id });
+  const openItemProperties = (item: Item | null) => {
+    if (!item || item.kind === 'dept' || isPendingDoc(item)) return;
+    setPropsTarget({ kind: item.kind, id: item.id });
   };
 
   // ---------------------------------------------------------------- teclado e cliques fora
@@ -676,6 +698,23 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     }
     if (it.kind === 'dept') return <DriveGlyph size={size} locked={!hasDeptAccess(it.dept)} />;
     if (it.kind === 'folder') return <FolderGlyph size={size} locked={it.folder.isLocked} privateFolder={it.folder.isPrivate} />;
+    if (it.doc.visibility === 'private' || it.doc.downloadPolicy === 'none') {
+      return (
+        <span className="relative inline-flex">
+          <FileGlyph ext={it.doc.extension} size={size} />
+          <span
+            className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200"
+            title={it.doc.visibility === 'private' ? 'Arquivo privado' : 'Download bloqueado'}
+          >
+            {it.doc.visibility === 'private' ? (
+              <EyeOff className="text-violet-600" style={{ width: size * 0.22, height: size * 0.22 }} />
+            ) : (
+              <Lock className="text-slate-600" style={{ width: size * 0.22, height: size * 0.22 }} />
+            )}
+          </span>
+        </span>
+      );
+    }
     return <FileGlyph ext={it.doc.extension} size={size} />;
   };
 
@@ -712,7 +751,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       const extra = it.folder.isPrivate ? ' • Privada' : it.folder.isLocked ? ' • Trancada' : '';
       return `${n} ${n === 1 ? 'item' : 'itens'} • ${formatBytes(folderSize.get(it.id) || 0)}${extra}`;
     }
-    return `${formatBytes(it.doc.sizeBytes)} • ${formatDate(it.doc.updatedAt)}${flatView || query ? ` • ${it.doc.departmentName}` : ''}`;
+    const tag = it.doc.visibility === 'private' ? ' • Privado' : it.doc.downloadPolicy === 'none' ? ' • Só visualizar' : '';
+    return `${formatBytes(it.doc.sizeBytes)} • ${formatDate(it.doc.updatedAt)}${flatView || query ? ` • ${it.doc.departmentName}` : ''}${tag}`;
   };
   const openActions = (item: Item) => {
     setSelected({ kind: item.kind, id: item.id });
@@ -787,7 +827,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
               <MenuItem label="Ícones grandes" checked={viewMode === 'large'} onClick={() => setViewMode('large')} />
               <MenuItem label="Ícones médios" checked={viewMode === 'medium'} onClick={() => setViewMode('medium')} />
               <MenuItem label="Detalhes" checked={viewMode === 'details'} onClick={() => setViewMode('details')} />
-              {currentFolder && isManagerOf(currentFolder.departmentId) && (
+              {currentFolder && (
                 <>
                   <div className="border-t border-slate-100 my-1" />
                   <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades desta pasta" onClick={() => openProperties(currentFolder)} />
@@ -813,9 +853,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 const editPrivacy = canEditFolderPrivacy(f);
                 return (
                   <>
-                    {manager && (
-                      <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades e permissões" onClick={() => openProperties(f)} />
-                    )}
+                    <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades" onClick={() => openProperties(f)} />
                     {editPrivacy && onUpdateFolder && (
                       <MenuItem
                         icon={f.isPrivate ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-violet-600" />}
@@ -844,6 +882,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                     icon={<Star className={`w-4 h-4 ${doc.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />}
                     label={doc.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
                     onClick={() => onToggleFavorite(doc.id)}
+                  />
+                  <MenuItem
+                    icon={<SlidersHorizontal className="w-4 h-4" />}
+                    label="Propriedades e segurança"
+                    onClick={() => setPropsTarget({ kind: 'doc', id: doc.id })}
                   />
                   {canDeleteDoc(doc) && (
                     <>
@@ -987,9 +1030,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           <button
             type="button"
             className={toolbarBtn}
-            disabled={!selectedFolder || !isManagerOf(selectedFolder?.departmentId)}
-            onClick={() => selectedFolder && openProperties(selectedFolder)}
-            title="Propriedades e permissões da pasta"
+            disabled={!selectedItem || selectedItem.kind === 'dept'}
+            onClick={() => openItemProperties(selectedItem)}
+            title="Propriedades: informações e segurança"
           >
             <SlidersHorizontal className="w-4 h-4" />
             <span className="hidden lg:inline">Propriedades</span>
@@ -1463,7 +1506,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 label="Enviar arquivo"
                 onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)}
               />
-              {currentFolder && isManagerOf(currentFolder.departmentId) && (
+              {currentFolder && (
                 <MenuItem icon={<SlidersHorizontal className="w-5 h-5" />} label="Propriedades desta pasta" onClick={() => openProperties(currentFolder)} />
               )}
             </>
@@ -1575,6 +1618,37 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           </div>
         </div>
       )}
+
+      {/* Propriedades: Geral + Segurança (arquivo ou pasta) */}
+      {propsTarget &&
+        (() => {
+          const doc = propsTarget.kind === 'doc' ? allDocuments.find((d) => d.id === propsTarget.id) : null;
+          const fol = propsTarget.kind === 'folder' ? folders.find((f) => f.id === propsTarget.id) : null;
+          if (!doc && !fol) return null;
+          const item: Item = doc ? { kind: 'doc', id: doc.id, name: doc.name, doc } : { kind: 'folder', id: fol!.id, name: fol!.name, folder: fol! };
+          return (
+            <PropertiesModal
+              key={`${propsTarget.kind}-${propsTarget.id}`}
+              target={doc ? { kind: 'doc', doc } : { kind: 'folder', folder: fol! }}
+              icon={renderIcon(item, 44)}
+              currentUser={currentUser}
+              departments={departments}
+              folders={folders}
+              folderSize={fol ? folderSize.get(fol.id) || 0 : 0}
+              folderItemCount={fol ? folderCount.get(fol.id) || 0 : 0}
+              typeLabel={itemType(item)}
+              formatBytes={formatBytes}
+              isManager={isManagerOf(doc ? doc.departmentId : fol!.departmentId)}
+              onClose={() => setPropsTarget(null)}
+              onSaveDocSecurity={onUpdateDocumentSecurity}
+              onUpdateFolder={onUpdateFolder}
+              onOpenFolderPermissions={(f) => {
+                setPropsTarget(null);
+                setConfigFolder(f);
+              }}
+            />
+          );
+        })()}
 
       {/* Propriedades e permissões da pasta (gestor / administração) */}
       <FolderConfigModal

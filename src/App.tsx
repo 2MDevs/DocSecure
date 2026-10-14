@@ -1121,6 +1121,16 @@ export default function App() {
     }
   };
 
+  // Propriedades → Segurança do arquivo (o servidor valida quem pode alterar)
+  const handleUpdateDocumentSecurity = async (
+    docId: string,
+    security: { visibility?: string; downloadPolicy?: string; deletePolicy?: string }
+  ) => {
+    const updated = await apiClient.updateDocumentSecurity(docId, security);
+    setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    return updated;
+  };
+
   // Restaurar da lixeira
   const handleRestoreDocument = async (doc: DocumentItem) => {
     const restored = await apiClient.restoreDocument(doc.id);
@@ -1711,6 +1721,7 @@ export default function App() {
               onAccessDenied={triggerAccessDenied}
               onToggleFavorite={handleToggleFavorite}
               onDeleteDocument={handleDeleteDocument}
+              onUpdateDocumentSecurity={handleUpdateDocumentSecurity}
               onUpdateUserPermissions={handleUpdatePermissions}
               onUpdateFolder={handleUpdateFolder}
               onDeleteFolder={handleDeleteFolder}
@@ -1840,6 +1851,7 @@ export default function App() {
               onAccessDenied={triggerAccessDenied}
               onToggleFavorite={handleToggleFavorite}
               onDeleteDocument={handleDeleteDocument}
+              onUpdateDocumentSecurity={handleUpdateDocumentSecurity}
               onUpdateUserPermissions={handleUpdatePermissions}
               onUpdateFolder={handleUpdateFolder}
               onDeleteFolder={handleDeleteFolder}

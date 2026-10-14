@@ -13,7 +13,7 @@ interface BrandLockupProps {
  * enviado pela agência, basta substituir esse arquivo mantendo o mesmo nome.
  */
 export const BrandLockup: React.FC<BrandLockupProps> = ({ size = 'lg', showTagline = true, className = '' }) => (
-  <div className={`flex flex-col items-start select-none ${className}`}>
+  <div className={`w-full flex flex-col items-center text-center lg:items-start lg:text-left select-none ${className}`}>
     <img
       src="/brand/hummm-logo-escuro.svg"
       alt="hummm! Pizzas"
@@ -27,6 +27,8 @@ export const BrandLockup: React.FC<BrandLockupProps> = ({ size = 'lg', showTagli
       >
         Doc<span className="text-[#f6d35c]">Secure</span>
       </span>
+      {/* No celular o nome fica centralizado, com um traço de cada lado */}
+      <span className="h-px w-6 bg-[#f6d35c]/60 lg:hidden" aria-hidden="true" />
     </div>
     {showTagline && <span className="mt-2 text-[13px] text-stone-400">Seus documentos, em boas mãos.</span>}
   </div>

@@ -458,6 +458,18 @@ export const apiClient = {
     });
   },
 
+  /** Propriedades → Segurança do arquivo (só quem enviou ou a gestão do setor) */
+  async updateDocumentSecurity(
+    id: string,
+    security: { visibility?: string; downloadPolicy?: string; deletePolicy?: string }
+  ): Promise<DocumentItem> {
+    return apiRequest<DocumentItem>(`/api/documents/${encodeURIComponent(id)}/security`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(security),
+    });
+  },
+
   async deleteDocument(id: string): Promise<{ success: boolean; document: DocumentItem }> {
     return apiRequest(`/api/documents/${encodeURIComponent(id)}`, {
       method: 'DELETE',
