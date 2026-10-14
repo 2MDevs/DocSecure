@@ -27,6 +27,7 @@ import {
 import { createAuditEntry, verifyPermission } from './services/securityEngine';
 import { apiClient, dispatchSessionExpired, SESSION_LOCKED_EVENT } from './services/apiClient';
 import type { UpdateNotice } from './services/apiClient';
+import { UPDATE_CHECK_EVENT } from './components/settings/SystemUpdatePanel';
 import { UpdateNoticeDialog } from './components/common/UpdateNoticeDialog';
 
 // Components
@@ -447,10 +448,13 @@ export default function App() {
     const timer = window.setInterval(check, 2 * 60 * 1000);
     const onVisible = () => document.visibilityState === 'visible' && check();
     document.addEventListener('visibilitychange', onVisible);
+    // O servidor avisa em tempo real quando sai uma versão nova
+    window.addEventListener(UPDATE_CHECK_EVENT, check);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener(UPDATE_CHECK_EVENT, check);
     };
   }, [currentUser?.id, isLocked, connectionStatus]);
 
@@ -589,6 +593,8 @@ export default function App() {
 
     const source = new EventSource('/api/events', { withCredentials: true });
     source.addEventListener('changed', scheduleRefresh);
+    // Nova versão publicada no GitHub: sininho e painel de atualização se atualizam sozinhos
+    source.addEventListener('update', () => window.dispatchEvent(new Event(UPDATE_CHECK_EVENT)));
     source.addEventListener('session', async () => {
       // Algo mudou na conta deste usuário (perfil, setor, bloqueio): revalida a sessão
       try {
@@ -602,7 +608,10 @@ export default function App() {
     // Ao reconectar (queda de rede, servidor reiniciado), busca o que pode ter mudado no intervalo
     source.addEventListener('ready', () => {
       readyCount += 1;
-      if (readyCount > 1) scheduleRefresh();
+      if (readyCount > 1) {
+        scheduleRefresh();
+        window.dispatchEvent(new Event(UPDATE_CHECK_EVENT)); // servidor reiniciado (ex.: após atualizar)
+      }
     });
 
     // Rede de segurança: ao voltar para a aba, sincroniza também

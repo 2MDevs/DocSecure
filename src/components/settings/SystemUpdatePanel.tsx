@@ -11,6 +11,9 @@ import {
 } from 'lucide-react';
 import { apiClient, SystemUpdateStatus } from '../../services/apiClient';
 
+/** Disparado quando o servidor avisa (em tempo real) que há versão nova no GitHub. */
+export const UPDATE_CHECK_EVENT = 'docsecure:update-check';
+
 const formatDate = (iso?: string) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -65,12 +68,15 @@ export const SystemUpdatePanel: React.FC = () => {
   useEffect(() => {
     const refresh = () => document.visibilityState === 'visible' && load(true);
     const timer = window.setInterval(refresh, 30_000);
+    const now = () => load(true);
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
+    window.addEventListener(UPDATE_CHECK_EVENT, now);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener(UPDATE_CHECK_EVENT, now);
     };
   }, [load]);
 

@@ -74,6 +74,11 @@ export function broadcastChange(topic: string, affectedUserIds: string[] = []) {
   }, 150);
 }
 
+/** Envia um aviso para todos os navegadores conectados (ex.: nova atualização disponível). */
+export function broadcastEvent(event: string, data: unknown) {
+  for (const client of clients.values()) send(client, event, data);
+}
+
 /** Encerra imediatamente as conexões de um usuário (ex.: bloqueado ou sessão revogada). */
 export function notifyUserSessionChanged(userId: string) {
   for (const client of clients.values()) {

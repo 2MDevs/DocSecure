@@ -379,11 +379,11 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => onToggleUserStatus(u.id)}
-                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors min-h-[44px] ${
+                  className={`w-full min-w-0 whitespace-nowrap py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-colors min-h-[44px] ${
                     u.status === 'ACTIVE'
                       ? 'border-rose-200 text-rose-600 bg-rose-50/50 hover:bg-rose-100'
                       : 'border-emerald-200 text-emerald-600 bg-emerald-50/50 hover:bg-emerald-100'
@@ -406,7 +406,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                   <button
                     type="button"
                     onClick={() => openEdit(u)}
-                    className="py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
+                    className="w-full min-w-0 whitespace-nowrap py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
                     title="Editar usuário"
                   >
                     <Pencil className="w-4 h-4 text-slate-500" />
@@ -421,10 +421,11 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                       setDeleteError(null);
                       setDeletingUser(u);
                     }}
-                    className="py-2 px-3 rounded-xl text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50/50 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
+                    className="w-full min-w-0 whitespace-nowrap py-2 px-3 rounded-xl text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50/50 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
                     title="Excluir usuário"
                   >
                     <Trash2 className="w-4 h-4" />
+                    <span>Excluir</span>
                   </button>
                 )}
 
@@ -433,7 +434,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                     type="button"
                     onClick={() => handleResendAccess(u)}
                     disabled={resendingId === u.id}
-                    className="py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px] disabled:opacity-50"
+                    className="w-full min-w-0 whitespace-nowrap py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px] disabled:opacity-50"
                     title="Gerar nova senha provisória e enviar por e-mail"
                   >
                     {resendingId === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4 text-slate-500" />}
@@ -444,7 +445,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 <button
                   type="button"
                   onClick={() => onReset2FA(u.id)}
-                  className="py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
+                  className="w-full min-w-0 whitespace-nowrap py-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-600 border border-slate-200 bg-slate-50 hover:bg-white transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
                   title="Redefinir Credencial 2FA"
                 >
                   <KeyRound className="w-4 h-4 text-slate-500" />
