@@ -12,7 +12,6 @@ import {
   Monitor,
   CheckCircle2,
   Database,
-  Menu,
 } from 'lucide-react';
 import { Avatar } from '../common/Avatar';
 import { DocSecureLogo } from '../common/DocSecureLogo';
@@ -99,22 +98,12 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="h-12 bg-white border-b border-slate-200 px-2 sm:px-4 flex items-center justify-between z-30 select-none shrink-0">
+    <header className="h-12 pt-[env(safe-area-inset-top)] box-content bg-white border-b border-slate-200 pl-3 pr-1 sm:px-4 flex items-center justify-between z-30 select-none shrink-0">
       {/* Left side: Hamburger (Mobile) + Search Bar (Desktop) / Brand (Mobile) */}
       <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-        {/* Mobile Hamburger Drawer Trigger */}
-        <button
-          type="button"
-          onClick={onToggleSidebar}
-          className="md:hidden p-2 -ml-1 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center shrink-0"
-          aria-label="Abrir menu lateral"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-
         {/* Mobile Title / Logo */}
         <div className="flex items-center gap-2 truncate">
-          <DocSecureLogo size="sm" showSubtitle={false} />
+          <DocSecureLogo size="sm" showSubtitle={false} tone="light" />
           {currentTitle && (
             <span className="hidden sm:inline-block text-xs font-semibold text-slate-600 truncate border-l border-slate-200 pl-2">
               {currentTitle}

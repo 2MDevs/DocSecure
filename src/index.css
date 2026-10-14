@@ -21,3 +21,38 @@
 .pt-safe {
   padding-top: max(0.5rem, env(safe-area-inset-top));
 }
+
+/* ------------------------------------------------------------------
+   Celular: visual de aplicativo (fontes, espaçamentos e campos)
+   ------------------------------------------------------------------ */
+.ds-app, .ds-app * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 639px) {
+  /* Títulos das telas menores (a barra superior já mostra o nome da tela) */
+  .ds-app main h1, .ds-window h1 {
+    font-size: 1.3rem;
+    line-height: 1.75rem;
+  }
+  .ds-app main .text-3xl, .ds-window .text-3xl {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+  /* Menos "respiro" nas bordas para aproveitar a tela */
+  .ds-app main .p-6, .ds-window .p-6 {
+    padding: 1rem;
+  }
+  .ds-app main .p-8, .ds-window .p-8 {
+    padding: 1.25rem;
+  }
+  .ds-app main .space-y-6 > :not(:last-child), .ds-window .space-y-6 > :not(:last-child) {
+    margin-bottom: 1rem;
+  }
+  /* Campos com 16px: evita o zoom automático do iPhone ao tocar */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

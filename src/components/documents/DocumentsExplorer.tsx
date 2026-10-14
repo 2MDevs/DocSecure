@@ -29,11 +29,15 @@ import {
   RefreshCw,
   EyeOff,
   Eye,
+  MoreVertical,
+  X,
 } from 'lucide-react';
 import { Department, Folder, DocumentItem, User, PermissionType } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
 import { FolderConfigModal } from './FolderConfigModal';
 import { canAccessDepartment } from '../layout/NavPane';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { BottomSheet } from '../common/BottomSheet';
 
 interface DocumentsExplorerProps {
   currentUser: User;
@@ -270,6 +274,14 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const [accessRevokedNotice, setAccessRevokedNotice] = useState<string | null>(null);
   const [expandedDeptIds, setExpandedDeptIds] = useState<string[]>([]);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // ---------------------------------------------------------------- celular (visual de app)
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileViewState] = useState<'list' | 'grid'>(() => readPref('ds.explorer.mview', 'list'));
+  const setMobileView = (v: 'list' | 'grid') => (setMobileViewState(v), writePref('ds.explorer.mview', v));
+  const [mobileSheet, setMobileSheet] = useState<'new' | 'options' | null>(null);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const longPress = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
 
   const role = currentUser.role;
   // Diretoria vê todos os setores; o desenvolvedor é tratado como responsável do próprio setor
@@ -680,6 +692,58 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   };
 
   const canCreateHere = !flatView && !!location.deptId;
+  const mBtn = 'h-10 w-10 shrink-0 rounded-full text-slate-700 active:bg-slate-100 inline-flex items-center justify-center';
+  const mobileSubtitle = (() => {
+    const count = `${items.length} ${items.length === 1 ? 'item' : 'itens'}`;
+    const waiting = pendingDocs.length ? ` • ${pendingDocs.length} aguardando envio` : '';
+    if (flatView || !location.deptId) return (query ? `${count} encontrados` : flatView ? count : 'Setores da empresa') + waiting;
+    const trail = [currentDept?.name, ...folderPath.slice(0, -1).map((f) => f.name)].filter(Boolean) as string[];
+    return (currentFolder ? `${trail.join(' › ')} • ${count}` : count) + waiting;
+  })();
+  const mobileMeta = (it: Item) => {
+    const st = it.kind === 'doc' ? syncStates[it.id] : undefined;
+    if (st === 'pending') return 'Aguardando conexão para enviar';
+    if (st === 'uploading') return 'Enviando…';
+    if (it.kind === 'dept') {
+      return hasDeptAccess(it.dept) ? `Setor • ${formatBytes(it.dept.storageUsedBytes || 0)}` : 'Sem permissão de acesso';
+    }
+    if (it.kind === 'folder') {
+      const n = folderCount.get(it.id) || 0;
+      const extra = it.folder.isPrivate ? ' • Privada' : it.folder.isLocked ? ' • Trancada' : '';
+      return `${n} ${n === 1 ? 'item' : 'itens'} • ${formatBytes(folderSize.get(it.id) || 0)}${extra}`;
+    }
+    return `${formatBytes(it.doc.sizeBytes)} • ${formatDate(it.doc.updatedAt)}${flatView || query ? ` • ${it.doc.departmentName}` : ''}`;
+  };
+  const openActions = (item: Item) => {
+    setSelected({ kind: item.kind, id: item.id });
+    setContextMenu({ x: 0, y: 0, item });
+  };
+  /** Toque abre; segurar o dedo (ou ⋮) mostra as ações */
+  const touchHandlers = (it: Item) => ({
+    onTouchStart: () => {
+      longPress.current.fired = false;
+      if (longPress.current.timer) clearTimeout(longPress.current.timer);
+      longPress.current.timer = setTimeout(() => {
+        longPress.current.fired = true;
+        if (it.kind !== 'dept') openActions(it);
+      }, 500);
+    },
+    onTouchMove: () => longPress.current.timer && clearTimeout(longPress.current.timer),
+    onTouchEnd: () => longPress.current.timer && clearTimeout(longPress.current.timer),
+    onClick: (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (longPress.current.fired) {
+        longPress.current.fired = false;
+        return;
+      }
+      activate(it);
+    },
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (it.kind !== 'dept') openActions(it);
+    },
+  });
   const toolbarBtn =
     'h-9 px-2.5 rounded-md text-[13px] text-slate-700 hover:bg-slate-100 disabled:opacity-35 disabled:hover:bg-transparent inline-flex items-center gap-1.5 transition-colors';
 
@@ -698,23 +762,168 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         e.stopPropagation();
         setContextMenu(null);
         setOpenMenu(null);
+        setMobileSheet(null);
         onClick();
       }}
-      className={`w-full px-3 py-1.5 text-left text-[13px] flex items-center gap-2.5 disabled:opacity-40 ${
+      className={`w-full text-left flex items-center disabled:opacity-40 ${
+        isMobile ? 'px-5 py-3.5 text-[15px] gap-4 active:bg-slate-100' : 'px-3 py-1.5 text-[13px] gap-2.5'
+      } ${
         danger ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-100'
       }`}
     >
-      <span className="w-4 h-4 flex items-center justify-center text-slate-500">{checked ? <Check className="w-3.5 h-3.5" /> : icon}</span>
+      <span className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} flex items-center justify-center text-slate-500`}>{checked ? <Check className="w-4 h-4 text-blue-600" /> : icon}</span>
       <span>{label}</span>
     </button>
   );
 
+  const contextMenuContent = () =>
+    !contextMenu ? null : (
+      <>
+          {!contextMenu.item ? (
+            <>
+              <MenuItem icon={<FolderPlus className="w-4 h-4 text-amber-500" />} label="Nova pasta" onClick={() => onOpenCreateFolderModal(location.deptId || undefined, location.folderId)} />
+              <MenuItem icon={<Upload className="w-4 h-4 text-blue-600" />} label="Enviar arquivo" onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)} />
+              <div className="border-t border-slate-100 my-1" />
+              <MenuItem label="Ícones grandes" checked={viewMode === 'large'} onClick={() => setViewMode('large')} />
+              <MenuItem label="Ícones médios" checked={viewMode === 'medium'} onClick={() => setViewMode('medium')} />
+              <MenuItem label="Detalhes" checked={viewMode === 'details'} onClick={() => setViewMode('details')} />
+              {currentFolder && isManagerOf(currentFolder.departmentId) && (
+                <>
+                  <div className="border-t border-slate-100 my-1" />
+                  <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades desta pasta" onClick={() => openProperties(currentFolder)} />
+                </>
+              )}
+            </>
+          ) : contextMenu.item.kind === 'dept' ? (
+            <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => activate(contextMenu.item!)} />
+          ) : contextMenu.item.kind === 'folder' ? (
+            <>
+              <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => activate(contextMenu.item!)} />
+              <MenuItem
+                icon={<FolderPlus className="w-4 h-4 text-amber-500" />}
+                label="Nova subpasta"
+                onClick={() => {
+                  const f = (contextMenu.item as Extract<Item, { kind: 'folder' }>).folder;
+                  onOpenCreateFolderModal(f.departmentId, f.id);
+                }}
+              />
+              {(() => {
+                const f = (contextMenu.item as Extract<Item, { kind: 'folder' }>).folder;
+                const manager = isManagerOf(f.departmentId);
+                const editPrivacy = canEditFolderPrivacy(f);
+                return (
+                  <>
+                    {manager && (
+                      <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades e permissões" onClick={() => openProperties(f)} />
+                    )}
+                    {editPrivacy && onUpdateFolder && (
+                      <MenuItem
+                        icon={f.isPrivate ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-violet-600" />}
+                        label={f.isPrivate ? 'Tornar visível para o setor' : 'Tornar privada (só eu e a gestão)'}
+                        onClick={() => onUpdateFolder(f.id, { isPrivate: !f.isPrivate })}
+                      />
+                    )}
+                    {(manager || f.createdBy === currentUser.id) && (
+                      <>
+                        <div className="border-t border-slate-100 my-1" />
+                        <MenuItem icon={<Trash2 className="w-4 h-4" />} label="Excluir pasta" danger onClick={() => requestDelete(contextMenu.item)} />
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+            </>
+          ) : (
+            (() => {
+              const doc = (contextMenu.item as Extract<Item, { kind: 'doc' }>).doc;
+              return (
+                <>
+                  <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => openDoc(doc)} />
+                  <MenuItem icon={<Download className="w-4 h-4" />} label="Baixar" disabled={!canDownloadDoc(doc)} onClick={() => downloadDoc(doc)} />
+                  <MenuItem
+                    icon={<Star className={`w-4 h-4 ${doc.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />}
+                    label={doc.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                    onClick={() => onToggleFavorite(doc.id)}
+                  />
+                  {canDeleteDoc(doc) && (
+                    <>
+                      <div className="border-t border-slate-100 my-1" />
+                      <MenuItem icon={<Trash2 className="w-4 h-4" />} label="Excluir" danger onClick={() => requestDelete(contextMenu.item)} />
+                    </>
+                  )}
+                </>
+              );
+            })()
+          )}
+      </>
+    );
+
   // ---------------------------------------------------------------- render
   return (
-    <div className="h-full select-none">
-      <div className="bg-white flex flex-col h-full min-h-[60dvh] overflow-hidden">
+    <div className="h-full select-none relative">
+      <div className="bg-white flex flex-col h-full md:min-h-[60dvh] overflow-hidden">
+        {/* CELULAR: barra de título do app (voltar, local atual, pesquisa e opções) */}
+        <div className="md:hidden border-b border-slate-200 bg-white shrink-0">
+          <div className="h-14 flex items-center gap-0.5 px-1.5">
+            {!flatView && location.deptId ? (
+              <button type="button" onClick={goUp} className={mBtn} aria-label="Voltar para a pasta anterior">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            ) : (
+              <span className="w-2" />
+            )}
+            <div className="flex-1 min-w-0 px-1">
+              <div className="text-[17px] font-semibold text-slate-900 truncate leading-tight">{locationName}</div>
+              <div className="text-[12px] text-slate-500 truncate leading-tight mt-0.5">{mobileSubtitle}</div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMobileSearchOpen((v) => !v);
+                if (mobileSearchOpen) setLocalSearch('');
+              }}
+              className={`${mBtn} ${mobileSearchOpen ? 'bg-blue-50 text-blue-600' : ''}`}
+              aria-label="Pesquisar"
+            >
+              <Search className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMobileSheet('options');
+              }}
+              className={mBtn}
+              aria-label="Ordenar e visualizar"
+            >
+              <ArrowUpDown className="w-5 h-5" />
+            </button>
+          </div>
+          {mobileSearchOpen && (
+            <div className="px-3 pb-2.5">
+              <div className="h-10 rounded-xl bg-slate-100 flex items-center px-3 gap-2">
+                <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  type="search"
+                  autoFocus
+                  value={localSearch}
+                  onChange={(e) => setLocalSearch(e.target.value)}
+                  placeholder={`Pesquisar em ${locationName}`}
+                  className="flex-1 min-w-0 bg-transparent outline-none text-[16px] placeholder:text-slate-400"
+                />
+                {localSearch && (
+                  <button type="button" onClick={() => setLocalSearch('')} className="text-slate-400" aria-label="Limpar pesquisa">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* BARRA DE COMANDOS (como a do Explorador do Windows) */}
-        <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-slate-200 relative z-20">
+        <div className="hidden md:flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-slate-200 relative z-20">
           <div className="relative">
             <button
               type="button"
@@ -867,7 +1076,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         </div>
 
         {/* BARRA DE ENDEREÇO */}
-        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-200">
+        <div className="hidden md:flex items-center gap-1 px-2 py-1.5 border-b border-slate-200">
           <button type="button" onClick={goBack} disabled={!backStack.length} className={toolbarBtn} title="Voltar (Alt+←)">
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -936,7 +1145,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           {/* CONTEÚDO */}
           <div
             ref={contentRef}
-            className="flex-1 min-w-0 overflow-auto p-2 sm:p-3"
+            className={`flex-1 min-w-0 overflow-auto ${isMobile ? (mobileView === 'grid' ? 'p-2 pb-24' : 'pb-24') : 'p-2 sm:p-3'}`}
             onClick={() => setSelected(null)}
             onContextMenu={(e) => location.deptId && handleContextMenu(e, null)}
           >
@@ -950,10 +1159,74 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                   <span>Nenhum setor cadastrado. Cadastre os setores na tela “Setores”.</span>
                 ) : (
                   <>
+                    <FolderGlyph size={64} dimmed />
                     <span>Esta pasta está vazia.</span>
-                    <span className="text-xs">Use “Novo” ou clique com o botão direito para criar uma pasta ou enviar um arquivo.</span>
+                    <span className="text-xs px-6">
+                      {isMobile
+                        ? 'Toque no botão + para criar uma pasta ou enviar um arquivo.'
+                        : 'Use “Novo” ou clique com o botão direito para criar uma pasta ou enviar um arquivo.'}
+                    </span>
                   </>
                 )}
+              </div>
+            ) : isMobile && mobileView === 'list' ? (
+              <ul className="divide-y divide-slate-100">
+                {items.map((it) => {
+                  const locked = it.kind === 'dept' && !hasDeptAccess(it.dept);
+                  return (
+                    <li
+                      key={`${it.kind}-${it.id}`}
+                      role="button"
+                      {...touchHandlers(it)}
+                      className="flex items-center gap-3 pl-4 pr-1 min-h-[64px] active:bg-slate-100 [-webkit-touch-callout:none]"
+                    >
+                      <span className="w-10 flex items-center justify-center shrink-0">{renderIcon(it, 40)}</span>
+                      <span className="flex-1 min-w-0 py-2">
+                        <span className={`block text-[15px] leading-snug truncate ${locked ? 'text-slate-400' : 'text-slate-900'}`}>{it.name}</span>
+                        <span className="block text-[12.5px] text-slate-500 truncate mt-0.5">{mobileMeta(it)}</span>
+                      </span>
+                      {it.kind === 'dept' ? (
+                        locked ? (
+                          <Lock className="w-4 h-4 text-slate-300 mr-3 shrink-0" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-slate-300 mr-2 shrink-0" />
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openActions(it);
+                          }}
+                          onTouchStart={(e) => e.stopPropagation()}
+                          className={mBtn + ' text-slate-500'}
+                          aria-label={`Ações de ${it.name}`}
+                        >
+                          <MoreVertical className="w-5 h-5" />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : isMobile ? (
+              <div className="grid grid-cols-3 gap-1">
+                {items.map((it) => {
+                  const locked = it.kind === 'dept' && !hasDeptAccess(it.dept);
+                  return (
+                    <div
+                      key={`${it.kind}-${it.id}`}
+                      role="button"
+                      {...touchHandlers(it)}
+                      className="flex flex-col items-center gap-1.5 px-1 py-3 rounded-xl active:bg-slate-100 [-webkit-touch-callout:none]"
+                    >
+                      <div className="h-14 flex items-end justify-center">{renderIcon(it, 56)}</div>
+                      <span className={`text-[12.5px] leading-tight text-center break-words w-full line-clamp-2 ${locked ? 'text-slate-400' : 'text-slate-800'}`}>
+                        {it.name}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             ) : viewMode === 'details' ? (
               <table className="w-full text-[13px] text-left">
@@ -1110,7 +1383,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         </div>
 
         {/* BARRA DE STATUS */}
-        <div className="flex items-center gap-4 px-3 py-1.5 border-t border-slate-200 text-xs text-slate-600">
+        <div className="hidden md:flex items-center gap-4 px-3 py-1.5 border-t border-slate-200 text-xs text-slate-600">
           <span>
             {items.length} {items.length === 1 ? 'item' : 'itens'}
           </span>
@@ -1143,89 +1416,96 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       </div>
 
       {/* MENU DE CONTEXTO (botão direito) */}
-      {contextMenu && (
+      {contextMenu && !isMobile && (
         <div
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
           className="fixed z-50 w-56 bg-white rounded-lg border border-slate-200 shadow-xl py-1"
         >
-          {!contextMenu.item ? (
+          {contextMenuContent()}
+        </div>
+      )}
+
+      {/* CELULAR: ações em "folha" que sobe da parte de baixo da tela */}
+      {isMobile && (contextMenu || mobileSheet) && (
+        <BottomSheet
+          onClose={() => {
+            setContextMenu(null);
+            setMobileSheet(null);
+          }}
+          header={
+            contextMenu?.item ? (
+              <div className="flex items-center gap-3 px-5 pb-3 pt-1 border-b border-slate-100">
+                <span className="w-10 flex justify-center shrink-0">{renderIcon(contextMenu.item, 40)}</span>
+                <div className="min-w-0">
+                  <div className="text-[15px] font-semibold text-slate-900 truncate">{contextMenu.item.name}</div>
+                  <div className="text-[12.5px] text-slate-500 truncate">{itemType(contextMenu.item)} • {formatBytes(itemSize(contextMenu.item))}</div>
+                </div>
+              </div>
+            ) : mobileSheet === 'new' ? (
+              <div className="px-5 pb-2 pt-1 text-[13px] font-semibold text-slate-500">Criar em {locationName}</div>
+            ) : mobileSheet === 'options' ? (
+              <div className="px-5 pb-2 pt-1 text-[13px] font-semibold text-slate-500">Ordenar por</div>
+            ) : null
+          }
+        >
+          {contextMenu ? (
+            contextMenuContent()
+          ) : mobileSheet === 'new' ? (
             <>
-              <MenuItem icon={<FolderPlus className="w-4 h-4 text-amber-500" />} label="Nova pasta" onClick={() => onOpenCreateFolderModal(location.deptId || undefined, location.folderId)} />
-              <MenuItem icon={<Upload className="w-4 h-4 text-blue-600" />} label="Enviar arquivo" onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)} />
-              <div className="border-t border-slate-100 my-1" />
-              <MenuItem label="Ícones grandes" checked={viewMode === 'large'} onClick={() => setViewMode('large')} />
-              <MenuItem label="Ícones médios" checked={viewMode === 'medium'} onClick={() => setViewMode('medium')} />
-              <MenuItem label="Detalhes" checked={viewMode === 'details'} onClick={() => setViewMode('details')} />
+              <MenuItem
+                icon={<FolderPlus className="w-5 h-5 text-amber-500" />}
+                label="Nova pasta"
+                onClick={() => onOpenCreateFolderModal(location.deptId || undefined, location.folderId)}
+              />
+              <MenuItem
+                icon={<Upload className="w-5 h-5 text-blue-600" />}
+                label="Enviar arquivo"
+                onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)}
+              />
               {currentFolder && isManagerOf(currentFolder.departmentId) && (
-                <>
-                  <div className="border-t border-slate-100 my-1" />
-                  <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades desta pasta" onClick={() => openProperties(currentFolder)} />
-                </>
+                <MenuItem icon={<SlidersHorizontal className="w-5 h-5" />} label="Propriedades desta pasta" onClick={() => openProperties(currentFolder)} />
               )}
             </>
-          ) : contextMenu.item.kind === 'dept' ? (
-            <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => activate(contextMenu.item!)} />
-          ) : contextMenu.item.kind === 'folder' ? (
+          ) : (
             <>
-              <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => activate(contextMenu.item!)} />
+              {([
+                ['name', 'Nome'],
+                ['date', 'Data de modificação'],
+                ['type', 'Tipo'],
+                ['size', 'Tamanho'],
+              ] as [SortKey, string][]).map(([k, label]) => (
+                <MenuItem key={k} label={label} checked={sortKey === k} onClick={() => setSort(k)} />
+              ))}
               <MenuItem
-                icon={<FolderPlus className="w-4 h-4 text-amber-500" />}
-                label="Nova subpasta"
+                label={sortAsc ? 'Ordem crescente (A→Z)' : 'Ordem decrescente (Z→A)'}
+                icon={<ArrowUpDown className="w-4 h-4" />}
                 onClick={() => {
-                  const f = (contextMenu.item as Extract<Item, { kind: 'folder' }>).folder;
-                  onOpenCreateFolderModal(f.departmentId, f.id);
+                  setSortAscState(!sortAsc);
+                  writePref('ds.explorer.sortAsc', !sortAsc);
                 }}
               />
-              {(() => {
-                const f = (contextMenu.item as Extract<Item, { kind: 'folder' }>).folder;
-                const manager = isManagerOf(f.departmentId);
-                const editPrivacy = canEditFolderPrivacy(f);
-                return (
-                  <>
-                    {manager && (
-                      <MenuItem icon={<SlidersHorizontal className="w-4 h-4" />} label="Propriedades e permissões" onClick={() => openProperties(f)} />
-                    )}
-                    {editPrivacy && onUpdateFolder && (
-                      <MenuItem
-                        icon={f.isPrivate ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-violet-600" />}
-                        label={f.isPrivate ? 'Tornar visível para o setor' : 'Tornar privada (só eu e a gestão)'}
-                        onClick={() => onUpdateFolder(f.id, { isPrivate: !f.isPrivate })}
-                      />
-                    )}
-                    {(manager || f.createdBy === currentUser.id) && (
-                      <>
-                        <div className="border-t border-slate-100 my-1" />
-                        <MenuItem icon={<Trash2 className="w-4 h-4" />} label="Excluir pasta" danger onClick={() => requestDelete(contextMenu.item)} />
-                      </>
-                    )}
-                  </>
-                );
-              })()}
+              <div className="px-5 pt-3 pb-2 text-[13px] font-semibold text-slate-500 border-t border-slate-100 mt-1">Exibir como</div>
+              <MenuItem icon={<ListIcon className="w-5 h-5" />} label="Lista" checked={mobileView === 'list'} onClick={() => setMobileView('list')} />
+              <MenuItem icon={<LayoutGrid className="w-5 h-5" />} label="Ícones" checked={mobileView === 'grid'} onClick={() => setMobileView('grid')} />
             </>
-          ) : (
-            (() => {
-              const doc = (contextMenu.item as Extract<Item, { kind: 'doc' }>).doc;
-              return (
-                <>
-                  <MenuItem icon={<ExternalLink className="w-4 h-4" />} label="Abrir" onClick={() => openDoc(doc)} />
-                  <MenuItem icon={<Download className="w-4 h-4" />} label="Baixar" disabled={!canDownloadDoc(doc)} onClick={() => downloadDoc(doc)} />
-                  <MenuItem
-                    icon={<Star className={`w-4 h-4 ${doc.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />}
-                    label={doc.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
-                    onClick={() => onToggleFavorite(doc.id)}
-                  />
-                  {canDeleteDoc(doc) && (
-                    <>
-                      <div className="border-t border-slate-100 my-1" />
-                      <MenuItem icon={<Trash2 className="w-4 h-4" />} label="Excluir" danger onClick={() => requestDelete(contextMenu.item)} />
-                    </>
-                  )}
-                </>
-              );
-            })()
           )}
-        </div>
+        </BottomSheet>
+      )}
+
+      {/* CELULAR: botão flutuante "+" (nova pasta / enviar arquivo) */}
+      {isMobile && canCreateHere && !contextMenu && !mobileSheet && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMobileSheet('new');
+          }}
+          className="md:hidden absolute right-4 bottom-4 z-20 h-14 w-14 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/30 active:scale-95 transition-transform flex items-center justify-center"
+          aria-label="Criar pasta ou enviar arquivo"
+        >
+          <Plus className="w-7 h-7" />
+        </button>
       )}
 
       {/* CONFIRMAÇÃO: excluir pasta */}
