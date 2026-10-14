@@ -871,7 +871,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Setor</label>
-                <select value={editDeptId} onChange={(e) => setEditDeptId(e.target.value)} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-60">
+                <select value={editDeptId} disabled={editingUser.role === 'DEVELOPER'} onChange={(e) => setEditDeptId(e.target.value)} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-60">
                   {departments.length === 0 ? (
                     <option value="">Geral (Sem setor cadastrado)</option>
                   ) : (
@@ -882,6 +882,9 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                     ))
                   )}
                 </select>
+                {editingUser.role === 'DEVELOPER' && (
+                  <p className="text-[10px] text-slate-400 mt-1">O Desenvolvedor faz parte do setor de Tecnologia da Informação (TI).</p>
+                )}
               </div>
 
               {currentUser.role === 'DIRECTOR' && editingUser.id !== currentUser.id && editingUser.role !== 'DIRECTOR' && (

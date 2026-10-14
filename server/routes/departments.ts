@@ -1,8 +1,19 @@
 import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { requireAuth, requireRole } from '../auth/middleware';
+import { syncDevelopersToTI } from '../services/developerDepartment';
 
 export const departmentsRouter = Router();
+
+// Quando um setor é criado, renomeado ou excluído, mantém os desenvolvedores vinculados ao setor de TI
+departmentsRouter.use((req: Request, res: Response, next) => {
+  if (req.method !== 'GET') {
+    res.on('finish', () => {
+      if (res.statusCode < 400) void syncDevelopersToTI();
+    });
+  }
+  next();
+});
 
 // Função auxiliar para recalcular dinamicamente o armazenamento dos setores
 export async function getDepartmentsWithRealStorage() {
