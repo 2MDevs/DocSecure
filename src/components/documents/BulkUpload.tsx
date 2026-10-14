@@ -157,7 +157,7 @@ export const BulkUploadConfirm: React.FC<{
 // ---------------------------------------------------------------------------
 // 2) Progresso: painel no canto (no celular, acima da barra de abas)
 // ---------------------------------------------------------------------------
-export type BulkItemState = { name: string; path: string; status: 'wait' | 'up' | 'ok' | 'err'; error?: string; percent?: number };
+export type BulkItemState = { name: string; path: string; status: 'wait' | 'up' | 'ok' | 'err' | 'skip'; error?: string; percent?: number };
 
 export const BulkUploadPanel: React.FC<{
   items: BulkItemState[];
@@ -168,13 +168,14 @@ export const BulkUploadPanel: React.FC<{
   const [open, setOpen] = useState(true);
   const done = items.filter((i) => i.status === 'ok').length;
   const failed = items.filter((i) => i.status === 'err').length;
-  const finished = done + failed;
-  const percent = items.length ? Math.round((items.reduce((s, i) => s + (i.status === 'ok' || i.status === 'err' ? 100 : i.percent || 0), 0) / (items.length * 100)) * 100) : 0;
+  const skipped = items.filter((i) => i.status === 'skip').length;
+  const finished = done + failed + skipped;
+  const percent = items.length ? Math.round((items.reduce((s, i) => s + (i.status === 'ok' || i.status === 'err' || i.status === 'skip' ? 100 : i.percent || 0), 0) / (items.length * 100)) * 100) : 0;
   const title = running
     ? `Enviando ${Math.min(finished + 1, items.length)} de ${items.length}…`
     : failed
     ? `${done} enviado(s), ${failed} com erro`
-    : `${done} ${done === 1 ? 'arquivo enviado' : 'arquivos enviados'}`;
+    : `${done} ${done === 1 ? 'arquivo enviado' : 'arquivos enviados'}${skipped ? `, ${skipped} ignorado(s)` : ''}`;
 
   return (
     <div className="fixed z-[55] right-3 left-3 md:left-auto md:w-96 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:bottom-5 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
@@ -213,6 +214,8 @@ export const BulkUploadPanel: React.FC<{
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
               ) : it.status === 'err' ? (
                 <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+              ) : it.status === 'skip' ? (
+                <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-500 text-[10px] font-bold flex items-center justify-center shrink-0">–</span>
               ) : it.status === 'up' ? (
                 <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />
               ) : (
@@ -229,6 +232,64 @@ export const BulkUploadPanel: React.FC<{
           ))}
         </ul>
       )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// 3) Arquivos com o mesmo nome no destino: substituir, manter os dois ou pular
+// ---------------------------------------------------------------------------
+export type BulkConflict = { name: string; path: string; canReplace: boolean; suggestedName: string };
+export type ConflictChoice = 'replace' | 'rename' | 'skip';
+
+export const BulkConflictDialog: React.FC<{
+  conflicts: BulkConflict[];
+  onDecide: (choice: ConflictChoice | null) => void;
+}> = ({ conflicts, onDecide }) => {
+  const replaceable = conflicts.filter((c) => c.canReplace).length;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center md:p-6 bg-slate-950/50" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-label="Arquivos com o mesmo nome" className="w-full md:max-w-lg bg-white rounded-t-3xl md:rounded-2xl shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden">
+        <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+          <h2 className="text-[16px] font-bold text-slate-900">
+            {conflicts.length} {conflicts.length === 1 ? 'arquivo já existe' : 'arquivos já existem'} no destino
+          </h2>
+          <p className="text-[12.5px] text-slate-500 mt-1">Há arquivos com o mesmo nome nas pastas de destino. O que deseja fazer?</p>
+        </div>
+        <ul className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 px-5">
+          {conflicts.slice(0, 50).map((c, i) => (
+            <li key={i} className="py-2 text-[12.5px]">
+              <div className="text-slate-900 truncate">{c.name}</div>
+              <div className="text-[11px] text-slate-400 truncate">
+                {c.path || 'Pasta de destino'} • {c.canReplace ? 'pode substituir' : 'sem permissão para substituir'}
+              </div>
+            </li>
+          ))}
+          {conflicts.length > 50 && <li className="py-2 text-[12px] text-slate-500">e mais {conflicts.length - 50}…</li>}
+        </ul>
+        <div className="px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 border-t border-slate-100 space-y-2">
+          {replaceable > 0 && (
+            <button type="button" onClick={() => onDecide('replace')} className="w-full px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-300 hover:bg-amber-100 text-left">
+              <span className="block text-[13px] font-semibold text-slate-900">Substituir {replaceable < conflicts.length ? `(${replaceable})` : 'todos'}</span>
+              <span className="block text-[11.5px] text-slate-500">
+                Os arquivos antigos vão para a lixeira do setor (7 dias).
+                {replaceable < conflicts.length ? ' Os que você não pode substituir serão mantidos com (1) no nome.' : ''}
+              </span>
+            </button>
+          )}
+          <button type="button" onClick={() => onDecide('rename')} className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-left">
+            <span className="block text-[13px] font-semibold text-slate-900">Manter os dois</span>
+            <span className="block text-[11.5px] text-slate-500">Os novos recebem (1), (2)... no nome. Ex.: {conflicts[0]?.suggestedName}</span>
+          </button>
+          <button type="button" onClick={() => onDecide('skip')} className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-left">
+            <span className="block text-[13px] font-semibold text-slate-900">Pular estes arquivos</span>
+            <span className="block text-[11.5px] text-slate-500">Envia só os que ainda não existem.</span>
+          </button>
+          <button type="button" onClick={() => onDecide(null)} className="w-full h-10 rounded-xl text-[13px] font-semibold text-slate-600 hover:bg-slate-100">
+            Cancelar envio
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

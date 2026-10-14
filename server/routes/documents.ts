@@ -107,6 +107,42 @@ async function loadFolder(id: string) {
   return rows[0] || null;
 }
 
+// ---------------------------------------------------------------------------
+// ARQUIVOS COM O MESMO NOME na mesma pasta: perguntar se substitui ou mantém os dois ("nome (1).pdf")
+// ---------------------------------------------------------------------------
+async function findSameName(departmentId: string, folderId: string | null, name: string) {
+  const { rows } = await pool.query(
+    `SELECT * FROM documents WHERE department_id = $1 AND COALESCE(folder_id, '') = COALESCE($2, '')
+       AND LOWER(name) = LOWER($3) AND status <> 'trash' ORDER BY created_at DESC LIMIT 1`,
+    [departmentId, folderId, name]
+  );
+  return rows[0] || null;
+}
+
+/** "Relatório.pdf" → "Relatório (1).pdf", "(2)"... o primeiro número livre na pasta */
+async function nextFreeName(departmentId: string, folderId: string | null, name: string): Promise<string> {
+  const m = name.match(/^(.*?)(\.[a-zA-Z0-9]{1,10})?$/);
+  const base = (m?.[1] || name).replace(/ \(\d+\)$/, '');
+  const ext = m?.[2] || '';
+  const { rows } = await pool.query(
+    `SELECT LOWER(name) AS n FROM documents WHERE department_id = $1 AND COALESCE(folder_id, '') = COALESCE($2, '') AND status <> 'trash'`,
+    [departmentId, folderId]
+  );
+  const taken = new Set(rows.map((r: any) => r.n));
+  for (let i = 1; i < 10000; i++) {
+    const candidate = `${base} (${i})${ext}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${base} (${Date.now()})${ext}`;
+}
+
+/** Pode substituir = pode mandar o arquivo antigo para a lixeira */
+async function canReplace(user: any, doc: any): Promise<boolean> {
+  if (docPolicyDecision(user, doc, 'view') === false) return false;
+  const policy = docPolicyDecision(user, doc, 'delete');
+  return policy === null ? (await can(user, 'DELETE_DOCUMENT', doc.department_id, doc.folder_id)) || doc.owner_id === user.id : policy;
+}
+
 const userCtx = (req: Request) => {
   const u = (req as any).user;
   return { id: u.id, name: u.name, role: u.role, departmentName: u.departmentName };
@@ -159,6 +195,38 @@ documentsRouter.get('/trash', requireAuth, async (req: Request, res: Response) =
   } catch (err: any) {
     console.error('[DOCUMENTS TRASH LIST ERROR]', err);
     return res.status(500).json({ error: 'Erro ao carregar a lixeira.' });
+  }
+});
+
+// Antes de enviar: quais nomes já existem no destino?
+documentsRouter.post('/check-names', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const departmentId = String(req.body?.departmentId || '');
+    const folderId = req.body?.folderId ? String(req.body.folderId) : null;
+    const names: string[] = Array.isArray(req.body?.names) ? req.body.names.slice(0, 1000).map((n: any) => sanitizeFileName(String(n))) : [];
+    if (!departmentId || !names.length) return res.json({ conflicts: [] });
+    if (!(await can(user, 'UPLOAD_DOCUMENT', departmentId, folderId))) return res.json({ conflicts: [] });
+
+    const conflicts = [];
+    for (const name of [...new Set(names)]) {
+      const existing = await findSameName(departmentId, folderId, name);
+      if (!existing) continue;
+      const visible = docPolicyDecision(user, existing, 'view') !== false;
+      conflicts.push({
+        name,
+        // Arquivo privado de outra pessoa: só avisamos que o nome está em uso, sem detalhes
+        existing: visible
+          ? { id: existing.id, ownerName: existing.owner_name, sizeBytes: Number(existing.size_bytes), updatedAt: existing.updated_at }
+          : null,
+        canReplace: visible && (await canReplace(user, existing)),
+        suggestedName: await nextFreeName(departmentId, folderId, name),
+      });
+    }
+    return res.json({ conflicts });
+  } catch (err: any) {
+    console.error('[DOCUMENTS CHECK NAMES ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao verificar nomes de arquivos.' });
   }
 });
 
@@ -238,6 +306,23 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
     if (!displayName) displayName = originalName;
     if (getExtension(displayName) !== extension) {
       displayName = `${displayName.replace(/\.[a-zA-Z0-9]{1,10}$/, '')}.${extension}`;
+    }
+
+    // Já existe um arquivo com este nome nesta pasta?
+    //  replace = o antigo vai para a lixeira (7 dias) e o novo ocupa o lugar
+    //  rename (padrão) = o novo recebe "(1)", "(2)"... no nome
+    const onConflict = String(req.body.onConflict || 'rename');
+    let replacedDoc: any = null;
+    const sameName = await findSameName(departmentId, folderId, displayName);
+    if (sameName) {
+      if (onConflict === 'replace') {
+        if (!(await canReplace(user, sameName))) {
+          return res.status(403).json({ error: `Você não pode substituir "${sameName.name}". Envie com outro nome ou peça à gestão do setor.` });
+        }
+        replacedDoc = sameName;
+      } else {
+        displayName = await nextFreeName(departmentId, folderId, displayName);
+      }
     }
 
     // Confere se o conteúdo corresponde à extensão (ex.: um .png precisa ser realmente um PNG)
@@ -322,6 +407,22 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
       throw dbErr;
     }
 
+    if (replacedDoc) {
+      await pool.query(
+        `UPDATE documents SET status = 'trash', trashed_at = NOW(), trashed_by = $1, trashed_by_name = $2, updated_at = NOW() WHERE id = $3`,
+        [user.id, user.name, replacedDoc.id]
+      );
+      await writeAudit(
+        userCtx(req),
+        'DOCUMENT_DELETED',
+        replacedDoc.id,
+        replacedDoc.name,
+        `Substituído por um novo envio com o mesmo nome; a versão anterior ficou na lixeira do setor por ${TRASH_RETENTION_DAYS} dias.`,
+        'SUCCESS',
+        ip
+      );
+    }
+
     await writeAudit(
       userCtx(req),
       'DOCUMENT_UPLOADED',
@@ -336,7 +437,7 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
     );
 
     const saved = await loadDocument(docId);
-    return res.status(201).json(toDocumentDto(saved));
+    return res.status(201).json({ ...toDocumentDto(saved), replacedDocumentId: replacedDoc?.id || null });
   } catch (err: any) {
     if (err instanceof StorageKeyError) return res.status(503).json({ error: err.message });
     console.error('[DOCUMENTS UPLOAD ERROR]', err);

@@ -38,7 +38,8 @@ import { Department, Folder, DocumentItem, User, PermissionType } from '../../ty
 import { verifyPermission } from '../../services/securityEngine';
 import { FolderConfigModal } from './FolderConfigModal';
 import { PropertiesModal } from './PropertiesModal';
-import { BulkUploadConfirm, BulkUploadPanel, BulkItemState, isBlockedFile } from './BulkUpload';
+import { BulkUploadConfirm, BulkUploadPanel, BulkItemState, isBlockedFile, BulkConflictDialog, BulkConflict, ConflictChoice } from './BulkUpload';
+import { apiClient } from '../../services/apiClient';
 import { collectFromDrop, collectFromInput, hasExternalFiles, PickedFile } from '../../services/dropFiles';
 import { canAccessDepartment } from '../layout/NavPane';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -69,7 +70,7 @@ interface DocumentsExplorerProps {
   }) => Promise<Folder>;
   onUploadFile?: (
     file: File,
-    options: { departmentId: string; folderId: string | null; name: string; tags: string[]; security?: any },
+    options: { departmentId: string; folderId: string | null; name: string; tags: string[]; security?: any; onConflict?: 'replace' | 'rename' },
     onProgress?: (percent: number) => void
   ) => Promise<DocumentItem>;
   isOnline?: boolean;
@@ -330,6 +331,14 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const foldersRef = useRef(folders);
   foldersRef.current = folders;
   const canBulk = Boolean(onUploadFile);
+  // Pergunta sobre nomes repetidos no meio do envio em lote
+  const [bulkConflicts, setBulkConflicts] = useState<BulkConflict[] | null>(null);
+  const conflictResolver = useRef<((c: ConflictChoice | null) => void) | null>(null);
+  const askConflicts = (list: BulkConflict[]) =>
+    new Promise<ConflictChoice | null>((resolve) => {
+      conflictResolver.current = resolve;
+      setBulkConflicts(list);
+    });
   const [accessRevokedNotice, setAccessRevokedNotice] = useState<string | null>(null);
   const [expandedDeptIds, setExpandedDeptIds] = useState<string[]>([]);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -867,18 +876,61 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       await ensure(d.split('/')).catch(() => undefined); // o erro aparece nos arquivos daquela pasta
     }
 
-    // 2) Arquivos: até 3 envios ao mesmo tempo
+    // 2) Nomes repetidos: já existe um arquivo com o mesmo nome no mesmo lugar?
+    const decision = new Map<number, 'replace' | 'rename' | 'skip'>();
+    if (isOnline) {
+      const groups = new Map<string, number[]>();
+      for (let i = 0; i < files.length; i++) {
+        const fid = await ensure(files[i].dirs).catch(() => undefined);
+        if (fid === undefined) continue;
+        const k = fid || '';
+        groups.set(k, [...(groups.get(k) || []), i]);
+      }
+      const found: Array<BulkConflict & { idx: number[] }> = [];
+      for (const [k, idxs] of groups) {
+        try {
+          const { conflicts } = await apiClient.checkFileNames(dest.deptId, k || null, idxs.map((i) => files[i].file.name));
+          conflicts.forEach((c) => {
+            const matching = idxs.filter((i) => files[i].file.name.toLowerCase() === c.name.toLowerCase());
+            found.push({ ...c, path: files[matching[0]]?.dirs.join(' › ') || '', idx: matching });
+          });
+        } catch {
+          /* se a verificação falhar, o servidor renomeia sozinho */
+        }
+      }
+      if (found.length) {
+        const choice = await askConflicts(found);
+        if (choice === null) {
+          setBulk(null); // cancelou o envio
+          return;
+        }
+        found.forEach((c) => c.idx.forEach((i) => decision.set(i, choice === 'replace' && !c.canReplace ? 'rename' : choice)));
+      }
+    }
+
+    // 3) Arquivos: até 3 envios ao mesmo tempo
     let next = 0;
     const worker = async () => {
       while (next < files.length) {
         const i = next++;
         const f = files[i];
+        if (decision.get(i) === 'skip') {
+          update(i, { status: 'skip', error: 'Ignorado: já existia no destino' });
+          continue;
+        }
         update(i, { status: 'up', percent: 0 });
         try {
           const folderId = await ensure(f.dirs);
           await onUploadFile(
             f.file,
-            { departmentId: dest.deptId, folderId, name: f.file.name, tags: [], security: opts.security },
+            {
+              departmentId: dest.deptId,
+              folderId,
+              name: f.file.name,
+              tags: [],
+              security: opts.security,
+              onConflict: decision.get(i) === 'replace' ? 'replace' : 'rename',
+            },
             (pct) => update(i, { percent: pct })
           );
           update(i, { status: 'ok', percent: 100 });
@@ -2145,6 +2197,16 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           online={isOnline}
           onCancel={() => setPick(null)}
           onConfirm={runBulk}
+        />
+      )}
+      {bulkConflicts && (
+        <BulkConflictDialog
+          conflicts={bulkConflicts}
+          onDecide={(c) => {
+            setBulkConflicts(null);
+            conflictResolver.current?.(c);
+            conflictResolver.current = null;
+          }}
         />
       )}
       {bulk && <BulkUploadPanel items={bulk.items} foldersCreated={bulk.foldersCreated} running={bulk.running} onClose={() => setBulk(null)} />}

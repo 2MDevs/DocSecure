@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Upload, X, ShieldCheck, AlertCircle, Loader2, FileText } from 'lucide-react';
 import { Department, DocSecurity, DocumentItem, Folder, User } from '../../types';
 import { SecurityFields, DEFAULT_SECURITY } from './SecurityFields';
+import { apiClient, NameConflict } from '../../services/apiClient';
+import { Copy, RefreshCw } from 'lucide-react';
 
 interface UploadDocumentModalProps {
   isOpen: boolean;
@@ -13,7 +15,7 @@ interface UploadDocumentModalProps {
   currentUser: User;
   onUploadSuccess: (
     file: File,
-    options: { departmentId: string; folderId: string | null; name: string; tags: string[]; security?: DocSecurity },
+    options: { departmentId: string; folderId: string | null; name: string; tags: string[]; security?: DocSecurity; onConflict?: 'replace' | 'rename' },
     onProgress?: (percent: number) => void
   ) => Promise<DocumentItem>;
 }
@@ -39,9 +41,13 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   const [fileName, setFileName] = useState('');
   const [tags, setTags] = useState('');
   const [security, setSecurity] = useState<Required<DocSecurity>>(DEFAULT_SECURITY);
+  // Arquivo com o mesmo nome já existe na pasta de destino
+  const [conflict, setConflict] = useState<NameConflict | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => setConflict(null), [selectedFile, fileName, selectedDeptId, selectedFolderId]);
 
   // Ao abrir, sincroniza o destino com o local onde o usuário está navegando
   useEffect(() => {
@@ -53,6 +59,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
     setFileName('');
     setTags('');
     setSecurity(DEFAULT_SECURITY);
+    setConflict(null);
     setProgress(0);
     setError(null);
     setIsUploading(false);
@@ -82,10 +89,16 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
     onClose();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedFile || !selectedDeptId || isUploading) return;
+  /** Nome final como o servidor vai gravar (a extensão real do arquivo é mantida) */
+  const finalName = () => {
+    if (!selectedFile) return '';
+    const ext = (selectedFile.name.split('.').pop() || '').toLowerCase();
+    const n = fileName.trim() || selectedFile.name;
+    return (n.split('.').pop() || '').toLowerCase() === ext ? n : `${n.replace(/\.[a-zA-Z0-9]{1,10}$/, '')}.${ext}`;
+  };
 
+  const doUpload = async (onConflict?: 'replace' | 'rename') => {
+    if (!selectedFile || !selectedDeptId) return;
     try {
       setIsUploading(true);
       setError(null);
@@ -101,6 +114,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             .map((t) => t.trim())
             .filter(Boolean),
           security,
+          onConflict,
         },
         setProgress
       );
@@ -110,6 +124,22 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFile || !selectedDeptId || isUploading) return;
+    // Antes de enviar: já existe um arquivo com este nome nesta pasta?
+    try {
+      const { conflicts } = await apiClient.checkFileNames(selectedDeptId, selectedFolderId || null, [finalName()]);
+      if (conflicts.length) {
+        setConflict(conflicts[0]);
+        return;
+      }
+    } catch {
+      /* sem conexão: o servidor renomeia automaticamente se houver duplicado */
+    }
+    await doUpload();
   };
 
   return (
@@ -253,6 +283,45 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             </div>
           )}
 
+          {conflict && !isUploading && (
+            <div className="p-3.5 rounded-xl border border-amber-300 bg-amber-50 space-y-3">
+              <div className="text-xs text-amber-900 leading-relaxed">
+                <strong>Já existe um arquivo chamado “{conflict.name}” nesta pasta</strong>
+                {conflict.existing
+                  ? ` (enviado por ${conflict.existing.ownerName}, ${new Date(conflict.existing.updatedAt).toLocaleDateString('pt-BR')}).`
+                  : '.'}{' '}
+                O que deseja fazer?
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {conflict.canReplace && (
+                  <button
+                    type="button"
+                    onClick={() => doUpload('replace')}
+                    className="px-3 py-2.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100 text-left"
+                  >
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
+                      <RefreshCw className="w-3.5 h-3.5 text-amber-600" /> Substituir
+                    </span>
+                    <span className="block text-[11px] text-slate-500 mt-0.5">O arquivo antigo vai para a lixeira (7 dias).</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => doUpload('rename')}
+                  className="px-3 py-2.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100 text-left"
+                >
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
+                    <Copy className="w-3.5 h-3.5 text-amber-600" /> Manter os dois
+                  </span>
+                  <span className="block text-[11px] text-slate-500 mt-0.5 break-all">O novo será salvo como “{conflict.suggestedName}”.</span>
+                </button>
+              </div>
+              {!conflict.canReplace && (
+                <p className="text-[11px] text-amber-800">Você não tem permissão para substituir o arquivo existente.</p>
+              )}
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -271,7 +340,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={!selectedFile || !selectedDeptId || isUploading}
+              disabled={!selectedFile || !selectedDeptId || isUploading || !!conflict}
               className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 inline-flex items-center gap-2"
             >
               {isUploading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
