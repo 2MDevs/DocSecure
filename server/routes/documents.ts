@@ -13,6 +13,10 @@ import {
   loadFolderIndex,
   visibleFolderIds,
   documentVisible,
+  docPolicyDecision,
+  VISIBILITY_VALUES,
+  DOWNLOAD_POLICY_VALUES,
+  DELETE_POLICY_VALUES,
   toDocumentDto,
   writeAudit,
   getClientIp,
@@ -146,7 +150,8 @@ documentsRouter.get('/trash', requireAuth, async (req: Request, res: Response) =
     }
 
     sql += ' ORDER BY d.trashed_at DESC NULLS LAST';
-    const { rows } = await pool.query(sql, params);
+    const { rows: all } = await pool.query(sql, params);
+    const rows = all.filter((r: any) => docPolicyDecision(user, r, 'view') !== false);
     return res.json({
       retentionDays: TRASH_RETENTION_DAYS,
       items: rows.map((r) => ({ ...toDocumentDto(r), canPurge: isDepartmentManager(user, r.department_id) })),
@@ -341,7 +346,14 @@ documentsRouter.get('/:id/content', requireAuth, async (req: Request, res: Respo
     if (!doc || doc.status === 'trash') return res.status(404).json({ error: 'Documento não encontrado.' });
 
     const perm = isDownload ? 'DOWNLOAD_DOCUMENT' : 'VIEW_DOCUMENT';
-    if (!await can(user, perm, doc.department_id, doc.folder_id)) {
+    const policy = docPolicyDecision(user, doc, isDownload ? 'download' : 'view');
+    const viewOk = docPolicyDecision(user, doc, 'view') !== false;
+    const allowedByRules =
+      viewOk &&
+      (policy === null
+        ? await can(user, perm, doc.department_id, doc.folder_id)
+        : policy && (await can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id) || doc.owner_id === user.id || isDepartmentManager(user, doc.department_id)));
+    if (!allowedByRules) {
       await writeAudit(
         userCtx(req),
         isDownload ? 'DOCUMENT_DOWNLOADED' : 'DOCUMENT_VIEWED',
@@ -353,7 +365,9 @@ documentsRouter.get('/:id/content', requireAuth, async (req: Request, res: Respo
       );
       return res.status(403).json({
         error: isDownload
-          ? 'Você não tem permissão para baixar este documento.'
+          ? doc.download_policy === 'none'
+            ? 'O download deste arquivo está bloqueado: ele pode apenas ser visualizado.'
+            : 'Você não tem permissão para baixar este documento.'
           : 'Você não tem permissão para visualizar este documento.',
       });
     }
@@ -404,7 +418,9 @@ documentsRouter.patch('/:id', requireAuth, async (req: Request, res: Response) =
   try {
     const user = (req as any).user;
     const doc = await loadDocument(req.params.id);
-    if (!doc || doc.status === 'trash') return res.status(404).json({ error: 'Documento não encontrado.' });
+    if (!doc || doc.status === 'trash' || docPolicyDecision(user, doc, 'view') === false) {
+      return res.status(404).json({ error: 'Documento não encontrado.' });
+    }
 
     const updates: string[] = [];
     const params: any[] = [];
@@ -472,11 +488,64 @@ documentsRouter.patch('/:id', requireAuth, async (req: Request, res: Response) =
   }
 });
 
+// ---------------------------------------------------------------------------
+// SEGURANÇA DO ARQUIVO (Propriedades → Segurança): só quem enviou ou a gestão do setor/diretoria
+// ---------------------------------------------------------------------------
+documentsRouter.put('/:id/security', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const doc = await loadDocument(req.params.id);
+    if (!doc || doc.status === 'trash' || docPolicyDecision(user, doc, 'view') === false) {
+      return res.status(404).json({ error: 'Documento não encontrado.' });
+    }
+    const manager = isDepartmentManager(user, doc.department_id);
+    if (doc.owner_id !== user.id && !manager) {
+      await writeAudit(userCtx(req), 'DOCUMENT_SECURITY_CHANGED', doc.id, doc.name, 'Alteração de segurança negada.', 'DENIED', getClientIp(req));
+      return res.status(403).json({ error: 'Somente quem enviou o arquivo ou a gestão do setor podem alterar a segurança dele.' });
+    }
+    const { visibility, downloadPolicy, deletePolicy } = req.body || {};
+    if (
+      (visibility !== undefined && !VISIBILITY_VALUES.includes(visibility)) ||
+      (downloadPolicy !== undefined && !DOWNLOAD_POLICY_VALUES.includes(downloadPolicy)) ||
+      (deletePolicy !== undefined && !DELETE_POLICY_VALUES.includes(deletePolicy))
+    ) {
+      return res.status(400).json({ error: 'Opção de segurança inválida.' });
+    }
+    await pool.query(
+      `UPDATE documents SET
+         visibility = COALESCE($1, visibility),
+         download_policy = COALESCE($2, download_policy),
+         delete_policy = COALESCE($3, delete_policy),
+         updated_at = NOW()
+       WHERE id = $4`,
+      [visibility ?? null, downloadPolicy ?? null, deletePolicy ?? null, doc.id]
+    );
+    const updated = await loadDocument(doc.id);
+    const label: Record<string, string> = {
+      folder: 'padrão da pasta', private: 'somente o dono e a gestão', owner: 'somente o dono e a gestão',
+      none: 'ninguém (só visualizar)', managers: 'somente a gestão',
+    };
+    await writeAudit(
+      userCtx(req),
+      'DOCUMENT_SECURITY_CHANGED',
+      doc.id,
+      doc.name,
+      `Segurança do arquivo: visível para ${label[updated.visibility] || updated.visibility}; download: ${label[updated.download_policy]}; exclusão: ${label[updated.delete_policy]}.`,
+      'SUCCESS',
+      getClientIp(req)
+    );
+    return res.json(toDocumentDto(updated));
+  } catch (err: any) {
+    console.error('[DOCUMENTS SECURITY ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao salvar a segurança do arquivo.' });
+  }
+});
+
 documentsRouter.post('/:id/favorite', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
     const doc = await loadDocument(req.params.id);
-    if (!doc || !await can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id)) {
+    if (!doc || docPolicyDecision(user, doc, 'view') === false || !await can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id)) {
       return res.status(404).json({ error: 'Documento não encontrado.' });
     }
     await pool.query('UPDATE documents SET is_favorite = NOT is_favorite, updated_at = NOW() WHERE id = $1', [doc.id]);
@@ -496,7 +565,9 @@ documentsRouter.delete('/:id', requireAuth, async (req: Request, res: Response) 
     const doc = await loadDocument(req.params.id);
     if (!doc || doc.status === 'trash') return res.status(404).json({ error: 'Documento não encontrado.' });
 
-    const allowed = await can(user, 'DELETE_DOCUMENT', doc.department_id, doc.folder_id) || doc.owner_id === user.id;
+    const policy = docPolicyDecision(user, doc, 'delete');
+    const allowed =
+      policy === null ? (await can(user, 'DELETE_DOCUMENT', doc.department_id, doc.folder_id)) || doc.owner_id === user.id : policy;
     if (!allowed) {
       await writeAudit(userCtx(req), 'DOCUMENT_DELETED', doc.id, doc.name, 'Exclusão negada.', 'DENIED', getClientIp(req));
       return res.status(403).json({ error: 'Você não tem permissão para excluir este documento.' });

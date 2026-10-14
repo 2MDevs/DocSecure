@@ -296,6 +296,10 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_by VARCHAR(100);
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_by_name VARCHAR(255);
       ALTER TABLE documents ALTER COLUMN folder_id DROP NOT NULL;
+      -- Segurança por arquivo (Propriedades → Segurança)
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'folder';
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS download_policy VARCHAR(20) DEFAULT 'folder';
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS delete_policy VARCHAR(20) DEFAULT 'folder';
       UPDATE documents SET trashed_at = updated_at WHERE status = 'trash' AND trashed_at IS NULL;
     `);
 
