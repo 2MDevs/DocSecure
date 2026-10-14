@@ -24,7 +24,7 @@ export const DocSecureLogo: React.FC<DocSecureLogoProps> = ({
 
   return (
     <div className={`flex items-center gap-2 select-none ${className}`}>
-      <img src="/icon.svg?v=2" alt="" aria-hidden="true" draggable={false} className={`${iconSizes[size]} shrink-0`} />
+      <img src="/icon.svg?v=3" alt="" aria-hidden="true" draggable={false} className={`${iconSizes[size]} shrink-0`} />
       <div className="flex flex-col">
         <span
           className={`ds-brand-font leading-none tracking-[0.01em] ${tone === 'light' ? 'text-slate-900' : 'text-[#fdf8cf]'} ${titleSizes[size]}`}

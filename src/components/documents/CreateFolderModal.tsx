@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FolderPlus, X, Lock, AlertCircle, Loader2, EyeOff } from 'lucide-react';
+import { FolderPlus, X, Lock, AlertCircle, Loader2, EyeOff, ShieldCheck } from 'lucide-react';
 import { Department, User } from '../../types';
 
 interface CreateFolderModalProps {
@@ -146,6 +146,9 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
             />
           </div>
 
+          <div className="flex items-center gap-1.5 pt-1 text-xs font-semibold text-slate-700">
+            <ShieldCheck className="w-3.5 h-3.5 text-blue-600" /> Segurança da pasta
+          </div>
           <label className="flex items-start gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 cursor-pointer">
             <input
               type="checkbox"
@@ -156,7 +159,7 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
             <div>
               <div className="flex items-center gap-1.5 font-medium">
                 <EyeOff className="w-3.5 h-3.5 text-violet-600" />
-                <span>Pasta privada</span>
+                <span>Pasta privada — só eu e a gestão do setor</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Só você, o gestor do setor e a diretoria veem. Os outros colaboradores não.

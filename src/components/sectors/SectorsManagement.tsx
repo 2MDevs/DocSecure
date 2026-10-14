@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Building,
   HardDrive,
@@ -19,6 +19,8 @@ interface SectorsManagementProps {
   onCreateDepartment: (deptData: Partial<Department>) => void;
   onDeleteDepartment?: (deptId: string) => Promise<void>;
 }
+
+const GB_BYTES = 1024 * 1024 * 1024;
 
 // Format bytes into readable B, KB, MB, GB, TB with decimals
 export function formatBytes(bytes: number, decimals = 2): string {
@@ -61,6 +63,26 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptCode, setNewDeptCode] = useState('');
   const [newQuotaGb, setNewQuotaGb] = useState('500');
+  const [quotaError, setQuotaError] = useState<string | null>(null);
+  // Tamanho do disco do servidor: nenhum setor pode ter limite maior que ele
+  const [diskTotalBytes, setDiskTotalBytes] = useState<number | null>(null);
+  useEffect(() => {
+    fetch('/api/departments/storage-capacity', { credentials: 'include', cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.totalBytes) {
+          setDiskTotalBytes(d.totalBytes);
+          setNewQuotaGb((q) => String(Math.min(Number(q) || 500, Math.floor(d.totalBytes / GB_BYTES))));
+        }
+      })
+      .catch(() => {});
+  }, []);
+  const maxGb = diskTotalBytes ? Math.floor(diskTotalBytes / GB_BYTES) : null;
+  const quotaProblem = (gbValue: number) => {
+    if (!Number.isFinite(gbValue) || gbValue <= 0) return 'Informe uma quota válida em GB.';
+    if (maxGb !== null && gbValue > maxGb) return `A quota não pode passar do armazenamento do servidor (${maxGb.toLocaleString('pt-BR')} GB).`;
+    return null;
+  };
   const [newManagerId, setNewManagerId] = useState('');
   const [newDesc, setNewDesc] = useState('');
 
@@ -69,6 +91,12 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeptName) return;
+    const problem = quotaProblem(parseInt(newQuotaGb || '0', 10));
+    if (problem) {
+      setQuotaError(problem);
+      return;
+    }
+    setQuotaError(null);
 
     const mgr = users.find((u) => u.id === newManagerId);
 
@@ -103,6 +131,11 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
           <p className="text-sm text-slate-500 mt-0.5">
             Cálculo 100% dinâmico baseado na soma real dos arquivos gravados no banco PostgreSQL.
           </p>
+          {maxGb !== null && (
+            <p className="text-xs text-slate-600 mt-1">
+              Armazenamento do servidor: <strong>{maxGb.toLocaleString('pt-BR')} GB</strong> — nenhum setor pode ter quota maior que isso.
+            </p>
+          )}
         </div>
 
         {currentUser.role === 'DEVELOPER' && (
@@ -237,7 +270,15 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
                     type="button"
                     onClick={() => {
                       const curGb = (dept.storageLimitBytes / (1024 * 1024 * 1024)).toFixed(0);
-                      const newQuota = prompt(`Digite a nova quota em GB para o setor ${dept.name}:`, curGb);
+                      const newQuota = prompt(
+                        `Digite a nova quota em GB para o setor ${dept.name}` +
+                          (maxGb !== null ? ` (máximo: ${maxGb.toLocaleString('pt-BR')} GB, tamanho do servidor):` : ':'),
+                        curGb
+                      );
+                      if (newQuota && quotaProblem(Number(newQuota))) {
+                        alert(quotaProblem(Number(newQuota)));
+                        return;
+                      }
                       if (newQuota && !isNaN(Number(newQuota))) {
                         onUpdateDepartment(dept.id, {
                           storageLimitBytes: Number(newQuota) * 1024 * 1024 * 1024,
@@ -331,11 +372,21 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Quota de Disco (GB)</label>
                   <input
                     type="number"
+                    min={1}
+                    max={maxGb ?? undefined}
                     value={newQuotaGb}
-                    onChange={(e) => setNewQuotaGb(e.target.value)}
+                    onChange={(e) => {
+                      setNewQuotaGb(e.target.value);
+                      setQuotaError(quotaProblem(parseInt(e.target.value || '0', 10)));
+                    }}
                     placeholder="500"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 font-mono"
+                    className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 font-mono ${
+                      quotaError ? 'border-rose-400' : 'border-slate-200'
+                    }`}
                   />
+                  <p className={`text-[10.5px] mt-1 ${quotaError ? 'text-rose-600' : 'text-slate-400'}`}>
+                    {quotaError || (maxGb !== null ? `Máximo: ${maxGb.toLocaleString('pt-BR')} GB (armazenamento do servidor).` : '')}
+                  </p>
                 </div>
               </div>
 

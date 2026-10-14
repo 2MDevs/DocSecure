@@ -479,10 +479,20 @@ export const apiClient = {
   /** Envia o arquivo real. folderId vazio/null = raiz do setor. */
   async uploadFile(
     file: File,
-    options: { departmentId: string; folderId?: string | null; name?: string; tags?: string[] },
+    options: {
+      departmentId: string;
+      folderId?: string | null;
+      name?: string;
+      tags?: string[];
+      security?: { visibility?: string; downloadPolicy?: string; deletePolicy?: string };
+    },
     onProgress?: (percent: number) => void
   ): Promise<DocumentItem> {
     const formData = new FormData();
+    // Campos de texto antes do arquivo (o servidor lê junto com o envio)
+    if (options.security?.visibility) formData.append('visibility', options.security.visibility);
+    if (options.security?.downloadPolicy) formData.append('downloadPolicy', options.security.downloadPolicy);
+    if (options.security?.deletePolicy) formData.append('deletePolicy', options.security.deletePolicy);
     formData.append('departmentId', options.departmentId);
     if (options.folderId) formData.append('folderId', options.folderId);
     if (options.name) formData.append('name', options.name);

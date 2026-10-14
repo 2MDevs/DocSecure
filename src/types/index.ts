@@ -90,6 +90,13 @@ export interface DocumentVersion {
   changeLog: string;
 }
 
+/** Segurança escolhida ao enviar o arquivo (mesmas opções de Propriedades → Segurança) */
+export interface DocSecurity {
+  visibility?: 'folder' | 'private';
+  downloadPolicy?: 'folder' | 'owner' | 'none';
+  deletePolicy?: 'folder' | 'owner' | 'managers';
+}
+
 export interface DocumentItem {
   id: string;
   name: string;

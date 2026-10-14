@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Upload, X, ShieldCheck, AlertCircle, Loader2, FileText } from 'lucide-react';
-import { Department, DocumentItem, Folder, User } from '../../types';
+import { Department, DocSecurity, DocumentItem, Folder, User } from '../../types';
+import { SecurityFields, DEFAULT_SECURITY } from './SecurityFields';
 
 interface UploadDocumentModalProps {
   isOpen: boolean;
@@ -12,7 +13,7 @@ interface UploadDocumentModalProps {
   currentUser: User;
   onUploadSuccess: (
     file: File,
-    options: { departmentId: string; folderId: string | null; name: string; tags: string[] },
+    options: { departmentId: string; folderId: string | null; name: string; tags: string[]; security?: DocSecurity },
     onProgress?: (percent: number) => void
   ) => Promise<DocumentItem>;
 }
@@ -37,6 +38,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   const [selectedFolderId, setSelectedFolderId] = useState('');
   const [fileName, setFileName] = useState('');
   const [tags, setTags] = useState('');
+  const [security, setSecurity] = useState<Required<DocSecurity>>(DEFAULT_SECURITY);
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
     setSelectedFile(null);
     setFileName('');
     setTags('');
+    setSecurity(DEFAULT_SECURITY);
     setProgress(0);
     setError(null);
     setIsUploading(false);
@@ -97,6 +100,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             .split(',')
             .map((t) => t.trim())
             .filter(Boolean),
+          security,
         },
         setProgress
       );
@@ -233,6 +237,9 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500"
             />
           </div>
+
+          {/* Segurança já no envio */}
+          <SecurityFields value={security} onChange={setSecurity} disabled={isUploading} />
 
           {isUploading && (
             <div className="space-y-1.5">

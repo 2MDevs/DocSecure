@@ -96,17 +96,18 @@ html.dark .ds-app ::-webkit-scrollbar-thumb {
   font-style: italic;
 }
 /* Cores da marca: amarelo #F6D35C, vermelho #EA3324, creme #FDF8CF, carvão #1D1D1B.
-   Os tons "azul" usados nestas telas passam a usar as cores da marca, e os cinzas ficam quentes. */
+   Os tons "azul" usados nestas telas passam a usar o amarelo da marca, e os cinzas ficam quentes. */
 .ds-brand-login {
+  /* Destaques em amarelo da marca (pedido do TI); o vermelho fica só na língua da carinha */
   --color-blue-200: #fdf8cf;
-  --color-blue-300: #f6d35c;
+  --color-blue-300: #f9e08f;
   --color-blue-400: #f6d35c;
-  --color-blue-500: #ea3324;
-  --color-blue-600: #ea3324;
-  --color-blue-700: #c92a1d;
-  --color-blue-800: #a8231a;
+  --color-blue-500: #f6d35c;
+  --color-blue-600: #f6d35c;
+  --color-blue-700: #e6b82c;
+  --color-blue-800: #c99f2a;
   --color-indigo-500: #f6d35c;
-  --color-indigo-600: #ea3324;
+  --color-indigo-600: #f6d35c;
   --color-slate-100: #f5f5f4;
   --color-slate-200: #e7e5e4;
   --color-slate-300: #d6d3d1;
