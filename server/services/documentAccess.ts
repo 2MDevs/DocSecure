@@ -221,6 +221,7 @@ export function toDocumentDto(doc: any) {
     updatedAt: doc.updated_at,
     trashedAt: trashedAt ? trashedAt.toISOString() : null,
     trashedByName: doc.trashed_by_name || null,
+    trashedPath: doc.trashed_path || null,
     purgeAt: trashedAt ? new Date(trashedAt.getTime() + TRASH_RETENTION_DAYS * 86400000).toISOString() : null,
   };
 }

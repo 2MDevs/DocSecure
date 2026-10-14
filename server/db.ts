@@ -300,6 +300,8 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'folder';
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS download_policy VARCHAR(20) DEFAULT 'folder';
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS delete_policy VARCHAR(20) DEFAULT 'folder';
+      -- Caminho de pastas onde o arquivo estava ao ir para a lixeira (para recriar ao restaurar)
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_path TEXT;
       UPDATE documents SET trashed_at = updated_at WHERE status = 'trash' AND trashed_at IS NULL;
     `);
 

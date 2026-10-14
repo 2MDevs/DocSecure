@@ -403,7 +403,7 @@ export const apiClient = {
     });
   },
 
-  async deleteFolder(id: string): Promise<{ success: boolean; deletedId: string }> {
+  async deleteFolder(id: string): Promise<{ success: boolean; deletedId: string; deletedFolderIds?: string[]; trashedDocuments?: number }> {
     return apiRequest(`/api/folders/${id}`, {
       method: 'DELETE',
     });

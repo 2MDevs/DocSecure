@@ -191,6 +191,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
                     {formatSize(doc.sizeBytes)} • Excluído por {doc.trashedByName || '-'} em {formatDate(doc.trashedAt)}
+                    {doc.trashedPath ? ` • Estava em: ${doc.trashedPath.split('/').join(' › ')}` : ''}
                   </div>
                   <div
                     className={`text-[11px] mt-1 inline-flex items-center gap-1 font-medium ${
