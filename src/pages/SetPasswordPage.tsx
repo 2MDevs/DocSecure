@@ -173,16 +173,12 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
               <div className="absolute w-40 h-40 rounded-3xl border border-blue-500/20 rotate-6" />
               <div className="absolute w-40 h-40 rounded-3xl border border-indigo-500/20 -rotate-3" />
 
-              <div className="relative z-10 w-32 h-28 bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl shadow-2xl shadow-blue-500/30 p-3.5 border border-blue-400/40 flex flex-col justify-between">
-                <div className="absolute -top-3 left-4 w-12 h-3.5 bg-blue-500 rounded-t-lg border-t border-l border-r border-blue-400/50" />
-                <div className="space-y-1.5 opacity-40 mt-1">
-                  <div className="w-14 h-1.5 bg-white rounded" />
-                  <div className="w-18 h-1.5 bg-white rounded" />
-                </div>
-                <div className="self-center my-auto w-10 h-10 bg-white/10 rounded-xl backdrop-blur-md border border-white/30 flex items-center justify-center shadow-lg">
-                  <KeyRound className="w-5 h-5 text-white" />
-                </div>
-              </div>
+              <img
+                src="/icon.svg?v=2"
+                alt="DocSecure"
+                draggable={false}
+                className="relative z-10 w-36 h-36 drop-shadow-[0_18px_30px_rgba(234,51,36,0.35)] transform hover:scale-105 transition-transform duration-300"
+              />
             </div>
 
             <p className="text-center text-xs text-slate-400 max-w-xs mt-4">

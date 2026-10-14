@@ -212,27 +212,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <div className="absolute w-40 h-40 rounded-3xl border border-indigo-500/20 -rotate-3" />
 
               {/* 3D Blue Folder with Glow & Padlock */}
-              <div className="relative z-10 w-32 h-28 bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl shadow-2xl shadow-blue-500/30 p-3.5 border border-blue-400/40 flex flex-col justify-between transform hover:scale-105 transition-transform duration-300">
-                <div className="absolute -top-3 left-4 w-12 h-3.5 bg-blue-500 rounded-t-lg border-t border-l border-r border-blue-400/50" />
-
-                <div className="space-y-1.5 opacity-40 mt-1">
-                  <div className="w-14 h-1.5 bg-white rounded" />
-                  <div className="w-18 h-1.5 bg-white rounded" />
-                </div>
-
-                <div className="self-center my-auto w-10 h-10 bg-white/10 rounded-xl backdrop-blur-md border border-white/30 flex items-center justify-center shadow-lg">
-                  {step === '2FA' ? (
-                    <Mail className="w-5 h-5 text-amber-300 animate-pulse" />
-                  ) : (
-                    <Shield className="w-5 h-5 text-white" />
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between text-[9px] text-blue-200 font-mono">
-                  <span>POSTGRESQL</span>
-                  <span>2FA EMAIL</span>
-                </div>
-              </div>
+              <img
+                src="/icon.svg?v=2"
+                alt="DocSecure"
+                draggable={false}
+                className="relative z-10 w-36 h-36 drop-shadow-[0_18px_30px_rgba(234,51,36,0.35)] transform hover:scale-105 transition-transform duration-300"
+              />
             </div>
 
             <p className="text-center text-xs text-slate-400 max-w-xs mt-4">
