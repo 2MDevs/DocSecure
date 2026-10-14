@@ -617,16 +617,41 @@ documentsRouter.post('/:id/restore', requireAuth, async (req: Request, res: Resp
       (user.departmentId === doc.department_id && (doc.trashed_by === user.id || doc.owner_id === user.id));
     if (!allowed) return res.status(403).json({ error: 'Você não tem permissão para restaurar este documento.' });
 
-    // Se a pasta original não existe mais, o arquivo volta para a raiz do setor
+    // Se a pasta original foi excluída, recria o caminho (Pasta › Subpasta) com os mesmos nomes;
+    // sem caminho conhecido, o arquivo volta para a raiz do setor
     let folderId = doc.folder_id;
+    let recreated = 0;
     if (folderId) {
       const folder = await loadFolder(folderId);
       if (!folder || folder.department_id !== doc.department_id) folderId = null;
     }
+    if (!folderId && doc.trashed_path) {
+      const { rows: deptRows } = await pool.query('SELECT name FROM departments WHERE id = $1', [doc.department_id]);
+      let parent: string | null = null;
+      for (const name of String(doc.trashed_path).split('/').filter(Boolean)) {
+        const { rows } = await pool.query(
+          `SELECT id FROM folders WHERE department_id = $1 AND COALESCE(parent_id, '') = COALESCE($2, '') AND LOWER(name) = LOWER($3) LIMIT 1`,
+          [doc.department_id, parent, name]
+        );
+        if (rows[0]) {
+          parent = rows[0].id;
+        } else {
+          const newId = 'folder-' + crypto.randomBytes(8).toString('hex');
+          await pool.query(
+            `INSERT INTO folders (id, name, department_id, department_name, parent_id, description, is_locked, is_private, created_by, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, '', false, false, $6, NOW(), NOW())`,
+            [newId, name, doc.department_id, deptRows[0]?.name || doc.department_name, parent, user.id]
+          );
+          parent = newId;
+          recreated++;
+        }
+      }
+      folderId = parent;
+    }
 
     await pool.query(
       `UPDATE documents SET status = 'active', folder_id = $1, trashed_at = NULL, trashed_by = NULL, trashed_by_name = NULL,
-       updated_at = NOW() WHERE id = $2`,
+       trashed_path = NULL, updated_at = NOW() WHERE id = $2`,
       [folderId, doc.id]
     );
     await writeAudit(
@@ -634,7 +659,11 @@ documentsRouter.post('/:id/restore', requireAuth, async (req: Request, res: Resp
       'DOCUMENT_RESTORED',
       doc.id,
       doc.name,
-      folderId ? 'Restaurado da lixeira para a pasta original.' : 'Restaurado da lixeira para a raiz do setor.',
+      folderId
+        ? recreated
+          ? `Restaurado da lixeira; ${recreated} pasta(s) do caminho original foram recriadas.`
+          : 'Restaurado da lixeira para a pasta original.'
+        : 'Restaurado da lixeira para a raiz do setor.',
       'SUCCESS',
       getClientIp(req)
     );

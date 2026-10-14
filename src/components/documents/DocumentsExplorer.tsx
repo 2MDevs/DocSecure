@@ -73,6 +73,8 @@ interface DocumentsExplorerProps {
     onProgress?: (percent: number) => void
   ) => Promise<DocumentItem>;
   isOnline?: boolean;
+  /** Excluir vários itens de uma vez (arquivos vão para a lixeira; pastas com o conteúdo) */
+  onDeleteMany?: (docIds: string[], folderIds: string[]) => Promise<unknown>;
   /** Propriedades → Segurança do arquivo */
   onUpdateDocumentSecurity?: (
     docId: string,
@@ -258,6 +260,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   onCreateFolderDirect,
   onUploadFile,
   isOnline = true,
+  onDeleteMany,
   onUpdateUserPermissions,
   onUpdateFolder,
   onDeleteFolder,
@@ -293,7 +296,17 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   };
 
   const [localSearch, setLocalSearch] = useState('');
-  const [selected, setSelected] = useState<{ kind: Item['kind']; id: string } | null>(null);
+  // Seleção (uma ou várias): clique, Ctrl+clique, Shift+clique, Ctrl+A ou o "quadrado" de seleção
+  const [selKeys, setSelKeys] = useState<Set<string>>(() => new Set());
+  const anchorKey = useRef<string | null>(null);
+  const keyOf = (it: { kind: string; id: string }) => `${it.kind}:${it.id}`;
+  const setSelected = (sel: { kind: string; id: string } | null) => {
+    anchorKey.current = sel ? keyOf(sel) : null;
+    setSelKeys(sel ? new Set([keyOf(sel)]) : new Set());
+  };
+  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const suppressClick = useRef(false);
+  const [deleteMany, setDeleteMany] = useState<Item[] | null>(null);
   const [openMenu, setOpenMenu] = useState<'new' | 'sort' | 'view' | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Item | null } | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -485,6 +498,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   }, [externalNavigation?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    setSelKeys(new Set());
+    anchorKey.current = null;
+  }, [location.deptId, location.folderId, flatView?.title]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     onLocationChange?.(location);
   }, [location.deptId, location.folderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -585,7 +603,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     });
   }, [query, location, departments, folders, allDocuments, sortKey, sortAsc, folderSize, flatView]);
 
-  const selectedItem = selected ? items.find((i) => i.kind === selected.kind && i.id === selected.id) || null : null;
+  const selectedItems = items.filter((i) => selKeys.has(keyOf(i)));
+  const selectedItem = selectedItems.length === 1 ? selectedItems[0] : null;
+  const multiSelected = selectedItems.length > 1;
   const selectedDoc = selectedItem?.kind === 'doc' ? selectedItem.doc : null;
   const selectedFolder = selectedItem?.kind === 'folder' ? selectedItem.folder : null;
 
@@ -604,6 +624,124 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     if (item.kind === 'dept') openDept(item.dept);
     else if (item.kind === 'folder') openFolder(item.folder);
     else openDoc(item.doc);
+  };
+
+  /** Clique em um item: simples (só ele), Ctrl/Cmd (adiciona/remove) ou Shift (intervalo) */
+  const onItemClick = (e: React.MouseEvent, it: Item) => {
+    e.stopPropagation();
+    const k = keyOf(it);
+    if (e.ctrlKey || e.metaKey) {
+      setSelKeys((prev) => {
+        const next = new Set(prev);
+        next.has(k) ? next.delete(k) : next.add(k);
+        return next;
+      });
+      anchorKey.current = k;
+      return;
+    }
+    if (e.shiftKey && anchorKey.current) {
+      const keys = items.map(keyOf);
+      const a = keys.indexOf(anchorKey.current);
+      const b = keys.indexOf(k);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setSelKeys(new Set(keys.slice(lo, hi + 1)));
+        return;
+      }
+    }
+    setSelected({ kind: it.kind, id: it.id });
+  };
+
+  /** Quadrado de seleção: clicar no espaço vazio e arrastar, como no Explorador do Windows */
+  const startMarquee = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || isMobile) return;
+    if ((e.target as HTMLElement).closest('[data-sel-key], button, a, input, select, textarea, th')) return;
+    const box = contentRef.current;
+    if (!box) return;
+    const bounds = box.getBoundingClientRect();
+    // Clique na barra de rolagem não inicia seleção
+    if (e.clientX > bounds.left + box.clientWidth || e.clientY > bounds.top + box.clientHeight) return;
+    const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+    const base = additive ? new Set(selKeys) : new Set<string>();
+    const startX = e.clientX - bounds.left + box.scrollLeft;
+    const startY = e.clientY - bounds.top + box.scrollTop;
+    let active = false;
+    let lastClient = { x: e.clientX, y: e.clientY };
+    let raf = 0;
+
+    const update = () => {
+      const b = box.getBoundingClientRect();
+      const curX = lastClient.x - b.left + box.scrollLeft;
+      const curY = lastClient.y - b.top + box.scrollTop;
+      const x = Math.min(startX, curX);
+      const y = Math.min(startY, curY);
+      const w = Math.abs(curX - startX);
+      const h = Math.abs(curY - startY);
+      setMarquee({ x, y, w, h });
+      // Retângulo em coordenadas da tela, para comparar com os itens
+      const sel = { left: x - box.scrollLeft + b.left, top: y - box.scrollTop + b.top, right: 0, bottom: 0 };
+      sel.right = sel.left + w;
+      sel.bottom = sel.top + h;
+      const next = new Set(base);
+      box.querySelectorAll<HTMLElement>('[data-sel-key]').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.left < sel.right && r.right > sel.left && r.top < sel.bottom && r.bottom > sel.top) next.add(el.dataset.selKey!);
+      });
+      setSelKeys(next);
+    };
+
+    const onMove = (ev: MouseEvent) => {
+      lastClient = { x: ev.clientX, y: ev.clientY };
+      if (!active) {
+        if (Math.abs(ev.clientX - e.clientX) + Math.abs(ev.clientY - e.clientY) < 5) return;
+        active = true;
+        setContextMenu(null);
+        setOpenMenu(null);
+      }
+      // Rolagem automática ao encostar nas bordas
+      const b = box.getBoundingClientRect();
+      if (ev.clientY > b.bottom - 24) box.scrollTop += 18;
+      else if (ev.clientY < b.top + 24) box.scrollTop -= 18;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      cancelAnimationFrame(raf);
+      if (active) {
+        suppressClick.current = true; // o "click" que vem logo depois não limpa a seleção
+        setMarquee(null);
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  /** Excluir vários itens selecionados de uma vez */
+  const requestDeleteMany = (list: Item[]) => {
+    const targets = list.filter((i) => i.kind !== 'dept' && !isPendingDoc(i));
+    if (!targets.length) return;
+    const denied = targets.filter((i) =>
+      i.kind === 'doc'
+        ? !canDeleteDoc(i.doc)
+        : i.kind === 'folder'
+        ? !isManagerOf(i.folder.departmentId) && i.folder.createdBy !== currentUser.id
+        : true
+    );
+    if (denied.length === targets.length) {
+      onAccessDenied('Você não tem permissão para excluir os itens selecionados.', `${targets.length} itens`);
+      return;
+    }
+    setDeleteMany(targets.filter((i) => !denied.includes(i)));
+  };
+
+  /** Quantos arquivos e subpastas existem dentro de uma pasta (todos os níveis) */
+  const folderContents = (folderId: string) => {
+    const tree = [folderId];
+    for (let i = 0; i < tree.length; i++) folders.filter((f) => f.parentId === tree[i]).forEach((f) => tree.push(f.id));
+    const files = allDocuments.filter((d) => d.folderId && tree.includes(d.folderId)).length;
+    return { files, subfolders: tree.length - 1 };
   };
 
   const requestDelete = (item: Item | null) => {
@@ -769,6 +907,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
         setSelected(null);
       } else if (e.key === 'Enter' && selectedItem) {
         activate(selectedItem);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !isMobile) {
+        e.preventDefault();
+        setSelKeys(new Set(items.map(keyOf)));
+      } else if (e.key === 'Delete' && multiSelected) {
+        requestDeleteMany(selectedItems);
       } else if (e.key === 'Delete' && selectedItem) {
         requestDelete(selectedItem);
       } else if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowLeft')) {
@@ -809,7 +952,12 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   }, []);
   const onDragStart = (e: React.DragEvent, item: Item) => {
     if (item.kind === 'dept') return;
-    e.dataTransfer.setData('text/plain', JSON.stringify({ kind: item.kind, id: item.id }));
+    // Arrastando um item que faz parte de uma seleção múltipla: leva todos
+    const group =
+      selKeys.has(keyOf(item)) && selKeys.size > 1
+        ? selectedItems.filter((i) => i.kind !== 'dept').map((i) => ({ kind: i.kind, id: i.id }))
+        : [{ kind: item.kind, id: item.id }];
+    e.dataTransfer.setData('text/plain', JSON.stringify({ kind: item.kind, id: item.id, group }));
     e.dataTransfer.effectAllowed = 'move';
   };
   const onDropOnFolder = (e: React.DragEvent, target: Folder) => {
@@ -822,8 +970,11 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     setDragOverId(null);
     try {
       const data = JSON.parse(e.dataTransfer.getData('text/plain') || '{}');
-      if (data.kind === 'doc' && onMoveDocument) onMoveDocument(data.id, target.id);
-      if (data.kind === 'folder' && data.id !== target.id && onMoveFolder) onMoveFolder(data.id, target.id);
+      const group: Array<{ kind: string; id: string }> = Array.isArray(data.group) && data.group.length ? data.group : [data];
+      group.forEach((g) => {
+        if (g.kind === 'doc' && onMoveDocument) onMoveDocument(g.id, target.id);
+        if (g.kind === 'folder' && g.id !== target.id && onMoveFolder) onMoveFolder(g.id, target.id);
+      });
     } catch {}
   };
 
@@ -906,7 +1057,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const handleContextMenu = (e: React.MouseEvent, item: Item | null) => {
     e.preventDefault();
     e.stopPropagation();
-    if (item) setSelected({ kind: item.kind, id: item.id });
+    if (item && !selKeys.has(keyOf(item))) setSelected({ kind: item.kind, id: item.id });
     setOpenMenu(null);
     setContextMenu({
       x: Math.min(e.clientX, window.innerWidth - 230),
@@ -1002,7 +1153,13 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   );
 
   const contextMenuContent = () =>
-    !contextMenu ? null : (
+    !contextMenu ? null : contextMenu.item && multiSelected && selKeys.has(keyOf(contextMenu.item)) ? (
+      <>
+        <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{selectedItems.length} itens selecionados</div>
+        <MenuItem icon={<Trash2 className="w-4 h-4" />} label={`Excluir ${selectedItems.length} itens`} danger onClick={() => requestDeleteMany(selectedItems)} />
+        <MenuItem icon={<X className="w-4 h-4" />} label="Limpar seleção" onClick={() => setSelected(null)} />
+      </>
+    ) : (
       <>
           {!contextMenu.item ? (
             <>
@@ -1233,9 +1390,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           <button
             type="button"
             className={toolbarBtn}
-            disabled={!selectedItem || selectedItem.kind === 'dept'}
-            onClick={() => requestDelete(selectedItem)}
-            title="Excluir (Delete)"
+            disabled={multiSelected ? false : !selectedItem || selectedItem.kind === 'dept'}
+            onClick={() => (multiSelected ? requestDeleteMany(selectedItems) : requestDelete(selectedItem))}
+            title={multiSelected ? `Excluir ${selectedItems.length} itens (Delete)` : 'Excluir (Delete)'}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -1382,7 +1539,14 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           <div
             ref={contentRef}
             className={`relative flex-1 min-w-0 overflow-auto ${isMobile ? (mobileView === 'grid' ? 'p-2 pb-24' : 'pb-24') : 'p-2 sm:p-3'}`}
-            onClick={() => setSelected(null)}
+            onClick={() => {
+              if (suppressClick.current) {
+                suppressClick.current = false;
+                return;
+              }
+              setSelected(null);
+            }}
+            onMouseDown={startMarquee}
             onDragEnter={(e) => {
               if (!hasExternalFiles(e.dataTransfer) || !canBulk) return;
               e.preventDefault();
@@ -1405,6 +1569,13 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
             }}
             onContextMenu={(e) => location.deptId && handleContextMenu(e, null)}
           >
+            {/* Quadrado de seleção (clique e arraste no espaço vazio) */}
+            {marquee && (
+              <div
+                className="pointer-events-none absolute z-20 border border-blue-500 bg-blue-500/15 rounded-[2px]"
+                style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }}
+              />
+            )}
             {/* Arrastando arquivos/pastas do computador */}
             {externalDrag && (
               <div className="pointer-events-none absolute inset-2 z-30 rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/85 backdrop-blur-[1px] flex flex-col items-center justify-center text-center gap-2 p-6">
@@ -1522,7 +1693,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 </thead>
                 <tbody>
                   {items.map((it) => {
-                    const isSel = selected?.kind === it.kind && selected.id === it.id;
+                    const isSel = selKeys.has(keyOf(it));
                     const locked = it.kind === 'dept' && !hasDeptAccess(it.dept);
                     return (
                       <tr
@@ -1538,10 +1709,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                             ? handleExternalDrop(e, hasDeptAccess(it.dept) ? { deptId: it.dept.id, folderId: null } : null)
                             : undefined
                         }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelected({ kind: it.kind, id: it.id });
-                        }}
+                        data-sel-key={keyOf(it)}
+                        onClick={(e) => onItemClick(e, it)}
                         onDoubleClick={() => activate(it)}
                         onContextMenu={(e) => handleContextMenu(e, it)}
                         className={`cursor-default ${isSel ? 'bg-blue-100' : 'hover:bg-blue-50'} ${
@@ -1568,7 +1737,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${viewMode === 'large' ? 128 : 96}px, 1fr))` }}
               >
                 {items.map((it) => {
-                  const isSel = selected?.kind === it.kind && selected.id === it.id;
+                  const isSel = selKeys.has(keyOf(it));
                   const locked = it.kind === 'dept' && !hasDeptAccess(it.dept);
                   return (
                     <div
@@ -1586,10 +1755,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                             ? handleExternalDrop(e, hasDeptAccess(it.dept) ? { deptId: it.dept.id, folderId: null } : null)
                             : undefined
                         }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelected({ kind: it.kind, id: it.id });
-                      }}
+                      data-sel-key={keyOf(it)}
+                      onClick={(e) => onItemClick(e, it)}
                       onDoubleClick={() => activate(it)}
                       onContextMenu={(e) => handleContextMenu(e, it)}
                       title={`${it.name}\n${itemType(it)} • ${formatBytes(itemSize(it))}${locked ? '\nSem permissão de acesso' : ''}`}
@@ -1676,6 +1843,12 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
             <span className="inline-flex items-center gap-1 text-amber-700" title="Arquivos guardados neste navegador aguardando a conexão com o servidor">
               <RefreshCw className="w-3 h-3 animate-spin [animation-duration:1.6s]" />
               {pendingDocs.length} aguardando envio
+            </span>
+          )}
+          {multiSelected && (
+            <span className="truncate font-medium text-blue-700">
+              {selectedItems.length} itens selecionados •{' '}
+              {formatBytes(selectedItems.reduce((sum, i) => sum + (i.kind === 'dept' ? 0 : itemSize(i)), 0))}
             </span>
           )}
           {selectedItem && (
@@ -1806,7 +1979,23 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
             <div className="text-center space-y-1">
               <h3 className="text-base font-bold text-slate-900">Excluir a pasta “{deleteConfirmFolder.name}”?</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Somente pastas vazias podem ser excluídas. Mova ou exclua os arquivos e as subpastas antes.
+                {(() => {
+                  const c = folderContents(deleteConfirmFolder.id);
+                  return c.files || c.subfolders ? (
+                    <>
+                      A pasta tem <strong>{c.files} arquivo(s)</strong>
+                      {c.subfolders ? (
+                        <>
+                          {' '}e <strong>{c.subfolders} subpasta(s)</strong>
+                        </>
+                      ) : null}
+                      . Os arquivos vão para a <strong>lixeira do setor por 7 dias</strong> e podem ser restaurados — ao restaurar, as pastas
+                      são recriadas.
+                    </>
+                  ) : (
+                    'A pasta está vazia.'
+                  );
+                })()}
               </p>
             </div>
             <div className="flex gap-3">
@@ -1858,6 +2047,64 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
               >
                 Enviar para a lixeira
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMAÇÃO: excluir vários itens selecionados */}
+      {deleteMany && (
+        <div data-modal-open="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-center">
+              <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                <Trash2 className="w-7 h-7" />
+              </div>
+            </div>
+            {(() => {
+              const docsSel = deleteMany.filter((i) => i.kind === 'doc');
+              const foldersSel = deleteMany.filter((i) => i.kind === 'folder') as Array<Extract<Item, { kind: 'folder' }>>;
+              const inner = foldersSel.reduce((acc, f) => acc + folderContents(f.id).files, 0);
+              const skipped = selectedItems.filter((i) => i.kind !== 'dept').length - deleteMany.length;
+              return (
+                <div className="text-center space-y-1">
+                  <h3 className="text-base font-bold text-slate-900">Excluir {deleteMany.length} itens?</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    {docsSel.length > 0 && <>{docsSel.length} arquivo(s)</>}
+                    {docsSel.length > 0 && foldersSel.length > 0 && ' e '}
+                    {foldersSel.length > 0 && (
+                      <>
+                        {foldersSel.length} pasta(s){inner ? ` com ${inner} arquivo(s) dentro` : ''}
+                      </>
+                    )}
+                    . Os arquivos vão para a <strong>lixeira do setor por 7 dias</strong> e podem ser restaurados.
+                  </p>
+                  {skipped > 0 && <p className="text-[11px] text-amber-700">{skipped} item(ns) sem permissão de exclusão ficarão de fora.</p>}
+                </div>
+              );
+            })()}
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDeleteMany(null)} className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const list = deleteMany;
+                  setDeleteMany(null);
+                  setSelected(null);
+                  const docIds = list.filter((i) => i.kind === 'doc').map((i) => i.id);
+                  const folderIds = list.filter((i) => i.kind === 'folder').map((i) => i.id);
+                  if (onDeleteMany) await onDeleteMany(docIds, folderIds);
+                  else {
+                    docIds.forEach((id) => onDeleteDocument(id));
+                    folderIds.forEach((id) => onDeleteFolder?.(id));
+                  }
+                }}
+                className="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
+              >
+                Excluir {deleteMany.length} itens
               </button>
             </div>
           </div>

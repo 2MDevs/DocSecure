@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
 import { requireAuth } from '../auth/middleware';
-import { canAccess, isDepartmentManager, roleOf, writeAudit, getClientIp, visibleFolderIds, loadFolderIndex, folderVisible } from '../services/documentAccess';
+import { canAccess, can, isDepartmentManager, roleOf, writeAudit, getClientIp, visibleFolderIds, loadFolderIndex, folderVisible, docPolicyDecision, TRASH_RETENTION_DAYS } from '../services/documentAccess';
 
 export const foldersRouter = Router();
 
@@ -175,37 +175,99 @@ foldersRouter.put('/:id', requireAuth, async (req: Request, res: Response) => {
 });
 
 foldersRouter.delete('/:id', requireAuth, async (req: Request, res: Response) => {
+  const client = await pool.connect();
   try {
     const user = (req as any).user;
     const { id } = req.params;
-    const { rows: found } = await pool.query('SELECT * FROM folders WHERE id = $1', [id]);
+    const { rows: found } = await client.query('SELECT * FROM folders WHERE id = $1', [id]);
     const folder = found[0];
     if (!folder) return res.status(404).json({ error: 'Pasta não encontrada.' });
 
-    if (
-      !isDepartmentManager(user, folder.department_id) &&
-      folder.created_by !== user.id &&
-      !(await canAccess(user, 'DELETE_FOLDER', folder.department_id, id))
-    ) {
+    const manager = isDepartmentManager(user, folder.department_id);
+    if (!manager && folder.created_by !== user.id && !(await canAccess(user, 'DELETE_FOLDER', folder.department_id, id))) {
       return res.status(403).json({ error: 'Você não tem permissão para excluir esta pasta.' });
     }
 
-    const { rows: sub } = await pool.query('SELECT COUNT(*)::int AS total FROM folders WHERE parent_id = $1', [id]);
-    const { rows: docs } = await pool.query(
-      "SELECT COUNT(*)::int AS total FROM documents WHERE folder_id = $1 AND status <> 'trash'",
-      [id]
+    // Toda a árvore: a pasta e as subpastas (de qualquer nível)
+    const { rows: allFolders } = await client.query('SELECT * FROM folders WHERE department_id = $1', [folder.department_id]);
+    const byId = new Map<string, any>(allFolders.map((f: any) => [f.id, f]));
+    const tree: string[] = [id];
+    for (let i = 0; i < tree.length; i++) {
+      allFolders.filter((f: any) => f.parent_id === tree[i]).forEach((f: any) => tree.push(f.id));
+    }
+    const pathOf = (fid: string) => {
+      const parts: string[] = [];
+      let cur = byId.get(fid);
+      const guard = new Set<string>();
+      while (cur && !guard.has(cur.id)) {
+        guard.add(cur.id);
+        parts.unshift(cur.name);
+        cur = cur.parent_id ? byId.get(cur.parent_id) : null;
+      }
+      return parts.join('/');
+    };
+
+    const { rows: docs } = await client.query(
+      "SELECT * FROM documents WHERE folder_id = ANY($1::text[]) AND status <> 'trash'",
+      [tree]
     );
-    if (sub[0].total > 0 || docs[0].total > 0) {
-      return res.status(409).json({
-        error: `A pasta não está vazia (${docs[0].total} arquivo(s) e ${sub[0].total} subpasta(s)). Mova ou exclua o conteúdo antes.`,
+
+    // Quem não é da gestão só exclui se puder excluir tudo o que está dentro
+    if (!manager) {
+      const index = await loadFolderIndex();
+      const othersPrivateFolders = tree.filter((fid) => {
+        const f = byId.get(fid);
+        return f && f.is_private && f.created_by !== user.id;
       });
+      let blocked = 0;
+      for (const d of docs) {
+        const policy = docPolicyDecision(user, d, 'delete');
+        const ok = policy === null ? d.owner_id === user.id || can(user, 'DELETE_DOCUMENT', d.department_id, d.folder_id, index) : policy;
+        if (!ok) blocked++;
+      }
+      if (blocked > 0 || othersPrivateFolders.length > 0) {
+        await writeAudit(userCtx(req), 'FOLDER_DELETED', id, folder.name, 'Exclusão da pasta negada: há conteúdo protegido.', 'DENIED', getClientIp(req));
+        return res.status(403).json({
+          error:
+            blocked > 0
+              ? `A pasta tem ${blocked} arquivo(s) que você não pode excluir (protegidos por outra pessoa ou pela gestão). Peça ao gestor do setor.`
+              : 'A pasta tem subpastas privadas de outras pessoas. Somente a gestão do setor pode excluí-la.',
+        });
+      }
     }
 
-    await pool.query('DELETE FROM folders WHERE id = $1', [id]);
-    await writeAudit(userCtx(req), 'FOLDER_DELETED', id, folder.name, `Pasta vazia removida do setor ${folder.department_name}.`, 'SUCCESS', getClientIp(req));
-    return res.json({ success: true, deletedId: id });
+    await client.query('BEGIN');
+    // Arquivos vão para a lixeira do setor (7 dias), guardando o caminho para recriar as pastas ao restaurar
+    for (const d of docs) {
+      await client.query(
+        `UPDATE documents SET status = 'trash', trashed_at = NOW(), trashed_by = $1, trashed_by_name = $2, trashed_path = $3, updated_at = NOW()
+         WHERE id = $4`,
+        [user.id, user.name, pathOf(d.folder_id), d.id]
+      );
+    }
+    // Arquivos que já estavam na lixeira também guardam o caminho
+    await client.query(
+      "UPDATE documents SET trashed_path = COALESCE(trashed_path, $2) WHERE folder_id = ANY($1::text[]) AND status = 'trash'",
+      [tree, pathOf(id)]
+    );
+    await client.query('DELETE FROM folders WHERE id = ANY($1::text[])', [tree]);
+    await client.query('COMMIT');
+
+    await writeAudit(
+      userCtx(req),
+      'FOLDER_DELETED',
+      id,
+      folder.name,
+      `Pasta removida do setor ${folder.department_name} com ${tree.length - 1} subpasta(s); ${docs.length} arquivo(s) enviados para a lixeira (${TRASH_RETENTION_DAYS} dias).`,
+      'SUCCESS',
+      getClientIp(req)
+    );
+    return res.json({ success: true, deletedId: id, deletedFolderIds: tree, trashedDocuments: docs.length });
   } catch (err: any) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('[FOLDERS DELETE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao excluir pasta.' });
+  } finally {
+    client.release();
   }
 });

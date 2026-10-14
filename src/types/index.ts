@@ -124,6 +124,8 @@ export interface DocumentItem {
   hasContent?: boolean;
   trashedAt?: string | null;
   trashedByName?: string | null;
+  /** Pastas onde o arquivo estava (recriadas ao restaurar) */
+  trashedPath?: string | null;
   /** Data em que o arquivo será apagado definitivamente do servidor */
   purgeAt?: string | null;
   canPurge?: boolean;

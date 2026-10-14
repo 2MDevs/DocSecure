@@ -1063,10 +1063,48 @@ export default function App() {
     const folder = folders.find((f) => f.id === folderId);
     if (!folder) return;
     try {
-      await apiClient.deleteFolder(folderId);
-      setFolders((prev) => prev.filter((f) => f.id !== folderId));
+      const res = await apiClient.deleteFolder(folderId);
+      // A pasta, as subpastas e os arquivos de dentro (que foram para a lixeira) saem da tela
+      const removed = new Set(res.deletedFolderIds || [folderId]);
+      setFolders((prev) => prev.filter((f) => !removed.has(f.id)));
+      setDocuments((prev) => prev.filter((d) => !d.folderId || !removed.has(d.folderId)));
     } catch (err: any) {
       triggerAccessDenied(err?.message || 'Não foi possível excluir a pasta.', folder.name);
+    }
+  };
+
+  // Excluir vários itens selecionados: um único aviso no final, com o que não deu certo
+  const handleDeleteMany = async (docIds: string[], folderIds: string[]) => {
+    const failures: string[] = [];
+    const removedFolders = new Set<string>();
+    const removedDocs = new Set<string>();
+    for (const id of folderIds) {
+      const f = folders.find((x) => x.id === id);
+      try {
+        const res = await apiClient.deleteFolder(id);
+        (res.deletedFolderIds || [id]).forEach((x) => removedFolders.add(x));
+      } catch (err: any) {
+        failures.push(`${f?.name || 'Pasta'}: ${err?.message || 'não foi possível excluir'}`);
+      }
+    }
+    for (const id of docIds) {
+      const d = documents.find((x) => x.id === id);
+      if (d?.folderId && removedFolders.has(d.folderId)) continue; // já foi junto com a pasta
+      try {
+        await apiClient.deleteDocument(id);
+        removedDocs.add(id);
+      } catch (err: any) {
+        failures.push(`${d?.name || 'Arquivo'}: ${err?.message || 'não foi possível excluir'}`);
+      }
+    }
+    setFolders((prev) => prev.filter((f) => !removedFolders.has(f.id)));
+    setDocuments((prev) => prev.filter((d) => !removedDocs.has(d.id) && (!d.folderId || !removedFolders.has(d.folderId))));
+    if (viewingDocument && removedDocs.has(viewingDocument.id)) setViewingDocument(null);
+    if (failures.length) {
+      triggerAccessDenied(
+        `${failures.length} item(ns) não puderam ser excluídos: ${failures.slice(0, 4).join(' • ')}${failures.length > 4 ? ' • …' : ''}`,
+        'Exclusão de vários itens'
+      );
     }
   };
 
@@ -1737,6 +1775,7 @@ export default function App() {
               onToggleFavorite={handleToggleFavorite}
               onDeleteDocument={handleDeleteDocument}
               onUpdateDocumentSecurity={handleUpdateDocumentSecurity}
+              onDeleteMany={handleDeleteMany}
               onCreateFolderDirect={handleCreateFolder}
               onUploadFile={handleUploadDocument}
               isOnline={connectionStatus === 'online'}
