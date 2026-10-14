@@ -28,6 +28,7 @@ import { createAuditEntry, verifyPermission } from './services/securityEngine';
 import { apiClient, dispatchSessionExpired, SESSION_LOCKED_EVENT } from './services/apiClient';
 import type { UpdateNotice } from './services/apiClient';
 import { UPDATE_CHECK_EVENT } from './components/settings/SystemUpdatePanel';
+import { isNewVersionAvailable } from './services/appVersion';
 import { UpdateNoticeDialog } from './components/common/UpdateNoticeDialog';
 
 // Components
@@ -61,6 +62,8 @@ import { enqueueUpload, listPendingUploads, loadPendingFile, removePendingUpload
 import { IntegrationsView } from './components/settings/IntegrationsView';
 import { MobileAppFrame } from './components/mobile/MobileAppFrame';
 import { Database, RefreshCw, AlertCircle } from 'lucide-react';
+
+const VERSION_CHECK_EVENT = 'docsecure:version-check';
 
 export const ROLE_ALLOWED_ROUTES: Record<string, UserRole[]> = {
   '/painel': ['DEVELOPER'],
@@ -579,6 +582,40 @@ export default function App() {
     };
   }, [currentUser, loadBootstrapData]);
 
+  // NOVA VERSÃO INSTALADA NO SERVIDOR: o app instalado (PWA) e abas antigas se atualizam sozinhos.
+  // Ao voltar para o app (reabrir o PWA / trocar de aba) recarrega na hora; com a tela em uso, mostra um aviso.
+  const [newVersionReady, setNewVersionReady] = useState(false);
+  const busyRef = useRef(false);
+  busyRef.current = uploadingDocs.length > 0;
+  useEffect(() => {
+    let checking = false;
+    const check = async (resumed: boolean) => {
+      if (checking) return;
+      checking = true;
+      try {
+        if (await isNewVersionAvailable()) {
+          if (resumed && !busyRef.current) window.location.reload();
+          else setNewVersionReady(true);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    const onVisible = () => document.visibilityState === 'visible' && check(true);
+    const onPageShow = (e: PageTransitionEvent) => e.persisted && check(true);
+    const onServerBack = () => check(false);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener(VERSION_CHECK_EVENT, onServerBack);
+    const timer = window.setInterval(() => check(false), 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener(VERSION_CHECK_EVENT, onServerBack);
+      window.clearInterval(timer);
+    };
+  }, []);
+
   // TEMPO REAL: o servidor avisa quando pastas, arquivos, permissões, usuários ou setores mudam.
   // A tela recarrega os dados (já filtrados pelo servidor) sem o usuário precisar atualizar a página.
   useEffect(() => {
@@ -611,6 +648,7 @@ export default function App() {
       if (readyCount > 1) {
         scheduleRefresh();
         window.dispatchEvent(new Event(UPDATE_CHECK_EVENT)); // servidor reiniciado (ex.: após atualizar)
+        window.setTimeout(() => window.dispatchEvent(new Event(VERSION_CHECK_EVENT)), 1500);
       }
     });
 
@@ -1855,6 +1893,24 @@ export default function App() {
         resourceName={accessDeniedState.resourceName}
         requiredRoleOrPermission="RBAC: Permissão Granular Específica"
       />
+      {newVersionReady && (
+        <div className="fixed left-1/2 -translate-x-1/2 z-[70] bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:bottom-5 w-[calc(100%-1.5rem)] max-w-md">
+          <div className="bg-slate-900 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3">
+            <RefreshCw className="w-5 h-5 text-sky-300 shrink-0" />
+            <div className="flex-1 min-w-0 text-[13px] leading-snug">
+              <div className="font-semibold">O DocSecure foi atualizado</div>
+              <div className="text-slate-300">Recarregue para usar a versão nova.</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-[13px] font-semibold shrink-0"
+            >
+              Recarregar
+            </button>
+          </div>
+        </div>
+      )}
       {isUpdateDialogOpen && updateNotice?.updateAvailable && (
         <UpdateNoticeDialog
           notice={updateNotice}
