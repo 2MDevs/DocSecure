@@ -434,7 +434,7 @@ export default function App() {
   }, [currentUser?.id, currentUser?.mustChangePassword]);
 
   // Conexão voltou: envia os arquivos da fila, um por vez
-  // Verifica se há nova versão no GitHub: ao entrar, a cada 10 minutos e ao voltar para a aba
+  // Verifica se há nova versão no GitHub: ao entrar, a cada 2 minutos e ao voltar para a aba
   useEffect(() => {
     if (!currentUser?.id || isLocked || connectionStatus !== 'online') return;
     let cancelled = false;
@@ -444,7 +444,7 @@ export default function App() {
         .then((n) => !cancelled && setUpdateNotice(n))
         .catch(() => {});
     check();
-    const timer = window.setInterval(check, 10 * 60 * 1000);
+    const timer = window.setInterval(check, 2 * 60 * 1000);
     const onVisible = () => document.visibilityState === 'visible' && check();
     document.addEventListener('visibilitychange', onVisible);
     return () => {

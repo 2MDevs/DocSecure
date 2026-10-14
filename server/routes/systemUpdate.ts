@@ -169,6 +169,7 @@ async function git(args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('git', ['-c', `safe.directory=${APP_DIR}`, ...args], {
     cwd: APP_DIR,
     timeout: 10_000,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, // nunca fica esperando senha
   });
   return stdout.trim();
 }
@@ -189,32 +190,43 @@ function getConfiguredBranch(): string {
 }
 
 let latestCache: { at: number; value: CommitInfo } | null = null;
+const commitDetails = new Map<string, CommitInfo>();
 
-/** Último commit publicado no GitHub (cache de 60s para respeitar o limite da API). */
+/**
+ * Último commit publicado no GitHub.
+ * O número do commit vem do "git ls-remote" (sem limite de consultas, cache de 20s);
+ * a mensagem/data vem da API do GitHub só uma vez por commit novo (limite de 60/hora).
+ */
 async function getLatestCommit(): Promise<CommitInfo> {
-  if (latestCache && Date.now() - latestCache.at < 60_000) return latestCache.value;
+  if (latestCache && Date.now() - latestCache.at < 20_000) return latestCache.value;
   let value: CommitInfo = null;
   try {
-    const remote = await git(['remote', 'get-url', 'origin']);
-    const match = remote.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/i);
-    if (match) {
-      const [, owner, repo] = match;
-      const resp = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(getConfiguredBranch())}`,
-        { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'DocSecure-Updater' } }
-      );
-      if (resp.ok) {
-        const data: any = await resp.json();
+    const branch = getConfiguredBranch();
+    let sha = '';
+    try {
+      sha = (await git(['ls-remote', 'origin', `refs/heads/${branch}`])).split(/\s+/)[0];
+    } catch {
+      // Sem acesso via git: usa a API do GitHub (como antes)
+      const repo = await githubRepo();
+      const data = repo ? await gh(`/repos/${repo.owner}/${repo.repo}/commits/${encodeURIComponent(branch)}`) : null;
+      sha = String(data?.sha || '');
+    }
+    if (/^[0-9a-f]{40}$/i.test(sha)) {
+      value = commitDetails.get(sha) || null;
+      if (!value) {
+        const repo = await githubRepo();
+        const data = repo ? await gh(`/repos/${repo.owner}/${repo.repo}/commits/${sha}`) : null;
         value = {
-          commit: data.sha,
-          short: String(data.sha).slice(0, 7),
-          message: String(data.commit?.message || '').split('\n')[0],
-          date: data.commit?.committer?.date || data.commit?.author?.date || '',
+          commit: sha,
+          short: sha.slice(0, 7),
+          message: String(data?.commit?.message || '').split('\n')[0] || 'Nova versão',
+          date: data?.commit?.committer?.date || data?.commit?.author?.date || new Date().toISOString(),
         };
+        if (data) commitDetails.set(sha, value); // sem detalhes (limite da API), tenta de novo depois
       }
     }
   } catch {
-    value = null;
+    value = latestCache?.value ?? null; // GitHub fora do ar: mantém a última informação
   }
   latestCache = { at: Date.now(), value };
   return value;
