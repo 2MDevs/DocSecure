@@ -9,7 +9,7 @@ interface CreateFolderModalProps {
   currentUser: User;
   currentDepartmentId?: string;
   parentFolderId?: string | null;
-  onCreateFolder: (data: { name: string; departmentId: string; isLocked: boolean; isPrivate: boolean; description: string; parentId?: string | null }) => Promise<void>;
+  onCreateFolder: (data: { name: string; departmentId: string; isLocked: boolean; isPrivate: boolean; description: string; parentId?: string | null }) => Promise<unknown>;
 }
 
 export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
