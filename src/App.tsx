@@ -1054,7 +1054,8 @@ export default function App() {
   }) => {
     const dept = departments.find((d) => d.id === data.departmentId);
     const created = await apiClient.createFolder({ ...data, departmentName: dept?.name });
-    setFolders((prev) => [created, ...prev]);
+    setFolders((prev) => [created, ...prev.filter((f) => f.id !== created.id)]);
+    return created;
   };
 
   // Delete Folder Handler: o servidor só permite excluir pastas vazias
@@ -1736,6 +1737,9 @@ export default function App() {
               onToggleFavorite={handleToggleFavorite}
               onDeleteDocument={handleDeleteDocument}
               onUpdateDocumentSecurity={handleUpdateDocumentSecurity}
+              onCreateFolderDirect={handleCreateFolder}
+              onUploadFile={handleUploadDocument}
+              isOnline={connectionStatus === 'online'}
               onUpdateUserPermissions={handleUpdatePermissions}
               onUpdateFolder={handleUpdateFolder}
               onDeleteFolder={handleDeleteFolder}

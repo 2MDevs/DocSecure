@@ -30,12 +30,16 @@ import {
   EyeOff,
   Eye,
   MoreVertical,
+  FolderUp,
+  Files,
   X,
 } from 'lucide-react';
 import { Department, Folder, DocumentItem, User, PermissionType } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
 import { FolderConfigModal } from './FolderConfigModal';
 import { PropertiesModal } from './PropertiesModal';
+import { BulkUploadConfirm, BulkUploadPanel, BulkItemState, isBlockedFile } from './BulkUpload';
+import { collectFromDrop, collectFromInput, hasExternalFiles, PickedFile } from '../../services/dropFiles';
 import { canAccessDepartment } from '../layout/NavPane';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { BottomSheet } from '../common/BottomSheet';
@@ -54,6 +58,21 @@ interface DocumentsExplorerProps {
   onAccessDenied: (reason: string, resourceName: string) => void;
   onToggleFavorite: (docId: string) => void;
   onDeleteDocument: (docId: string) => void;
+  /** Envio em lote (arrastar arquivos/pastas do computador) */
+  onCreateFolderDirect?: (data: {
+    name: string;
+    departmentId: string;
+    parentId?: string | null;
+    isLocked: boolean;
+    isPrivate?: boolean;
+    description: string;
+  }) => Promise<Folder>;
+  onUploadFile?: (
+    file: File,
+    options: { departmentId: string; folderId: string | null; name: string; tags: string[]; security?: any },
+    onProgress?: (percent: number) => void
+  ) => Promise<DocumentItem>;
+  isOnline?: boolean;
   /** Propriedades → Segurança do arquivo */
   onUpdateDocumentSecurity?: (
     docId: string,
@@ -236,6 +255,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   onToggleFavorite,
   onDeleteDocument,
   onUpdateDocumentSecurity,
+  onCreateFolderDirect,
+  onUploadFile,
+  isOnline = true,
   onUpdateUserPermissions,
   onUpdateFolder,
   onDeleteFolder,
@@ -279,6 +301,22 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState<DocumentItem | null>(null);
   const [configFolder, setConfigFolder] = useState<Folder | null>(null);
   const [propsTarget, setPropsTarget] = useState<{ kind: 'doc' | 'folder'; id: string } | null>(null);
+
+  // ---------------------------------------------------------------- arrastar do computador / envio em lote
+  const [externalDrag, setExternalDrag] = useState(false);
+  const dragDepth = useRef(0);
+  const [pick, setPick] = useState<{
+    files: PickedFile[];
+    folders: string[];
+    dest: { deptId: string; folderId: string | null };
+    label: string;
+  } | null>(null);
+  const [bulk, setBulk] = useState<{ items: BulkItemState[]; foldersCreated: number; running: boolean } | null>(null);
+  const filesInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const foldersRef = useRef(folders);
+  foldersRef.current = folders;
+  const canBulk = Boolean(onUploadFile);
   const [accessRevokedNotice, setAccessRevokedNotice] = useState<string | null>(null);
   const [expandedDeptIds, setExpandedDeptIds] = useState<string[]>([]);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -592,6 +630,129 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     setPropsTarget({ kind: item.kind, id: item.id });
   };
 
+  /** Nome do destino para mostrar ao usuário: Setor › Pasta › Subpasta */
+  const destLabel = (deptId: string, folderId: string | null) => {
+    const parts: string[] = [];
+    let cursor = folders.find((f) => f.id === folderId);
+    const guard = new Set<string>();
+    while (cursor && !guard.has(cursor.id)) {
+      guard.add(cursor.id);
+      parts.unshift(cursor.name);
+      cursor = folders.find((f) => f.id === cursor!.parentId);
+    }
+    return [departments.find((d) => d.id === deptId)?.name || 'Setor', ...parts].join(' › ');
+  };
+
+  const beginPick = (picked: { files: PickedFile[]; folders: string[] }, dest: { deptId: string; folderId: string | null }) => {
+    if (!picked.files.length) {
+      onAccessDenied(
+        picked.folders.length ? 'As pastas soltas estão vazias.' : 'Nenhum arquivo encontrado para enviar.',
+        'Envio de arquivos'
+      );
+      return;
+    }
+    if (bulk?.running) {
+      onAccessDenied('Aguarde terminar o envio em andamento antes de começar outro.', 'Envio de arquivos');
+      return;
+    }
+    setPick({ ...picked, dest, label: destLabel(dest.deptId, dest.folderId) });
+  };
+
+  const handleExternalDrop = async (e: React.DragEvent, dest: { deptId: string; folderId: string | null } | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = 0;
+    setExternalDrag(false);
+    setDragOverId(null);
+    if (!canBulk) return;
+    if (!dest) {
+      onAccessDenied('Abra um setor ou uma pasta para soltar os arquivos nela.', 'Envio de arquivos');
+      return;
+    }
+    const picked = await collectFromDrop(e.dataTransfer);
+    beginPick(picked, dest);
+  };
+
+  /** Envia tudo: cria as pastas (mesma organização do computador) e sobe os arquivos, 3 por vez */
+  const runBulk = async (opts: { security: any; privateFolders: boolean }) => {
+    if (!pick || !onUploadFile) return;
+    const { dest } = pick;
+    const files = pick.files.filter((f) => !isBlockedFile(f.file.name));
+    setPick(null);
+    const items: BulkItemState[] = files.map((f) => ({ name: f.file.name, path: f.dirs.join(' › '), status: 'wait' }));
+    let foldersCreated = 0;
+    const update = (i: number, patch: Partial<BulkItemState>) =>
+      setBulk((b) => (b ? { ...b, items: b.items.map((it, k) => (k === i ? { ...it, ...patch } : it)) } : b));
+    setBulk({ items, foldersCreated: 0, running: true });
+
+    // 1) Pastas: criadas ANTES dos arquivos, uma de cada vez (pais antes dos filhos),
+    //    reaproveitando as que já existem com o mesmo nome no mesmo lugar
+    const folderIdByPath = new Map<string, Promise<string | null>>([['', Promise.resolve(dest.folderId)]]);
+    const ensure = (dirs: string[]): Promise<string | null> => {
+      const key = dirs.join('/');
+      const known = folderIdByPath.get(key);
+      if (known) return known;
+      const job = (async () => {
+        const parentId = await ensure(dirs.slice(0, -1));
+        const name = dirs[dirs.length - 1];
+        const existing = foldersRef.current.find(
+          (f) =>
+            f.departmentId === dest.deptId &&
+            (f.parentId || null) === (parentId || null) &&
+            f.name.trim().toLowerCase() === name.trim().toLowerCase()
+        );
+        if (existing) return existing.id;
+        if (!onCreateFolderDirect) throw new Error('Criação de pastas indisponível.');
+        try {
+          const created = await onCreateFolderDirect({
+            name,
+            departmentId: dest.deptId,
+            parentId,
+            isLocked: false,
+            isPrivate: opts.privateFolders,
+            description: '',
+          });
+          foldersCreated += 1;
+          setBulk((b) => (b ? { ...b, foldersCreated } : b));
+          return created.id;
+        } catch (err: any) {
+          throw new Error(`Pasta "${name}": ${err?.message || 'não foi possível criar'}`);
+        }
+      })();
+      folderIdByPath.set(key, job); // guarda a promessa: ninguém cria a mesma pasta duas vezes
+      return job;
+    };
+    const allDirs = [...new Set(files.filter((f) => f.dirs.length).map((f) => f.dirs.join('/')))].sort(
+      (a, b) => a.split('/').length - b.split('/').length
+    );
+    for (const d of allDirs) {
+      await ensure(d.split('/')).catch(() => undefined); // o erro aparece nos arquivos daquela pasta
+    }
+
+    // 2) Arquivos: até 3 envios ao mesmo tempo
+    let next = 0;
+    const worker = async () => {
+      while (next < files.length) {
+        const i = next++;
+        const f = files[i];
+        update(i, { status: 'up', percent: 0 });
+        try {
+          const folderId = await ensure(f.dirs);
+          await onUploadFile(
+            f.file,
+            { departmentId: dest.deptId, folderId, name: f.file.name, tags: [], security: opts.security },
+            (pct) => update(i, { percent: pct })
+          );
+          update(i, { status: 'ok', percent: 100 });
+        } catch (err: any) {
+          update(i, { status: 'err', error: err?.message || 'Falha no envio.' });
+        }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    setBulk((b) => (b ? { ...b, running: false } : b));
+  };
+
   // ---------------------------------------------------------------- teclado e cliques fora
   useEffect(() => {
     const close = () => {
@@ -626,12 +787,36 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   }); // reavalia a cada render para usar o estado atual
 
   // ---------------------------------------------------------------- arrastar e soltar
+  // Arquivo solto fora da área do explorador: não deixa o navegador abrir o arquivo e sair da plataforma
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (hasExternalFiles(e.dataTransfer)) e.preventDefault();
+    };
+    const reset = () => {
+      dragDepth.current = 0;
+      setExternalDrag(false);
+    };
+    window.addEventListener('dragover', guard);
+    window.addEventListener('drop', guard);
+    window.addEventListener('drop', reset);
+    window.addEventListener('dragend', reset);
+    return () => {
+      window.removeEventListener('dragover', guard);
+      window.removeEventListener('drop', guard);
+      window.removeEventListener('drop', reset);
+      window.removeEventListener('dragend', reset);
+    };
+  }, []);
   const onDragStart = (e: React.DragEvent, item: Item) => {
     if (item.kind === 'dept') return;
     e.dataTransfer.setData('text/plain', JSON.stringify({ kind: item.kind, id: item.id }));
     e.dataTransfer.effectAllowed = 'move';
   };
   const onDropOnFolder = (e: React.DragEvent, target: Folder) => {
+    if (hasExternalFiles(e.dataTransfer)) {
+      handleExternalDrop(e, { deptId: target.departmentId, folderId: target.id });
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     setDragOverId(null);
@@ -823,6 +1008,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
             <>
               <MenuItem icon={<FolderPlus className="w-4 h-4 text-amber-500" />} label="Nova pasta" onClick={() => onOpenCreateFolderModal(location.deptId || undefined, location.folderId)} />
               <MenuItem icon={<Upload className="w-4 h-4 text-blue-600" />} label="Enviar arquivo" onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)} />
+              {canBulk && <MenuItem icon={<Files className="w-4 h-4 text-blue-600" />} label="Enviar vários arquivos" onClick={() => filesInputRef.current?.click()} />}
+              {canBulk && <MenuItem icon={<FolderUp className="w-4 h-4 text-amber-500" />} label="Enviar pasta inteira" onClick={() => folderInputRef.current?.click()} />}
               <div className="border-t border-slate-100 my-1" />
               <MenuItem label="Ícones grandes" checked={viewMode === 'large'} onClick={() => setViewMode('large')} />
               <MenuItem label="Ícones médios" checked={viewMode === 'medium'} onClick={() => setViewMode('medium')} />
@@ -992,6 +1179,12 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                   label="Enviar arquivo"
                   onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)}
                 />
+                {canBulk && (
+                  <>
+                    <MenuItem icon={<Files className="w-4 h-4 text-blue-600" />} label="Enviar vários arquivos" onClick={() => filesInputRef.current?.click()} />
+                    <MenuItem icon={<FolderUp className="w-4 h-4 text-amber-500" />} label="Enviar pasta inteira" onClick={() => folderInputRef.current?.click()} />
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1188,10 +1381,47 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           {/* CONTEÚDO */}
           <div
             ref={contentRef}
-            className={`flex-1 min-w-0 overflow-auto ${isMobile ? (mobileView === 'grid' ? 'p-2 pb-24' : 'pb-24') : 'p-2 sm:p-3'}`}
+            className={`relative flex-1 min-w-0 overflow-auto ${isMobile ? (mobileView === 'grid' ? 'p-2 pb-24' : 'pb-24') : 'p-2 sm:p-3'}`}
             onClick={() => setSelected(null)}
+            onDragEnter={(e) => {
+              if (!hasExternalFiles(e.dataTransfer) || !canBulk) return;
+              e.preventDefault();
+              dragDepth.current += 1;
+              setExternalDrag(true);
+            }}
+            onDragOver={(e) => {
+              if (!hasExternalFiles(e.dataTransfer) || !canBulk) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = canCreateHere ? 'copy' : 'none';
+            }}
+            onDragLeave={(e) => {
+              if (!hasExternalFiles(e.dataTransfer)) return;
+              dragDepth.current = Math.max(0, dragDepth.current - 1);
+              if (dragDepth.current === 0) setExternalDrag(false);
+            }}
+            onDrop={(e) => {
+              if (!hasExternalFiles(e.dataTransfer)) return;
+              handleExternalDrop(e, canCreateHere && location.deptId ? { deptId: location.deptId, folderId: location.folderId } : null);
+            }}
             onContextMenu={(e) => location.deptId && handleContextMenu(e, null)}
           >
+            {/* Arrastando arquivos/pastas do computador */}
+            {externalDrag && (
+              <div className="pointer-events-none absolute inset-2 z-30 rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/85 backdrop-blur-[1px] flex flex-col items-center justify-center text-center gap-2 p-6">
+                <Upload className="w-10 h-10 text-blue-600" />
+                {canCreateHere ? (
+                  <>
+                    <div className="text-[15px] font-semibold text-slate-900">Solte para enviar para {locationName}</div>
+                    <div className="text-[12.5px] text-slate-600">Arquivos e pastas inteiras (com subpastas). Ou solte em cima de uma pasta para enviar para dentro dela.</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-[15px] font-semibold text-slate-900">Solte sobre um setor ou abra uma pasta</div>
+                    <div className="text-[12.5px] text-slate-600">Os arquivos precisam ir para um setor ou pasta.</div>
+                  </>
+                )}
+              </div>
+            )}
             {items.length === 0 ? (
               <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center text-slate-400 text-sm gap-2">
                 {query ? (
@@ -1299,9 +1529,15 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                         key={`${it.kind}-${it.id}`}
                         draggable={it.kind !== 'dept'}
                         onDragStart={(e) => onDragStart(e, it)}
-                        onDragOver={(e) => it.kind === 'folder' && (e.preventDefault(), setDragOverId(it.id))}
+                        onDragOver={(e) => (it.kind === 'folder' || (it.kind === 'dept' && hasExternalFiles(e.dataTransfer))) && (e.preventDefault(), e.stopPropagation(), setDragOverId(it.id))}
                         onDragLeave={() => setDragOverId(null)}
-                        onDrop={(e) => it.kind === 'folder' && onDropOnFolder(e, it.folder)}
+                        onDrop={(e) =>
+                          it.kind === 'folder'
+                            ? onDropOnFolder(e, it.folder)
+                            : it.kind === 'dept' && hasExternalFiles(e.dataTransfer)
+                            ? handleExternalDrop(e, hasDeptAccess(it.dept) ? { deptId: it.dept.id, folderId: null } : null)
+                            : undefined
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelected({ kind: it.kind, id: it.id });
@@ -1341,9 +1577,15 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                       tabIndex={0}
                       draggable={it.kind !== 'dept'}
                       onDragStart={(e) => onDragStart(e, it)}
-                      onDragOver={(e) => it.kind === 'folder' && (e.preventDefault(), setDragOverId(it.id))}
+                      onDragOver={(e) => (it.kind === 'folder' || (it.kind === 'dept' && hasExternalFiles(e.dataTransfer))) && (e.preventDefault(), e.stopPropagation(), setDragOverId(it.id))}
                       onDragLeave={() => setDragOverId(null)}
-                      onDrop={(e) => it.kind === 'folder' && onDropOnFolder(e, it.folder)}
+                      onDrop={(e) =>
+                          it.kind === 'folder'
+                            ? onDropOnFolder(e, it.folder)
+                            : it.kind === 'dept' && hasExternalFiles(e.dataTransfer)
+                            ? handleExternalDrop(e, hasDeptAccess(it.dept) ? { deptId: it.dept.id, folderId: null } : null)
+                            : undefined
+                        }
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelected({ kind: it.kind, id: it.id });
@@ -1506,6 +1748,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 label="Enviar arquivo"
                 onClick={() => onOpenUploadModal(location.deptId || undefined, location.folderId || undefined)}
               />
+              {canBulk && (
+                <MenuItem icon={<Files className="w-5 h-5 text-blue-600" />} label="Enviar vários arquivos" onClick={() => filesInputRef.current?.click()} />
+              )}
               {currentFolder && (
                 <MenuItem icon={<SlidersHorizontal className="w-5 h-5" />} label="Propriedades desta pasta" onClick={() => openProperties(currentFolder)} />
               )}
@@ -1618,6 +1863,44 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           </div>
         </div>
       )}
+
+      {/* Seletores do sistema: vários arquivos ou uma pasta inteira */}
+      <input
+        ref={filesInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const picked = collectFromInput(e.target.files);
+          e.target.value = '';
+          if (location.deptId) beginPick(picked, { deptId: location.deptId, folderId: location.folderId });
+        }}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        {...({ webkitdirectory: '', directory: '' } as any)}
+        onChange={(e) => {
+          const picked = collectFromInput(e.target.files);
+          e.target.value = '';
+          if (location.deptId) beginPick(picked, { deptId: location.deptId, folderId: location.folderId });
+        }}
+      />
+
+      {/* Envio em lote: confirmação (destino + segurança) e progresso */}
+      {pick && (
+        <BulkUploadConfirm
+          files={pick.files}
+          folders={pick.folders}
+          destination={pick.label}
+          online={isOnline}
+          onCancel={() => setPick(null)}
+          onConfirm={runBulk}
+        />
+      )}
+      {bulk && <BulkUploadPanel items={bulk.items} foldersCreated={bulk.foldersCreated} running={bulk.running} onClose={() => setBulk(null)} />}
 
       {/* Propriedades: Geral + Segurança (arquivo ou pasta) */}
       {propsTarget &&
