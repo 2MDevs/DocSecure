@@ -61,6 +61,19 @@ export const SystemUpdatePanel: React.FC = () => {
     load();
   }, [load]);
 
+  // Verifica sozinho a cada 30 segundos (e ao voltar para a aba): o botão aparece logo após o merge no GitHub
+  useEffect(() => {
+    const refresh = () => document.visibilityState === 'visible' && load(true);
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [load]);
+
   // Acompanha a atualização em andamento
   useEffect(() => {
     if (requestedAt === null) return;
