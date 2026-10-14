@@ -44,10 +44,11 @@ export const WindowDialog: React.FC<WindowDialogProps> = ({ title, icon, onClose
       <div
         role="dialog"
         aria-label={title}
-        className={`bg-[#f8fafc] flex flex-col shadow-2xl border border-slate-300 overflow-hidden animate-in fade-in zoom-in-95 duration-150 ${
+        className={`bg-[#f8fafc] flex flex-col shadow-2xl border border-slate-300 overflow-hidden animate-in fade-in duration-150 ${
           maximized ? 'w-full h-full rounded-none' : 'w-full h-full md:w-[min(1200px,94vw)] md:h-[min(860px,88vh)] md:rounded-lg'
         }`}
-        style={maximized ? undefined : { transform: `translate(${offset.x}px, ${offset.y}px)` }}
+        // Sem "transform": ele faria as caixas de diálogo internas (ex.: Novo Usuário) ficarem presas dentro da janela
+        style={maximized || (!offset.x && !offset.y) ? undefined : { position: 'relative', left: offset.x, top: offset.y }}
       >
         {/* Barra de título */}
         <div

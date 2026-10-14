@@ -22,6 +22,121 @@ import { requireAuth, requireRole } from '../auth/middleware';
 const execFileAsync = promisify(execFile);
 export const systemUpdateRouter = Router();
 
+// ---------------------------------------------------------------------------
+// Aviso de atualização para TODOS os usuários (sininho de notificações).
+// Registrado antes da trava "somente desenvolvedor" abaixo.
+// ---------------------------------------------------------------------------
+type ChangeGroup = { title: string; items: string[]; date: string; sha?: string };
+let noticeCache: { at: number; key: string; value: ChangeGroup[] } | null = null;
+
+/** Remove linhas técnicas (assinaturas, links) e devolve texto amigável. */
+function cleanLines(text: string): string[] {
+  return String(text || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        l &&
+        !/^(co-authored-by|claude-session|signed-off-by)\b/i.test(l) &&
+        !/generated with/i.test(l) &&
+        !/^https?:\/\//i.test(l) &&
+        !/^#{1,6}\s*$/.test(l)
+    );
+}
+
+function toItems(lines: string[]): string[] {
+  return lines
+    .filter((l) => /^[-*•]\s+/.test(l) || /^\d+[.)]\s+/.test(l))
+    .map((l) => l.replace(/^([-*•]|\d+[.)])\s+/, '').replace(/\*\*/g, '').replace(/`/g, ''))
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+async function githubRepo(): Promise<{ owner: string; repo: string } | null> {
+  try {
+    const remote = await git(['remote', 'get-url', 'origin']);
+    const m = remote.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/i);
+    return m ? { owner: m[1], repo: m[2] } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function gh(pathname: string): Promise<any | null> {
+  try {
+    const resp = await fetch(`https://api.github.com${pathname}`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'DocSecure-Updater' },
+    });
+    return resp.ok ? await resp.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** O que muda entre a versão instalada e a do GitHub, agrupado por melhoria (PR ou commit). */
+async function getPendingChanges(fromSha: string, toSha: string): Promise<ChangeGroup[]> {
+  const key = `${fromSha}..${toSha}`;
+  if (noticeCache && noticeCache.key === key && Date.now() - noticeCache.at < 10 * 60_000) return noticeCache.value;
+  const repo = await githubRepo();
+  if (!repo) return [];
+  const cmp = await gh(`/repos/${repo.owner}/${repo.repo}/compare/${fromSha}...${toSha}`);
+  const commits: any[] = Array.isArray(cmp?.commits) ? cmp.commits : [];
+  const merged = new Set<string>();
+  const groups: ChangeGroup[] = [];
+
+  // Do mais novo para o mais antigo
+  for (const c of [...commits].reverse()) {
+    const message = String(c.commit?.message || '');
+    const date = c.commit?.committer?.date || c.commit?.author?.date || '';
+    const pr = message.match(/^Merge pull request #(\d+)/i);
+    if (pr) {
+      // Melhoria entregue por Pull Request: usa o título e a descrição do PR
+      (c.parents || []).slice(1).forEach((p: any) => merged.add(p.sha));
+      const data = await gh(`/repos/${repo.owner}/${repo.repo}/pulls/${pr[1]}`);
+      const lines = cleanLines(data?.body || '');
+      groups.push({
+        title: String(data?.title || cleanLines(message)[1] || `Melhoria #${pr[1]}`),
+        items: toItems(lines),
+        date,
+      });
+      continue;
+    }
+    if ((c.parents || []).length > 1) continue; // outros merges sem informação útil
+    groups.push({ sha: c.sha, title: cleanLines(message)[0] || 'Ajustes gerais', items: toItems(cleanLines(message).slice(1)), date });
+  }
+
+  // Commits que já fazem parte de um PR não aparecem de novo
+  const value = groups
+    .filter((g) => !g.sha || !merged.has(g.sha))
+    .map(({ title, items, date }) => ({ title, items, date }))
+    .slice(0, 15);
+  noticeCache = { at: Date.now(), key, value };
+  return value;
+}
+
+// GET /api/system-update/notice — qualquer usuário logado: há atualização? o que ela traz?
+systemUpdateRouter.get('/notice', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const [current, latest] = await Promise.all([getCurrentCommit(), getLatestCommit()]);
+    const updateAvailable = Boolean(current && latest && current.commit !== latest.commit);
+    if (!updateAvailable || !current || !latest) {
+      return res.json({ updateAvailable: false, running: isUpdateRunning() });
+    }
+    const changes = await getPendingChanges(current.commit, latest.commit);
+    return res.json({
+      updateAvailable: true,
+      running: isUpdateRunning(),
+      version: latest.short,
+      commit: latest.commit,
+      date: latest.date,
+      changes: changes.length ? changes : [{ title: latest.message || 'Melhorias e correções', items: [], date: latest.date }],
+    });
+  } catch (err) {
+    console.error('[SYSTEM UPDATE NOTICE ERROR]', err);
+    return res.json({ updateAvailable: false });
+  }
+});
+
 systemUpdateRouter.use(requireAuth, requireRole('developer'));
 
 const APP_DIR = process.cwd();

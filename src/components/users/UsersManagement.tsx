@@ -613,7 +613,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
       {/* Modal: Cadastrar Novo Usuário / Colaborador / Gestor */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 max-h-[90dvh] overflow-y-auto">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full px-5 pt-5 sm:px-6 sm:pt-6 shadow-2xl border border-slate-200 max-h-[92dvh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -648,7 +648,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">E-mail Corporativo</label>
                   <input
@@ -673,7 +673,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {currentUser.role === 'DEVELOPER' ? (
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Nível Hierárquico (RBAC)</label>
@@ -764,7 +764,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 </div>
               )}
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+              <div className="sticky bottom-0 z-10 -mx-5 sm:-mx-6 px-5 sm:px-6 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-5 bg-white border-t border-slate-100 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
@@ -789,7 +789,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
       {/* Modal: Editar Usuário */}
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 max-h-[90dvh] overflow-y-auto">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-lg w-full px-5 pt-5 sm:px-6 sm:pt-6 shadow-2xl border border-slate-200 max-h-[92dvh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -909,7 +909,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 </div>
               )}
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+              <div className="sticky bottom-0 z-10 -mx-5 sm:-mx-6 px-5 sm:px-6 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-5 bg-white border-t border-slate-100 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setEditingUser(null)}

@@ -134,7 +134,7 @@ export const SystemUpdatePanel: React.FC = () => {
   const running = requestedAt !== null || Boolean(data?.running);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+    <div id="atualizacao-sistema" className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4 scroll-mt-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">

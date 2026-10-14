@@ -26,6 +26,8 @@ import {
 } from './types';
 import { createAuditEntry, verifyPermission } from './services/securityEngine';
 import { apiClient, dispatchSessionExpired, SESSION_LOCKED_EVENT } from './services/apiClient';
+import type { UpdateNotice } from './services/apiClient';
+import { UpdateNoticeDialog } from './components/common/UpdateNoticeDialog';
 
 // Components
 import { LoginView } from './components/auth/LoginView';
@@ -160,7 +162,44 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>(INITIAL_API_KEYS);
   const [webhooks, setWebhooks] = useState<WebhookConfig[]>(INITIAL_WEBHOOKS);
-  const [notifications] = useState<SystemNotification[]>(INITIAL_NOTIFICATIONS);
+  // Aviso de nova atualização (para todos os usuários, no sininho)
+  const [updateNotice, setUpdateNotice] = useState<UpdateNotice | null>(null);
+  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
+  const [seenUpdate, setSeenUpdate] = useState<string>(() => {
+    try {
+      return localStorage.getItem('ds.update.seen') || '';
+    } catch {
+      return '';
+    }
+  });
+  const notifications = useMemo<SystemNotification[]>(() => {
+    const list = [...INITIAL_NOTIFICATIONS];
+    if (updateNotice?.updateAvailable && updateNotice.commit) {
+      const changes = updateNotice.changes || [];
+      const first = changes[0]?.title || 'Melhorias e correções';
+      list.unshift({
+        id: `update-${updateNotice.commit}`,
+        title: 'Nova atualização disponível',
+        message: changes.length > 1 ? `${first} e mais ${changes.length - 1} melhoria(s). Toque para ver os detalhes.` : `${first}. Toque para ver os detalhes.`,
+        type: 'info',
+        createdAt: updateNotice.date
+          ? new Date(updateNotice.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+          : '',
+        read: seenUpdate === updateNotice.commit,
+      });
+    }
+    return list;
+  }, [updateNotice, seenUpdate]);
+
+  const openUpdateNotice = () => {
+    setIsUpdateDialogOpen(true);
+    if (updateNotice?.commit) {
+      setSeenUpdate(updateNotice.commit);
+      try {
+        localStorage.setItem('ds.update.seen', updateNotice.commit);
+      } catch {}
+    }
+  };
 
   // Database Connection & System Health State
   const [dbStatus, setDbStatus] = useState<{
@@ -395,6 +434,26 @@ export default function App() {
   }, [currentUser?.id, currentUser?.mustChangePassword]);
 
   // Conexão voltou: envia os arquivos da fila, um por vez
+  // Verifica se há nova versão no GitHub: ao entrar, a cada 10 minutos e ao voltar para a aba
+  useEffect(() => {
+    if (!currentUser?.id || isLocked || connectionStatus !== 'online') return;
+    let cancelled = false;
+    const check = () =>
+      apiClient
+        .getUpdateNotice()
+        .then((n) => !cancelled && setUpdateNotice(n))
+        .catch(() => {});
+    check();
+    const timer = window.setInterval(check, 10 * 60 * 1000);
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [currentUser?.id, isLocked, connectionStatus]);
+
   useEffect(() => {
     if (connectionStatus !== 'online' || isLocked || !currentUser?.id || pendingUploads.length === 0) return;
     if (processingQueueRef.current) return;
@@ -1491,6 +1550,7 @@ export default function App() {
       onOpenDevices={() => navigate('/dispositivos')}
       onOpenSecurity={() => navigate('/seguranca')}
       notifications={notifications}
+      onNotificationClick={(n) => n.id.startsWith('update-') && openUpdateNotice()}
       isMobileFrameActive={isMobileSimulator}
       onToggleMobileFrame={() => setIsMobileSimulator(!isMobileSimulator)}
       dbStatus={dbStatus}
@@ -1786,6 +1846,18 @@ export default function App() {
         resourceName={accessDeniedState.resourceName}
         requiredRoleOrPermission="RBAC: Permissão Granular Específica"
       />
+      {isUpdateDialogOpen && updateNotice?.updateAvailable && (
+        <UpdateNoticeDialog
+          notice={updateNotice}
+          canApply={currentUser.role === 'DEVELOPER'}
+          onClose={() => setIsUpdateDialogOpen(false)}
+          onApply={() => {
+            setIsUpdateDialogOpen(false);
+            navigate('/integracao');
+            window.setTimeout(() => document.getElementById('atualizacao-sistema')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 600);
+          }}
+        />
+      )}
     </AppShell>
   );
 }
