@@ -45,9 +45,9 @@ systemRouter.get('/status', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), a
         const freeDiskBytes = stats.bfree * stats.bsize;
         const usedDiskBytes = totalDiskBytes - freeDiskBytes;
 
-        diskTotalTb = +(totalDiskBytes / (1024 ** 4)).toFixed(2);
-        diskUsedTb = +(usedDiskBytes / (1024 ** 4)).toFixed(2);
-        diskFreeTb = +(freeDiskBytes / (1024 ** 4)).toFixed(2);
+        diskTotalTb = +(totalDiskBytes / (1024 ** 4)).toFixed(6);
+        diskUsedTb = +(usedDiskBytes / (1024 ** 4)).toFixed(6);
+        diskFreeTb = +(freeDiskBytes / (1024 ** 4)).toFixed(6);
         diskPercent = +((usedDiskBytes / totalDiskBytes) * 100).toFixed(1);
       }
     } catch {}
@@ -105,6 +105,9 @@ systemRouter.get('/status', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), a
           heapUsedMb: nodeHeapMb,
         },
         disk: {
+          totalGb: +(diskTotalTb * 1024).toFixed(1),
+          usedGb: +(diskUsedTb * 1024).toFixed(1),
+          freeGb: +(diskFreeTb * 1024).toFixed(1),
           totalTb: diskTotalTb,
           usedTb: diskUsedTb,
           freeTb: diskFreeTb,

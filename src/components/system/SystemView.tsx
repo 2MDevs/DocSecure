@@ -52,6 +52,10 @@ interface SystemViewProps {
   };
 }
 
+/** Tamanho de disco sempre em GB (ex.: 1.884,2 GB) */
+const fmtGb = (gb: number) =>
+  `${(Number(gb) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GB`;
+
 export const SystemView: React.FC<SystemViewProps> = ({
   currentUser,
   apiKeys,
@@ -90,6 +94,9 @@ export const SystemView: React.FC<SystemViewProps> = ({
         totalTb: number;
         usedTb: number;
         freeTb: number;
+        totalGb: number;
+        usedGb: number;
+        freeGb: number;
         percent: number;
         iopsRead: number;
         iopsWrite: number;
@@ -133,6 +140,9 @@ export const SystemView: React.FC<SystemViewProps> = ({
         totalTb: 4.0,
         usedTb: 1.84,
         freeTb: 2.16,
+        totalGb: 4096,
+        usedGb: 1884.2,
+        freeGb: 2211.8,
         percent: 46.0,
         iopsRead: 14800,
         iopsWrite: 9200,
@@ -190,6 +200,10 @@ export const SystemView: React.FC<SystemViewProps> = ({
             totalTb: rawDisk.totalTb ?? 4.0,
             usedTb: rawDisk.usedTb ?? 1.84,
             freeTb: rawDisk.freeTb ?? 2.16,
+            // Exibição em GB (pedido do TI)
+            totalGb: rawDisk.totalGb ?? (rawDisk.totalTb ?? 4.0) * 1024,
+            usedGb: rawDisk.usedGb ?? (rawDisk.usedTb ?? 1.84) * 1024,
+            freeGb: rawDisk.freeGb ?? (rawDisk.freeTb ?? 2.16) * 1024,
             percent: rawDisk.percent ?? 46.0,
             iopsRead: rawDisk.iopsRead ?? 14800,
             iopsWrite: rawDisk.iopsWrite ?? 9200,
@@ -667,7 +681,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
                         Disco & Armazenamento (VPS)
                       </span>
                       <h3 className="text-sm font-bold text-slate-900">
-                        {liveMetrics.server.disk.usedTb} TB / {liveMetrics.server.disk.totalTb} TB ({liveMetrics.server.disk.percent}%)
+                        {fmtGb(liveMetrics.server.disk.usedGb)} / {fmtGb(liveMetrics.server.disk.totalGb)} ({liveMetrics.server.disk.percent}%)
                       </h3>
                     </div>
                   </div>
@@ -680,7 +694,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
                 <div className="mt-4">
                   <div className="flex justify-between text-xs text-slate-500 mb-1.5">
                     <span>Espaço em Volume Raiz (/)</span>
-                    <span className="font-bold text-slate-900">{liveMetrics.server.disk.usedTb} TB ({liveMetrics.server.disk.percent}%)</span>
+                    <span className="font-bold text-slate-900">{fmtGb(liveMetrics.server.disk.usedGb)} ({liveMetrics.server.disk.percent}%)</span>
                   </div>
                   <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                     <div
@@ -693,7 +707,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
                 <div className="mt-4 space-y-2 text-xs">
                   <div className="flex items-center justify-between py-1 border-b border-slate-50">
                     <span className="text-slate-500">Livre Disponível:</span>
-                    <span className="font-semibold text-emerald-600">{liveMetrics.server.disk.freeTb} TB</span>
+                    <span className="font-semibold text-emerald-600">{fmtGb(liveMetrics.server.disk.freeGb)}</span>
                   </div>
                   <div className="flex items-center justify-between py-1 border-b border-slate-50">
                     <span className="text-slate-500">IOPS Leitura/Escrita:</span>
@@ -711,7 +725,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span>Disponível: <strong>{liveMetrics.server.disk.freeTb} TB</strong></span>
+                <span>Disponível: <strong>{fmtGb(liveMetrics.server.disk.freeGb)}</strong></span>
                 <span className="text-emerald-600 font-medium">SMART 100% OK</span>
               </div>
             </div>
@@ -1163,7 +1177,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
             <p className="text-slate-500">[2026-10-07 09:35:12] [SYSTEM] Engine booted with TypeScript 7.0 & Node.js v22.14 LTS</p>
             <p className="text-emerald-400">[2026-10-07 09:35:13] [DB_POOL] PostgreSQL cluster connection established. Latency: 1.2ms</p>
             <p className="text-slate-400">[2026-10-07 09:35:14] [RBAC] Granular permissions cache compiled. 14 folders mapped.</p>
-            <p className="text-slate-400">[2026-10-07 09:36:00] [STORAGE] NVMe RAID 10 health check verified. 1.84 TB used.</p>
+            <p className="text-slate-400">[2026-10-07 09:36:00] [STORAGE] NVMe RAID 10 health check verified.</p>
             <p className="text-blue-400">[2026-10-07 09:37:45] [WEBHOOK_DISPATCH] Event document.uploaded delivered to endpoint 200 OK.</p>
             <p className="text-slate-500">[2026-10-07 09:38:10] [MEMORY_GC] V8 heap compaction executed. 482 MB active memory.</p>
           </div>

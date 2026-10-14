@@ -2,6 +2,31 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { requireAuth, requireRole } from '../auth/middleware';
 import { syncDevelopersToTI } from '../services/developerDepartment';
+import { getServerDisk } from '../services/diskInfo';
+
+const GB = 1024 ** 3;
+const fmtGb = (bytes: number) => `${(bytes / GB).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} GB`;
+
+/** O limite de um setor nunca pode passar do tamanho do disco do servidor. */
+function checkStorageLimit(limit: unknown): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (limit === undefined || limit === null || limit === '') return { ok: true, value: null };
+  const value = Number(limit);
+  if (!Number.isFinite(value) || value <= 0) return { ok: false, error: 'Informe um limite de armazenamento válido (em GB).' };
+  const disk = getServerDisk();
+  if (disk && value > disk.totalBytes) {
+    return {
+      ok: false,
+      error: `O limite do setor (${fmtGb(value)}) não pode ser maior que o armazenamento do servidor (${fmtGb(disk.totalBytes)}).`,
+    };
+  }
+  return { ok: true, value: Math.round(value) };
+}
+
+/** Limite padrão de um setor novo: 500 GB ou o disco inteiro, o que for menor. */
+function defaultStorageLimit(): number {
+  const disk = getServerDisk();
+  return disk ? Math.min(500 * GB, Math.floor(disk.totalBytes)) : 500 * GB;
+}
 
 export const departmentsRouter = Router();
 
@@ -63,12 +88,21 @@ departmentsRouter.get('/', requireAuth, async (_req: Request, res: Response) => 
   }
 });
 
+// Tamanho do disco do servidor (para a tela de Setores mostrar o máximo permitido)
+departmentsRouter.get('/storage-capacity', requireAuth, (_req: Request, res: Response) => {
+  const disk = getServerDisk();
+  return res.json(disk ? { totalBytes: disk.totalBytes, freeBytes: disk.freeBytes } : { totalBytes: null, freeBytes: null });
+});
+
 departmentsRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
   try {
     const { id, name, code, iconName, color, storageLimitBytes, managerId, managerName, description } = req.body;
     if (!name || !code) {
       return res.status(400).json({ error: 'Nome e código do setor são obrigatórios.' });
     }
+
+    const limitCheck = checkStorageLimit(storageLimitBytes);
+    if ('error' in limitCheck) return res.status(400).json({ error: limitCheck.error });
 
     const deptId = id || 'dept-' + code.toLowerCase().trim();
 
@@ -90,7 +124,7 @@ departmentsRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), a
         code.toUpperCase().trim(),
         iconName || 'Building',
         color || '#3b82f6',
-        storageLimitBytes || 536870912000,
+        ('value' in limitCheck && limitCheck.value) || defaultStorageLimit(),
         managerId || null,
         managerName || null,
         description || '',
@@ -110,6 +144,8 @@ departmentsRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'),
   try {
     const { id } = req.params;
     const { name, code, iconName, color, storageLimitBytes, managerId, managerName, description, isLocked } = req.body;
+    const limitCheck = checkStorageLimit(storageLimitBytes);
+    if ('error' in limitCheck) return res.status(400).json({ error: limitCheck.error });
 
     await pool.query(
       `UPDATE departments SET
@@ -128,7 +164,7 @@ departmentsRouter.put('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'),
         code ? code.toUpperCase().trim() : null,
         iconName,
         color,
-        storageLimitBytes,
+        'value' in limitCheck ? limitCheck.value : null,
         managerId,
         managerName,
         description,

@@ -272,14 +272,19 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
       .map((t) => t.trim().slice(0, 40))
       .filter(Boolean)
       .slice(0, 15);
+    // Segurança definida no momento do envio (padrão: segue a pasta)
+    const pick = (v: unknown, allowed: string[]) => (allowed.includes(String(v)) ? String(v) : 'folder');
+    const visibility = pick(req.body.visibility, VISIBILITY_VALUES);
+    const downloadPolicy = pick(req.body.downloadPolicy, DOWNLOAD_POLICY_VALUES);
+    const deletePolicy = pick(req.body.deletePolicy, DELETE_POLICY_VALUES);
 
     try {
       await pool.query(
         `INSERT INTO documents (
           id, name, extension, mime_type, size_bytes, folder_id, department_id, department_name,
           owner_id, owner_name, hash_sha256, current_version, versions, status, scan_status, tags,
-          storage_path, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, $12, 'active', 'clean', $13, $14, NOW(), NOW())`,
+          storage_path, visibility, download_policy, delete_policy, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, $12, 'active', 'clean', $13, $14, $15, $16, $17, NOW(), NOW())`,
         [
           docId,
           displayName,
@@ -307,6 +312,9 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
           ]),
           tags,
           storagePath,
+          visibility,
+          downloadPolicy,
+          deletePolicy,
         ]
       );
     } catch (dbErr) {
@@ -319,7 +327,10 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
       'DOCUMENT_UPLOADED',
       docId,
       displayName,
-      `Arquivo enviado para o setor ${dept.name} (${file.size} bytes, SHA-256 ${sha256.slice(0, 12)}…).`,
+      `Arquivo enviado para o setor ${dept.name} (${file.size} bytes, SHA-256 ${sha256.slice(0, 12)}…)` +
+        (visibility !== 'folder' || downloadPolicy !== 'folder' || deletePolicy !== 'folder'
+          ? ` com segurança: visível=${visibility}, download=${downloadPolicy}, exclusão=${deletePolicy}.`
+          : '.'),
       'SUCCESS',
       ip
     );

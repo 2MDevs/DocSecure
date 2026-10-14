@@ -174,10 +174,10 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
               <div className="absolute w-40 h-40 rounded-3xl border border-indigo-500/20 -rotate-3" />
 
               <img
-                src="/icon.svg?v=2"
+                src="/icon.svg?v=3"
                 alt="DocSecure"
                 draggable={false}
-                className="relative z-10 w-36 h-36 drop-shadow-[0_18px_30px_rgba(234,51,36,0.35)] transform hover:scale-105 transition-transform duration-300"
+                className="relative z-10 w-36 h-36 drop-shadow-[0_18px_30px_rgba(246,211,92,0.30)] transform hover:scale-105 transition-transform duration-300"
               />
             </div>
 
@@ -379,7 +379,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
                 <button
                   type="submit"
                   disabled={isLoading || !isFormValid}
-                  className="w-full py-3.5 px-4 bg-[#ea3324] hover:bg-[#d42a1c] active:bg-[#b8261a] disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer mt-4"
+                  className="w-full py-3.5 px-4 bg-[#f6d35c] hover:bg-[#f3c93f] active:bg-[#e6b82c] disabled:opacity-50 text-[#1d1d1b] rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer mt-4"
                 >
                   {isLoading ? (
                     <>

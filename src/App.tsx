@@ -481,6 +481,7 @@ export default function App() {
             folderId: p.folderId,
             name: p.name,
             tags: p.tags,
+            security: p.security,
           });
           await removePendingUpload(p.id);
           setPendingUploads((prev) => prev.filter((x) => x.id !== p.id));
@@ -986,7 +987,13 @@ export default function App() {
   // Sem conexão, guarda o arquivo criptografado neste navegador e envia quando voltar.
   const handleUploadDocument = async (
     file: File,
-    options: { departmentId: string; folderId: string | null; name: string; tags: string[] },
+    options: {
+      departmentId: string;
+      folderId: string | null;
+      name: string;
+      tags: string[];
+      security?: { visibility?: string; downloadPolicy?: string; deletePolicy?: string };
+    },
     onProgress?: (percent: number) => void
   ): Promise<DocumentItem> => {
     const queueIt = async () => {
@@ -1374,8 +1381,11 @@ export default function App() {
 
     try {
       await apiClient.createDepartment(newDept);
-    } catch (e) {
-      console.warn('[Create Department API Persist]', e);
+    } catch (e: any) {
+      // O servidor recusou (ex.: limite maior que o disco do servidor): desfaz e avisa
+      setDepartments((prev) => prev.filter((d) => d.id !== newDept.id));
+      triggerAccessDenied(e?.message || 'Não foi possível criar o setor.', newDept.name);
+      return;
     }
 
     logSecurityEvent(currentUser, 'DEPARTMENT_CREATED', newDept.name, 'Novo setor provisionado no PostgreSQL.', 'SUCCESS');
@@ -1392,13 +1402,17 @@ export default function App() {
 
   // Department Update (Persisted to PostgreSQL)
   const handleUpdateDepartment = async (deptId: string, data: any) => {
+    const before = departments.find((d) => d.id === deptId);
     setDepartments((prev) =>
       prev.map((d) => (d.id === deptId ? { ...d, ...data } : d))
     );
     try {
       await apiClient.updateDepartment(deptId, data);
-    } catch (e) {
-      console.warn('[Update Department API Persist]', e);
+    } catch (e: any) {
+      // O servidor recusou: volta ao valor anterior e mostra o motivo
+      if (before) setDepartments((prev) => prev.map((d) => (d.id === deptId ? before : d)));
+      triggerAccessDenied(e?.message || 'Não foi possível salvar o setor.', before?.name || 'Setor');
+      return;
     }
     logSecurityEvent(currentUser, 'DEPARTMENT_EDITED', deptId, 'Parâmetros de setor gravados no PostgreSQL.', 'SUCCESS');
   };

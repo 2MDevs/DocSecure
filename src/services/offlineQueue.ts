@@ -13,6 +13,8 @@ export interface PendingUpload {
   folderId: string | null;
   name: string;
   tags: string[];
+  /** Segurança escolhida no envio (aplicada quando o arquivo subir) */
+  security?: { visibility?: string; downloadPolicy?: string; deletePolicy?: string };
   fileName: string;
   mimeType: string;
   sizeBytes: number;
@@ -67,6 +69,7 @@ const toMeta = (s: StoredUpload): PendingUpload => ({
   folderId: s.folderId,
   name: s.name,
   tags: s.tags,
+  security: s.security,
   fileName: s.fileName,
   mimeType: s.mimeType,
   sizeBytes: s.sizeBytes,
@@ -76,7 +79,13 @@ const toMeta = (s: StoredUpload): PendingUpload => ({
 export async function enqueueUpload(
   userId: string,
   file: File,
-  options: { departmentId: string; folderId: string | null; name: string; tags: string[] }
+  options: {
+    departmentId: string;
+    folderId: string | null;
+    name: string;
+    tags: string[];
+    security?: { visibility?: string; downloadPolicy?: string; deletePolicy?: string };
+  }
 ): Promise<PendingUpload> {
   const db = await openDb();
   const key = await getKey(db);
@@ -89,6 +98,7 @@ export async function enqueueUpload(
     folderId: options.folderId,
     name: options.name || file.name,
     tags: options.tags,
+    security: options.security,
     fileName: file.name,
     mimeType: file.type || 'application/octet-stream',
     sizeBytes: file.size,
