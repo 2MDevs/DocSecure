@@ -42,6 +42,15 @@ export interface SystemUpdateCommit {
   date: string;
 }
 
+export interface UpdateNotice {
+  updateAvailable: boolean;
+  running?: boolean;
+  version?: string;
+  commit?: string;
+  date?: string;
+  changes?: Array<{ title: string; items: string[]; date: string }>;
+}
+
 export interface SystemUpdateStatus {
   installed: boolean;
   branch: string;
@@ -654,6 +663,11 @@ export const apiClient = {
     return apiRequest<{ success: boolean; message: string }>('/api/integrations/test-gemini', {
       method: 'POST',
     });
+  },
+
+  // Aviso de atualização (todos os usuários): o que a nova versão traz
+  async getUpdateNotice(): Promise<UpdateNotice> {
+    return apiRequest<UpdateNotice>('/api/system-update/notice', { cache: 'no-store' });
   },
 
   // Atualização do sistema pelo painel (Exclusivo Desenvolvedor)

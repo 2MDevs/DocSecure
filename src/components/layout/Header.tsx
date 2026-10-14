@@ -12,6 +12,7 @@ import {
   Monitor,
   CheckCircle2,
   Database,
+  Sparkles,
 } from 'lucide-react';
 import { Avatar } from '../common/Avatar';
 import { DocSecureLogo } from '../common/DocSecureLogo';
@@ -31,6 +32,7 @@ interface HeaderProps {
   onSearchChange?: (term: string) => void;
   showSearchBar?: boolean;
   notifications: SystemNotification[];
+  onNotificationClick?: (n: SystemNotification) => void;
   isMobileFrameActive?: boolean;
   onToggleMobileFrame?: () => void;
   dbStatus?: {
@@ -55,6 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   showSearchBar = true,
   notifications,
+  onNotificationClick,
   isMobileFrameActive,
   onToggleMobileFrame,
   dbStatus,
@@ -168,30 +171,63 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Bell className="w-4 h-4" />
             {unreadNotifs.length > 0 && (
-              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white" />
+              <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full ring-2 ring-white flex items-center justify-center">
+                {unreadNotifs.length}
+              </span>
             )}
           </button>
 
-          {/* Notifications Dropdown (responsive width on mobile) */}
+          {/* Notificações: no celular ocupa a largura da tela; no computador, menu suspenso */}
           {isNotifOpen && (
-            <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 px-1">
-                <span className="text-xs font-bold text-slate-900">Notificações</span>
-                <span className="text-[10px] text-slate-400">{notifications.length} eventos</span>
+            <div className="fixed md:absolute left-3 right-3 md:left-auto md:right-0 top-[calc(3.25rem+env(safe-area-inset-top))] md:top-auto md:mt-2 md:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                <span className="text-sm font-bold text-slate-900">Notificações</span>
+                {unreadNotifs.length > 0 && (
+                  <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+                    {unreadNotifs.length} nova{unreadNotifs.length > 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
-              <div className="mt-2 space-y-1.5 max-h-64 overflow-y-auto">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className="p-2.5 rounded-xl hover:bg-slate-50 text-xs border border-transparent hover:border-slate-100 transition-colors"
-                  >
-                    <div className="font-semibold text-slate-900 flex items-center justify-between">
-                      <span>{n.title}</span>
-                      <span className="text-[10px] text-slate-400 font-normal">{n.createdAt}</span>
-                    </div>
-                    <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed">{n.message}</p>
+              <div className="max-h-[60dvh] md:max-h-80 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-10 text-center text-[13px] text-slate-400">
+                    <Bell className="w-6 h-6 mx-auto mb-2 text-slate-300" />
+                    Nenhuma notificação por enquanto.
                   </div>
-                ))}
+                ) : (
+                  notifications.map((n) => {
+                    const isUpdate = n.id.startsWith('update-');
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => {
+                          setIsNotifOpen(false);
+                          onNotificationClick?.(n);
+                        }}
+                        className={`w-full text-left px-4 py-3 flex gap-3 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 active:bg-slate-100 transition-colors ${
+                          n.read ? '' : 'bg-blue-50/50'
+                        }`}
+                      >
+                        <span
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                            isUpdate ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {isUpdate ? <Sparkles className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="text-[13.5px] font-semibold text-slate-900 truncate">{n.title}</span>
+                            <span className="text-[11px] text-slate-400 shrink-0">{n.createdAt}</span>
+                          </span>
+                          <span className="block text-[12.5px] text-slate-600 mt-0.5 leading-snug line-clamp-2">{n.message}</span>
+                        </span>
+                        {!n.read && <span className="w-2 h-2 rounded-full bg-blue-600 mt-1.5 shrink-0" aria-label="Não lida" />}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}

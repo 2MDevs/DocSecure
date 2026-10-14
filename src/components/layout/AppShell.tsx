@@ -17,6 +17,7 @@ interface AppShellProps {
   onOpenDevices: () => void;
   onOpenSecurity: () => void;
   notifications: SystemNotification[];
+  onNotificationClick?: (n: SystemNotification) => void;
   isMobileFrameActive?: boolean;
   onToggleMobileFrame?: () => void;
   dbStatus?: { connected: boolean; databaseName: string; latencyMs: number; mode: string };
@@ -52,6 +53,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   onOpenDevices,
   onOpenSecurity,
   notifications,
+  onNotificationClick,
   isMobileFrameActive,
   onToggleMobileFrame,
   dbStatus,
@@ -86,6 +88,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         currentTitle={currentTitle}
         showSearchBar={false}
         notifications={notifications}
+        onNotificationClick={onNotificationClick}
         isMobileFrameActive={isMobileFrameActive}
         onToggleMobileFrame={onToggleMobileFrame}
         dbStatus={dbStatus}
