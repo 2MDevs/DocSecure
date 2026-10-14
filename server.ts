@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 
 import { initDatabase, pool } from './server/db';
+import { syncDevelopersToTI } from './server/services/developerDepartment';
 import { authRouter } from './server/auth/routes';
 import { lockRouter } from './server/auth/lockRoutes';
 import { usersRouter } from './server/routes/users';
@@ -102,6 +103,8 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 async function startServer() {
   // Inicialização e migrações do PostgreSQL
   await initDatabase();
+  // O Desenvolvedor faz parte do setor de TI
+  await syncDevelopersToTI();
 
   // Armazenamento criptografado dos arquivos + limpeza automática da lixeira (7 dias)
   ensureStorageDirs();

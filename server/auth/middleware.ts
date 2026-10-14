@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { pool } from '../db';
+import { applyDeveloperDepartment } from '../services/developerDepartment';
 import { User } from '../../src/types';
 
 export interface AuthenticatedRequest extends Request {
@@ -204,7 +205,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       path: '/',
     });
 
-    (req as any).user = sanitizeUser(row);
+    (req as any).user = sanitizeUser(await applyDeveloperDepartment(row));
     (req as any).sessionId = row.session_id;
     (req as any).sessionLocked = Boolean(row.session_locked_at);
 

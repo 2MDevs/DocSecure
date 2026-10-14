@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { applyDeveloperDepartment } from '../services/developerDepartment';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db';
@@ -152,7 +153,7 @@ authRouter.post('/login', authRateLimiter, async (req: Request, res: Response) =
       await createSession(user.id, req, res);
 
       return res.json({
-        user: sanitizeUser(user),
+        user: sanitizeUser(await applyDeveloperDepartment(user)),
         trustedDevice: false,
         initialSetupMode: true,
       });
@@ -189,7 +190,7 @@ authRouter.post('/login', authRateLimiter, async (req: Request, res: Response) =
       await createSession(user.id, req, res);
 
       return res.json({
-        user: sanitizeUser(user),
+        user: sanitizeUser(await applyDeveloperDepartment(user)),
         trustedDevice: true,
         mustChangePassword: Boolean(user.must_change_password),
       });
@@ -334,7 +335,7 @@ authRouter.post('/verify-2fa', authRateLimiter, async (req: Request, res: Respon
     }
 
     return res.json({
-      user: sanitizeUser(user),
+      user: sanitizeUser(await applyDeveloperDepartment(user)),
       mustChangePassword: Boolean(user.must_change_password),
     });
   } catch (err: any) {
@@ -581,7 +582,7 @@ authRouter.post('/change-password', requireAuth, authRateLimiter, async (req: Re
     return res.json({
       success: true,
       message: 'Senha alterada com sucesso!',
-      user: sanitizeUser(updatedUserRes.rows[0]),
+      user: sanitizeUser(await applyDeveloperDepartment(updatedUserRes.rows[0])),
     });
   } catch (err: any) {
     console.error('[CHANGE PASSWORD ERROR]', err);
