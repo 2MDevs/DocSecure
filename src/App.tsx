@@ -482,11 +482,12 @@ export default function App() {
             name: p.name,
             tags: p.tags,
             security: p.security,
+            onConflict: p.onConflict,
           });
           await removePendingUpload(p.id);
           setPendingUploads((prev) => prev.filter((x) => x.id !== p.id));
           setSync(p.id);
-          setDocuments((prev) => [saved, ...prev.filter((d) => d.id !== saved.id)]);
+          setDocuments((prev) => [saved, ...prev.filter((d) => d.id !== saved.id && d.id !== saved.replacedDocumentId)]);
           markSynced(saved.id);
         } catch (err: any) {
           if (err?.isConnectionError) {
@@ -993,6 +994,7 @@ export default function App() {
       name: string;
       tags: string[];
       security?: { visibility?: string; downloadPolicy?: string; deletePolicy?: string };
+      onConflict?: 'replace' | 'rename';
     },
     onProgress?: (percent: number) => void
   ): Promise<DocumentItem> => {
@@ -1024,7 +1026,8 @@ export default function App() {
     setSync(tempId, 'uploading');
     try {
       const saved = await apiClient.uploadFile(file, options, onProgress);
-      setDocuments((prev) => [saved, ...prev.filter((d) => d.id !== saved.id)]);
+      // Substituição: o arquivo antigo (mesmo nome) foi para a lixeira
+      setDocuments((prev) => [saved, ...prev.filter((d) => d.id !== saved.id && d.id !== saved.replacedDocumentId)]);
       setDepartments((prev) =>
         prev.map((d) =>
           d.id === saved.departmentId

@@ -42,6 +42,13 @@ export interface SystemUpdateCommit {
   date: string;
 }
 
+export interface NameConflict {
+  name: string;
+  existing: { id: string; ownerName: string; sizeBytes: number; updatedAt: string } | null;
+  canReplace: boolean;
+  suggestedName: string;
+}
+
 export interface UpdateNotice {
   updateAvailable: boolean;
   running?: boolean;
@@ -476,6 +483,19 @@ export const apiClient = {
     });
   },
 
+  /** Antes de enviar: quais nomes já existem no destino (para perguntar se substitui ou mantém os dois) */
+  async checkFileNames(
+    departmentId: string,
+    folderId: string | null,
+    names: string[]
+  ): Promise<{ conflicts: NameConflict[] }> {
+    return apiRequest('/api/documents/check-names', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ departmentId, folderId, names }),
+    });
+  },
+
   /** Envia o arquivo real. folderId vazio/null = raiz do setor. */
   async uploadFile(
     file: File,
@@ -485,10 +505,13 @@ export const apiClient = {
       name?: string;
       tags?: string[];
       security?: { visibility?: string; downloadPolicy?: string; deletePolicy?: string };
+      /** Se já existir um arquivo com o mesmo nome na pasta: substituir ou manter os dois (renomeia) */
+      onConflict?: 'replace' | 'rename';
     },
     onProgress?: (percent: number) => void
-  ): Promise<DocumentItem> {
+  ): Promise<DocumentItem & { replacedDocumentId?: string | null }> {
     const formData = new FormData();
+    if (options.onConflict) formData.append('onConflict', options.onConflict);
     // Campos de texto antes do arquivo (o servidor lê junto com o envio)
     if (options.security?.visibility) formData.append('visibility', options.security.visibility);
     if (options.security?.downloadPolicy) formData.append('downloadPolicy', options.security.downloadPolicy);
