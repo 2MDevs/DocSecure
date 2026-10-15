@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
+import { decorateFolders } from '../services/sharing';
 import { requireAuth } from '../auth/middleware';
 import { canAccess, can, isDepartmentManager, roleOf, writeAudit, getClientIp, visibleFolderIds, loadFolderIndex, folderVisible, docPolicyDecision, TRASH_RETENTION_DAYS } from '../services/documentAccess';
 
@@ -42,7 +43,7 @@ foldersRouter.get('/', requireAuth, async (req: Request, res: Response) => {
     const user = (req as any).user;
     const visible = await visibleFolderIds(user);
     const { rows } = await pool.query('SELECT * FROM folders ORDER BY name ASC');
-    return res.json(rows.filter((f: any) => visible.has(f.id)).map(toFolderDto));
+    return res.json(await decorateFolders(rows.filter((f: any) => visible.has(f.id)).map(toFolderDto), user));
   } catch (err: any) {
     console.error('[FOLDERS GET ERROR]', err);
     return res.status(503).json({ error: 'Erro ao listar pastas do banco de dados.' });
@@ -104,6 +105,91 @@ foldersRouter.post('/', requireAuth, async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[FOLDERS CREATE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao criar pasta.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// COMPARTILHAR PASTA com pessoas de outras áreas (gestão do setor ou quem criou a pasta)
+// ---------------------------------------------------------------------------
+async function canManageShares(user: any, folder: any) {
+  return isDepartmentManager(user, folder.department_id) || folder.created_by === user.id;
+}
+
+foldersRouter.get('/:id/shares', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const { rows: found } = await pool.query('SELECT * FROM folders WHERE id = $1', [req.params.id]);
+    const folder = found[0];
+    if (!folder) return res.status(404).json({ error: 'Pasta não encontrada.' });
+    if (!(await canManageShares(user, folder))) return res.status(403).json({ error: 'Somente a gestão do setor ou quem criou a pasta podem ver os compartilhamentos.' });
+    const { rows } = await pool.query(
+      `SELECT s.user_id, s.can_download, s.shared_by_name, s.created_at, u.name, u.email, u.department_name
+         FROM folder_shares s JOIN users u ON u.id = s.user_id WHERE s.folder_id = $1 ORDER BY u.name`,
+      [folder.id]
+    );
+    return res.json(
+      rows.map((r: any) => ({
+        userId: r.user_id,
+        name: r.name,
+        email: r.email,
+        departmentName: r.department_name,
+        canDownload: Boolean(r.can_download),
+        sharedByName: r.shared_by_name,
+        createdAt: r.created_at,
+      }))
+    );
+  } catch (err: any) {
+    console.error('[FOLDER SHARES GET ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao carregar compartilhamentos.' });
+  }
+});
+
+// Substitui a lista de pessoas com quem a pasta está compartilhada
+foldersRouter.put('/:id/shares', requireAuth, async (req: Request, res: Response) => {
+  const client = await pool.connect();
+  try {
+    const user = (req as any).user;
+    const { rows: found } = await client.query('SELECT * FROM folders WHERE id = $1', [req.params.id]);
+    const folder = found[0];
+    if (!folder) return res.status(404).json({ error: 'Pasta não encontrada.' });
+    if (!(await canManageShares(user, folder))) {
+      return res.status(403).json({ error: 'Somente a gestão do setor ou quem criou a pasta podem compartilhá-la.' });
+    }
+    const list: Array<{ userId: string; canDownload?: boolean }> = Array.isArray(req.body?.shares) ? req.body.shares.slice(0, 500) : [];
+    const ids = [...new Set(list.map((s) => String(s.userId)).filter((id) => id && id !== user.id))];
+    if (ids.length) {
+      const { rows: valid } = await client.query("SELECT id FROM users WHERE id = ANY($1::text[]) AND status <> 'BLOCKED'", [ids]);
+      if (valid.length !== ids.length) return res.status(400).json({ error: 'Há pessoas inválidas ou bloqueadas na lista.' });
+    }
+    const { rows: before } = await client.query('SELECT user_id FROM folder_shares WHERE folder_id = $1', [folder.id]);
+    await client.query('BEGIN');
+    await client.query('DELETE FROM folder_shares WHERE folder_id = $1', [folder.id]);
+    for (const id of ids) {
+      const item = list.find((s) => String(s.userId) === id);
+      await client.query(
+        `INSERT INTO folder_shares (folder_id, user_id, can_download, shared_by, shared_by_name) VALUES ($1, $2, $3, $4, $5)`,
+        [folder.id, id, item?.canDownload !== false, user.id, user.name]
+      );
+    }
+    await client.query('COMMIT');
+    const added = ids.filter((id) => !before.some((b: any) => b.user_id === id)).length;
+    const removed = before.filter((b: any) => !ids.includes(b.user_id)).length;
+    await writeAudit(
+      userCtx(req),
+      'FOLDER_SHARED',
+      folder.id,
+      folder.name,
+      `Compartilhamento da pasta atualizado: ${ids.length} pessoa(s) com acesso (${added} adicionada(s), ${removed} removida(s)).`,
+      'SUCCESS',
+      getClientIp(req)
+    );
+    return res.json({ success: true, count: ids.length });
+  } catch (err: any) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[FOLDER SHARES PUT ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao salvar compartilhamento.' });
+  } finally {
+    client.release();
   }
 });
 

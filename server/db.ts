@@ -302,6 +302,24 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS delete_policy VARCHAR(20) DEFAULT 'folder';
       -- Caminho de pastas onde o arquivo estava ao ir para a lixeira (para recriar ao restaurar)
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS trashed_path TEXT;
+      -- Pastas compartilhadas com pessoas de outras áreas (só visualizar ou visualizar e baixar)
+      CREATE TABLE IF NOT EXISTS folder_shares (
+        folder_id VARCHAR(100) NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+        user_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        can_download BOOLEAN DEFAULT true,
+        shared_by VARCHAR(100),
+        shared_by_name VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (folder_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_folder_shares_user ON folder_shares(user_id);
+      -- Favoritos são de cada pessoa (antes era um marcador único para todos)
+      CREATE TABLE IF NOT EXISTS document_favorites (
+        user_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        document_id VARCHAR(100) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (user_id, document_id)
+      );
       UPDATE documents SET trashed_at = updated_at WHERE status = 'trash' AND trashed_at IS NULL;
     `);
 

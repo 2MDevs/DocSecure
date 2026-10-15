@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Server,
+  Gauge,
   Code2,
   Key,
   Webhook,
@@ -30,6 +31,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { ApiKey, WebhookConfig, User } from '../../types';
+import { PlatformUsagePanel } from './PlatformUsagePanel';
 import { apiClient } from '../../services/apiClient';
 
 interface SystemViewProps {
@@ -65,7 +67,8 @@ export const SystemView: React.FC<SystemViewProps> = ({
   onRevokeApiKey,
   dbStatus: initialDbStatus,
 }) => {
-  const [activeTab, setActiveTab] = useState<'metrics' | 'updates' | 'api_webhooks' | 'logs'>('metrics');
+  const [activeTab, setActiveTab] = useState<'platform' | 'metrics' | 'api_webhooks'>('platform');
+  const [platformUsage, setPlatformUsage] = useState<any>(null);
 
   // Real VPS System & Database Live Metrics State
   const [liveMetrics, setLiveMetrics] = useState<{
@@ -212,6 +215,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
           const uptimeSeconds = rawServer.uptimeSeconds ?? rawServer.uptime?.seconds ?? 3672000;
           const uptimeFormatted = rawServer.uptimeFormatted ?? rawServer.uptime?.formatted ?? 'Ativo';
 
+          if ((data as any).platform) setPlatformUsage((data as any).platform);
           setLiveMetrics({
             db: (data as any).db || liveMetrics.db,
             server: {
@@ -416,54 +420,34 @@ export const SystemView: React.FC<SystemViewProps> = ({
             </span>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">
-            Monitoramento de banco de dados, memória, disco, atualizações de sistema via GitHub/Upload e APIs.
+            Consumo da plataforma DocSecure, recursos do servidor (VPS) e integrações por API.
           </p>
         </div>
 
         {/* Tab Switcher */}
         <div className="flex items-center bg-white border border-slate-200 p-1 rounded-xl text-xs font-semibold shadow-2xs overflow-x-auto max-w-full [scrollbar-width:none]">
-          <button
-            type="button"
-            onClick={() => setActiveTab('metrics')}
-            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-              activeTab === 'metrics' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span>Recursos & Hardware</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('updates')}
-            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-              activeTab === 'updates' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Github className="w-3.5 h-3.5" />
-            <span>Atualizações do Sistema</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('api_webhooks')}
-            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-              activeTab === 'api_webhooks' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Code2 className="w-3.5 h-3.5" />
-            <span>API & Webhooks</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('logs')}
-            className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-              activeTab === 'logs' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            <span>Logs Técnicos</span>
-          </button>
+          {([
+            ['platform', 'Recursos da plataforma', Gauge],
+            ['metrics', 'Servidor', Server],
+            ['api_webhooks', 'API & Webhooks', Code2],
+          ] as const).map(([key, label, Icon]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveTab(key)}
+              className={`px-3.5 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                activeTab === key ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{label}</span>
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* Aba: o que o DocSecure está consumindo (separado do servidor inteiro) */}
+      {activeTab === 'platform' && <PlatformUsagePanel usage={platformUsage} />}
 
       {/* Tab 1: Métricas de Infraestrutura (Banco, Memória, Disco) */}
       {activeTab === 'metrics' && (
@@ -769,256 +753,6 @@ export const SystemView: React.FC<SystemViewProps> = ({
         </div>
       )}
 
-      {/* Tab 2: Atualizações do Sistema (GitHub & Upload de Pacote) */}
-      {activeTab === 'updates' && (
-        <div className="space-y-6 animate-in fade-in">
-          {/* Top Banner Alert */}
-          {gitUpdateAvailable && (
-            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-blue-950">
-                    Nova Release Oficial Disponível: DocSecure v2.4.2
-                  </h4>
-                  <p className="text-xs text-blue-800">
-                    Contém atualizações de segurança para autenticação RBAC, melhorias no tempo de resposta do PostgreSQL e novos webhooks de auditoria.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleStartGithubUpdate}
-                disabled={isUpdatingGit}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/20 inline-flex items-center gap-2 shrink-0 transition-all cursor-pointer"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                <span>Atualizar Agora (Git Pull & Deploy)</span>
-              </button>
-            </div>
-          )}
-
-          {/* Grid with 2 Update Channels */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Canal 1: Atualização via GitHub */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 flex flex-col justify-between">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-                      <Github className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">Atualização Direta via GitHub</h3>
-                      <p className="text-xs text-slate-400">Sincronização contínua com o repositório oficial.</p>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md">
-                    Git Engine
-                  </span>
-                </div>
-
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="font-semibold text-slate-700 block mb-1">Repositório Remoto</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={gitRepoUrl}
-                        onChange={(e) => setGitRepoUrl(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="font-semibold text-slate-700 block mb-1">Branch de Produção</label>
-                      <select
-                        value={selectedBranch}
-                        onChange={(e) => setSelectedBranch(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="main">main (Produção Oficial)</option>
-                        <option value="production">production (Estável)</option>
-                        <option value="v2.5-stable">release/v2.5-stable</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="font-semibold text-slate-700 block mb-1">Status da Versão</label>
-                      <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                        <span>Atual: <strong>v2.4.1</strong></span>
-                        <span className="text-blue-600 font-bold">Novo: v2.4.2</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Commit Log Preview */}
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                    <span className="text-[11px] font-bold text-slate-700 block">
-                      Últimos Commits no GitHub ({selectedBranch}):
-                    </span>
-                    <div className="space-y-1.5 text-[11px] font-mono text-slate-600">
-                      <div className="flex items-center gap-2">
-                        <GitCommit className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span className="text-slate-900 font-bold">f8a92b1</span>
-                        <span className="truncate">feat: Otimização de consultas e bloqueio de download granular</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <GitCommit className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="text-slate-900 font-bold">c4109e2</span>
-                        <span className="truncate">security: Atualização do hash Argon2id e rate limiter</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={handleCheckGithub}
-                  disabled={isCheckingGit || isUpdatingGit}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingGit ? 'animate-spin' : ''}`} />
-                  <span>{isCheckingGit ? 'Verificando...' : 'Verificar Atualizações'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleStartGithubUpdate}
-                  disabled={isUpdatingGit}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/20 inline-flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>{isUpdatingGit ? 'Aplicando Atualização...' : 'Executar Git Pull & Build'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Canal 2: Atualização por Upload de Pacote */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 flex flex-col justify-between">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                      <Upload className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">Upload de Pacote de Atualização</h3>
-                      <p className="text-xs text-slate-400">Instalação manual de patches (.zip ou .tar.gz).</p>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-md">
-                    Manual Patch
-                  </span>
-                </div>
-
-                {/* Upload Drag & Drop Area */}
-                <div className="relative border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-2xl p-6 text-center transition-colors bg-slate-50/50">
-                  <input
-                    type="file"
-                    accept=".zip,.tar.gz"
-                    onChange={handleFileDrop}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div className="flex flex-col items-center">
-                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-2">
-                      <FileCode className="w-6 h-6" />
-                    </div>
-                    <span className="text-xs font-bold text-slate-800">
-                      {uploadedFile ? uploadedFile.name : 'Clique ou arraste o pacote de atualização'}
-                    </span>
-                    <span className="text-[11px] text-slate-400 mt-1">
-                      Suporta arquivos assinados .zip ou .tar.gz (Máx. 500 MB)
-                    </span>
-                  </div>
-                </div>
-
-                {/* File Analysis Result Card */}
-                {isAnalyzingFile && (
-                  <div className="p-3 bg-blue-50 text-blue-800 rounded-xl text-xs flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
-                    <span>Validando assinatura digital e integridade do pacote...</span>
-                  </div>
-                )}
-
-                {fileAnalysisResult && (
-                  <div className="p-3.5 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between text-emerald-900 font-bold">
-                      <span className="flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Pacote Válido: {fileAnalysisResult.version}
-                      </span>
-                      <span className="text-[10px] bg-emerald-100 px-2 py-0.5 rounded text-emerald-800">Assinado</span>
-                    </div>
-                    <p className="text-slate-600 text-[11px] leading-relaxed">
-                      {fileAnalysisResult.description}
-                    </p>
-                    <div className="pt-1 text-[10px] font-mono text-slate-500 truncate">
-                      {fileAnalysisResult.checksum}
-                    </div>
-                  </div>
-                )}
-
-                {deploySuccess && (
-                  <div className="p-3 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Pacote instalado com sucesso! Serviços reiniciados suavemente.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Button */}
-              <div className="pt-4 border-t border-slate-100 flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleApplyUploadedPackage}
-                  disabled={!fileAnalysisResult || isFileDeploying}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 inline-flex items-center gap-2 transition-all cursor-pointer"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{isFileDeploying ? 'Instalando Pacote...' : 'Instalar Pacote de Atualização'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Live Deployment Process Log Modal/Box */}
-          {(isUpdatingGit || gitUpdateStep > 0) && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white space-y-3 shadow-xl">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  <Terminal className="w-4 h-4 text-emerald-400" />
-                  <span>Log de Atualização e Deploy em Tempo Real</span>
-                </div>
-                <span className="text-xs text-slate-400">Passo {gitUpdateStep}/5</span>
-              </div>
-
-              <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                <div
-                  style={{ width: `${(gitUpdateStep / 5) * 100}%` }}
-                  className="bg-emerald-500 h-full transition-all duration-500"
-                />
-              </div>
-
-              <div className="space-y-1 font-mono text-xs text-slate-300 max-h-40 overflow-y-auto pt-1">
-                {gitUpdateLog.map((log, i) => (
-                  <div key={i} className="text-emerald-400 leading-relaxed">
-                    {log}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Tab 3: API & Webhooks de Integração */}
       {activeTab === 'api_webhooks' && (
         <div className="space-y-6 animate-in fade-in">
@@ -1162,27 +896,6 @@ export const SystemView: React.FC<SystemViewProps> = ({
         </div>
       )}
 
-      {/* Tab 4: Logs Técnicos de Sistema */}
-      {activeTab === 'logs' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-white space-y-4 shadow-xl animate-in fade-in">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-emerald-400" />
-              <h3 className="text-sm font-bold">Terminal de Logs do Sistema (stdout / stderr)</h3>
-            </div>
-            <span className="text-[10px] text-slate-400 font-mono">Stream contínuo • Nível: INFO/WARN/ERROR</span>
-          </div>
-
-          <div className="space-y-1.5 font-mono text-xs text-slate-300 max-h-96 overflow-y-auto">
-            <p className="text-slate-500">[2026-10-07 09:35:12] [SYSTEM] Engine booted with TypeScript 7.0 & Node.js v22.14 LTS</p>
-            <p className="text-emerald-400">[2026-10-07 09:35:13] [DB_POOL] PostgreSQL cluster connection established. Latency: 1.2ms</p>
-            <p className="text-slate-400">[2026-10-07 09:35:14] [RBAC] Granular permissions cache compiled. 14 folders mapped.</p>
-            <p className="text-slate-400">[2026-10-07 09:36:00] [STORAGE] NVMe RAID 10 health check verified.</p>
-            <p className="text-blue-400">[2026-10-07 09:37:45] [WEBHOOK_DISPATCH] Event document.uploaded delivered to endpoint 200 OK.</p>
-            <p className="text-slate-500">[2026-10-07 09:38:10] [MEMORY_GC] V8 heap compaction executed. 482 MB active memory.</p>
-          </div>
-        </div>
-      )}
 
       {/* Modal: Nova Chave de API */}
       {isKeyModalOpen && (

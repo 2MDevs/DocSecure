@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Info, ShieldCheck, Copy, Check, Lock, Loader2, Users, EyeOff, Download, Trash2, Eye, SlidersHorizontal } from 'lucide-react';
 import { Department, DocumentItem, Folder, User } from '../../types';
+import { FolderShareSection } from './FolderShareSection';
 
 type Security = {
   visibility: 'folder' | 'private';
@@ -353,6 +354,7 @@ export const PropertiesModal: React.FC<PropertiesModalProps> = ({
                   },
                 ]}
               />
+              {folder && <FolderShareSection folder={folder} currentUser={currentUser} canManage={canEdit} />}
               {isManager && folder && onOpenFolderPermissions && (
                 <button
                   type="button"

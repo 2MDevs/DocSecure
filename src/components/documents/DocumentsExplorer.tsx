@@ -30,6 +30,7 @@ import {
   EyeOff,
   Eye,
   MoreVertical,
+  Users,
   FolderUp,
   Files,
   X,
@@ -91,7 +92,11 @@ interface DocumentsExplorerProps {
   /** Informa a pasta aberta para o menu lateral destacar */
   onLocationChange?: (location: { deptId: string | null; folderId: string | null }) => void;
   /** Lista plana (Favoritos / Compartilhados): mostra só os documentos recebidos */
-  flatView?: { title: string };
+  flatView?: { title: string; emptyText?: string };
+  /** Pastas mostradas na lista plana (Compartilhados) */
+  flatFolders?: Folder[];
+  /** Na lista plana, abrir uma pasta leva ao explorador principal */
+  onOpenFolderExternal?: (folder: Folder) => void;
   /** Em Favoritos/Compartilhados, o "Início" volta para o explorador */
   onGoHome?: () => void;
   /** Arquivos aguardando envio (fila offline) ou sendo enviados agora */
@@ -161,13 +166,18 @@ const EXT_COLORS: Record<string, string> = {
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
 
 /** Ícone de pasta no estilo do Windows */
-const FolderGlyph: React.FC<{ size: number; locked?: boolean; dimmed?: boolean; privateFolder?: boolean }> = ({ size, locked, dimmed, privateFolder }) => (
+const FolderGlyph: React.FC<{ size: number; locked?: boolean; dimmed?: boolean; privateFolder?: boolean; shared?: boolean }> = ({ size, locked, dimmed, privateFolder, shared }) => (
   <div className={`relative ${dimmed ? 'opacity-60' : ''}`} style={{ width: size, height: size }}>
     <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
       <path d="M4 14a4 4 0 0 1 4-4h16l6 6h26a4 4 0 0 1 4 4v4H4z" fill="#e0a526" />
       <path d="M4 22h56v28a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#f8c94a" />
       <path d="M4 22h56v3H4z" fill="#fbd96b" />
     </svg>
+    {shared && (
+      <span className="absolute -bottom-0.5 -left-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200" title="Pasta compartilhada">
+        <Users className="text-sky-600" style={{ width: size * 0.22, height: size * 0.22 }} />
+      </span>
+    )}
     {(locked || privateFolder) && (
       <span
         className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200"
@@ -270,6 +280,8 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   externalNavigation,
   onLocationChange,
   flatView,
+  flatFolders = [],
+  onOpenFolderExternal,
   onGoHome,
   pendingDocs = [],
   syncStates = {},
@@ -364,6 +376,18 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const isManagerOf = (deptId?: string | null) =>
     isAdmin || ((role === 'MANAGER' || role === 'DEVELOPER') && !!deptId && currentUser.departmentId === deptId);
   const canEditFolderPrivacy = (f: Folder) => isManagerOf(f.departmentId) || f.createdBy === currentUser.id;
+  /** A pasta (ou uma pasta acima dela) foi compartilhada comigo? Devolve a pasta compartilhada "de cima" */
+  const sharedRoot = (folderId?: string | null): Folder | null => {
+    let cur = folders.find((f) => f.id === folderId);
+    const guard = new Set<string>();
+    while (cur && !guard.has(cur.id)) {
+      guard.add(cur.id);
+      if (cur.sharedWithMe) return cur;
+      cur = folders.find((f) => f.id === cur!.parentId);
+    }
+    return null;
+  };
+
   // Regras do próprio arquivo (Propriedades → Segurança); o servidor confere de novo
   const docOwnerOrManager = (doc: DocumentItem) => doc.ownerId === currentUser.id || isManagerOf(doc.departmentId);
   const canDeleteDoc = (doc: DocumentItem) =>
@@ -374,7 +398,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       : doc.ownerId === currentUser.id ||
         verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'DELETE_DOCUMENT', doc.folderId || undefined).allowed;
   const canDownloadDoc = (doc: DocumentItem) =>
-    doc.downloadPolicy === 'none'
+    sharedRoot(doc.folderId) && doc.departmentId !== currentUser.departmentId && !isManagerOf(doc.departmentId)
+      ? Boolean(sharedRoot(doc.folderId)?.sharedCanDownload) && doc.downloadPolicy !== 'none'
+      : doc.downloadPolicy === 'none'
       ? false
       : doc.downloadPolicy === 'owner'
       ? docOwnerOrManager(doc)
@@ -437,7 +463,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   const openFolder = (folder: Folder) => {
     const perm = verifyPermission(currentUser, 'folder', folder.id, folder.departmentId, 'VIEW_FOLDER');
-    if (!perm.allowed) {
+    if (!perm.allowed && !sharedRoot(folder.id)) {
       onAccessDenied(perm.reason || `Você não tem autorização para abrir a pasta ${folder.name}.`, folder.name);
       return;
     }
@@ -446,7 +472,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
 
   const openDoc = (doc: DocumentItem) => {
     const perm = verifyPermission(currentUser, 'document', doc.id, doc.departmentId, 'VIEW_DOCUMENT', doc.folderId || undefined);
-    if (!perm.allowed) {
+    if (!perm.allowed && !sharedRoot(doc.folderId)) {
       onAccessDenied(perm.reason || `Você não tem autorização para abrir ${doc.name}.`, doc.name);
       return;
     }
@@ -550,13 +576,19 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     return () => clearTimeout(t);
   }, [accessRevokedNotice]);
 
+  /** Pasta cujo "pai" a pessoa não enxerga (ex.: compartilhada de outro setor) aparece na raiz do setor */
+  const visibleParentId = (f: Folder) => (f.parentId && folders.some((p) => p.id === f.parentId) ? f.parentId : null);
+
   // ---------------------------------------------------------------- itens da pasta atual
   const items: Item[] = useMemo(() => {
     let list: Item[] = [];
     if (flatView) {
-      list = allDocuments
+      list = flatFolders
+        .filter((f) => !query || f.name.toLowerCase().includes(query))
+        .map((f) => ({ kind: 'folder' as const, id: f.id, name: f.name, folder: f }));
+      list = list.concat(allDocuments
         .filter((d) => !query || d.name.toLowerCase().includes(query) || d.tags?.some((t) => t.toLowerCase().includes(query)))
-        .map((d) => ({ kind: 'doc' as const, id: d.id, name: d.name, doc: d }));
+        .map((d) => ({ kind: 'doc' as const, id: d.id, name: d.name, doc: d })));
     } else if (query) {
       // Pesquisa: dentro do setor atual ou em tudo que o usuário enxerga (Início)
       const inScope = (deptId: string) => !location.deptId || deptId === location.deptId;
@@ -585,7 +617,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     } else {
       list = [
         ...folders
-          .filter((f) => f.departmentId === location.deptId && (f.parentId || null) === location.folderId)
+          .filter((f) => f.departmentId === location.deptId && visibleParentId(f) === location.folderId)
           .map((f) => ({ kind: 'folder' as const, id: f.id, name: f.name, folder: f })),
         ...allDocuments
           .filter((d) => d.departmentId === location.deptId && (d.folderId || null) === location.folderId)
@@ -631,6 +663,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       return;
     }
     if (item.kind === 'dept') openDept(item.dept);
+    else if (item.kind === 'folder' && flatView && onOpenFolderExternal) onOpenFolderExternal(item.folder);
     else if (item.kind === 'folder') openFolder(item.folder);
     else openDoc(item.doc);
   };
@@ -1040,7 +1073,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     it.kind === 'doc'
       ? typeLabel(it.doc.extension)
       : it.kind === 'folder'
-      ? it.folder.isPrivate
+      ? it.folder.sharedWithMe
+        ? `Compartilhada com você (${it.folder.departmentName})`
+        : it.folder.isPrivate
         ? 'Pasta privada'
         : it.folder.isLocked
         ? 'Pasta trancada'
@@ -1085,7 +1120,15 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       );
     }
     if (it.kind === 'dept') return <DriveGlyph size={size} locked={!hasDeptAccess(it.dept)} />;
-    if (it.kind === 'folder') return <FolderGlyph size={size} locked={it.folder.isLocked} privateFolder={it.folder.isPrivate} />;
+    if (it.kind === 'folder')
+      return (
+        <FolderGlyph
+          size={size}
+          locked={it.folder.isLocked}
+          privateFolder={it.folder.isPrivate}
+          shared={Boolean(it.folder.sharedWithMe || (it.folder.shareCount || 0) > 0)}
+        />
+      );
     if (it.doc.visibility === 'private' || it.doc.downloadPolicy === 'none') {
       return (
         <span className="relative inline-flex">
@@ -1118,7 +1161,13 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     });
   };
 
-  const canCreateHere = !flatView && !!location.deptId;
+  // Em pastas compartilhadas por outra área (ou na raiz de outro setor) a pessoa só lê
+  const readOnlyHere =
+    !!location.deptId &&
+    location.deptId !== currentUser.departmentId &&
+    !isManagerOf(location.deptId) &&
+    (!location.folderId || !!sharedRoot(location.folderId));
+  const canCreateHere = !flatView && !!location.deptId && !readOnlyHere;
   const mBtn = 'h-10 w-10 shrink-0 rounded-full text-slate-700 active:bg-slate-100 inline-flex items-center justify-center';
   const mobileSubtitle = (() => {
     const count = `${items.length} ${items.length === 1 ? 'item' : 'itens'}`;
@@ -1650,7 +1699,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                 {query ? (
                   <span>Nenhum item corresponde à pesquisa.</span>
                 ) : flatView ? (
-                  <span>Nenhum documento em {flatView.title}.</span>
+                  <span className="max-w-sm px-6">{flatView.emptyText || `Nenhum documento em ${flatView.title}.`}</span>
                 ) : !location.deptId ? (
                   <span>Nenhum setor cadastrado. Cadastre os setores na tela “Setores”.</span>
                 ) : (

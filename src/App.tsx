@@ -1888,15 +1888,43 @@ export default function App() {
 
           {['shared', 'favorites'].includes(activeTab) && (
             <DocumentsExplorer
-              flatView={{ title: activeTab === 'favorites' ? 'Favoritos' : 'Compartilhados' }}
+              flatView={
+                activeTab === 'favorites'
+                  ? {
+                      title: 'Favoritos',
+                      emptyText: 'Marque arquivos com a estrela (☆) para encontrá-los rápido aqui. Seus favoritos são só seus.',
+                    }
+                  : {
+                      title: 'Compartilhados',
+                      emptyText:
+                        'Pastas de outras áreas compartilhadas com você aparecem aqui — e também as que você compartilhou. Para compartilhar, abra Propriedades › Segurança de uma pasta.',
+                    }
+              }
+              flatFolders={
+                activeTab === 'shared'
+                  ? folders.filter((f) => {
+                      const byId = new Map(folders.map((x) => [x.id, x]));
+                      // Só a pasta compartilhada "de cima" (as subpastas aparecem ao abrir)
+                      let p = f.parentId ? byId.get(f.parentId) : undefined;
+                      while (p) {
+                        if (p.sharedWithMe || (p.shareCount || 0) > 0) return false;
+                        p = p.parentId ? byId.get(p.parentId) : undefined;
+                      }
+                      return f.sharedWithMe || (f.shareCount || 0) > 0;
+                    })
+                  : []
+              }
+              onOpenFolderExternal={(f) => {
+                navigateToTab('my_documents');
+                setExplorerNav({ deptId: f.departmentId, folderId: f.id, nonce: Date.now() });
+              }}
               onGoHome={() => navigateToTab('my_documents')}
               currentUser={currentUser}
               departments={departments}
               folders={folders}
               documents={documents.filter((d) => {
                 if (activeTab === 'favorites') return d.isFavorite;
-                if (activeTab === 'shared') return d.isShared;
-                return true;
+                return false; // Compartilhados mostra as pastas compartilhadas
               })}
               users={users}
               searchTerm={globalSearchTerm}
