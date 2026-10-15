@@ -76,6 +76,21 @@ export interface Folder {
   itemCount: number;
   tags?: string[];
   description?: string;
+  /** Compartilhada comigo por alguém de outra área */
+  sharedWithMe?: boolean;
+  sharedCanDownload?: boolean;
+  /** Com quantas pessoas a pasta está compartilhada */
+  shareCount?: number;
+}
+
+export interface FolderShare {
+  userId: string;
+  name: string;
+  email?: string;
+  departmentName?: string;
+  canDownload: boolean;
+  sharedByName?: string;
+  createdAt?: string;
 }
 
 export interface DocumentVersion {
@@ -174,6 +189,7 @@ export type AuditAction =
   | 'FOLDER_CREATED'
   | 'FOLDER_MOVED'
   | 'FOLDER_DELETED'
+  | 'FOLDER_SHARED'
   | 'PERMISSIONS_MODIFIED'
   | 'USER_CREATED'
   | 'USER_EDITED'

@@ -118,8 +118,10 @@ export const NavPane: React.FC<NavPaneProps> = ({
 
   const childrenOf = useMemo(() => {
     const map = new Map<string, Folder[]>();
+    const ids = new Set(folders.map((f) => f.id));
     folders.forEach((f) => {
-      const key = f.parentId ? `f:${f.parentId}` : `d:${f.departmentId}`;
+      // Pasta compartilhada cujo "pai" a pessoa não vê aparece direto no setor
+      const key = f.parentId && ids.has(f.parentId) ? `f:${f.parentId}` : `d:${f.departmentId}`;
       map.set(key, [...(map.get(key) || []), f]);
     });
     map.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true })));

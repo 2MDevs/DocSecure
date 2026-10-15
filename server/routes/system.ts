@@ -7,6 +7,8 @@ import { getDepartmentsWithRealStorage } from './departments';
 import { isInitialSetupModeActive } from '../services/systemSettings';
 import { toDocumentDto, loadFolderIndex, visibleFolderIds, documentVisible } from '../services/documentAccess';
 import { toFolderDto } from './folders';
+import { getPlatformUsage } from '../services/platformUsage';
+import { decorateFolders, decorateDocuments } from '../services/sharing';
 
 export const systemRouter = Router();
 
@@ -83,7 +85,11 @@ systemRouter.get('/status', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), a
       dbSizeBytes = sizeRes.rows[0]?.size || '12.4 MB';
     } catch {}
 
+    // Consumo só do DocSecure (separado do servidor inteiro)
+    const platform = await getPlatformUsage().catch(() => null);
+
     return res.json({
+      platform,
       db: {
         ...dbStat,
         activeConnections,
@@ -170,11 +176,11 @@ systemRouter.get('/bootstrap', requireAuth, async (req: Request, res: Response) 
     const folderIndex = await loadFolderIndex();
     const visible = await visibleFolderIds(user, folderIndex);
     const { rows: folderRows } = await pool.query('SELECT * FROM folders ORDER BY name ASC');
-    const folders = folderRows.filter((f: any) => visible.has(f.id)).map(toFolderDto);
+    const folders = await decorateFolders(folderRows.filter((f: any) => visible.has(f.id)).map(toFolderDto), user);
 
     // 4. Documentos (mesma regra de visibilidade usada em /api/documents)
     const { rows: docRows } = await pool.query(`SELECT d.* FROM documents d WHERE d.status <> 'trash' ORDER BY d.created_at DESC`);
-    const documents = docRows.filter((d: any) => documentVisible(user, d, visible)).map(toDocumentDto);
+    const documents = await decorateDocuments(docRows.filter((d: any) => documentVisible(user, d, visible)).map(toDocumentDto), user);
 
     // 5. Dispositivos (Usuário vê apenas os seus, admin vê todos)
     let devQuery = 'SELECT * FROM devices ORDER BY last_access_at DESC';

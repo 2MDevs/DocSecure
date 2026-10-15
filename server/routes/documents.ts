@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { pool } from '../db';
 import { requireAuth } from '../auth/middleware';
+import { decorateDocuments, favoriteIds } from '../services/sharing';
 import { getEffectiveSetting } from '../services/systemSettings';
 import {
   canAccess as can,
@@ -156,7 +157,7 @@ documentsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
     const user = (req as any).user;
     const visible = await visibleFolderIds(user);
     const { rows } = await pool.query(`SELECT d.* FROM documents d WHERE d.status <> 'trash' ORDER BY d.created_at DESC`);
-    return res.json(rows.filter((d: any) => documentVisible(user, d, visible)).map(toDocumentDto));
+    return res.json(await decorateDocuments(rows.filter((d: any) => documentVisible(user, d, visible)).map(toDocumentDto), user));
   } catch (err: any) {
     console.error('[DOCUMENTS GET ERROR]', err);
     return res.status(503).json({ error: 'Erro ao listar documentos do banco de dados.' });
@@ -660,8 +661,14 @@ documentsRouter.post('/:id/favorite', requireAuth, async (req: Request, res: Res
     if (!doc || docPolicyDecision(user, doc, 'view') === false || !await can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id)) {
       return res.status(404).json({ error: 'Documento não encontrado.' });
     }
-    await pool.query('UPDATE documents SET is_favorite = NOT is_favorite, updated_at = NOW() WHERE id = $1', [doc.id]);
-    return res.json(toDocumentDto(await loadDocument(doc.id)));
+    // Favorito é pessoal: cada usuário tem os seus
+    const favs = await favoriteIds(user.id);
+    if (favs.has(doc.id)) {
+      await pool.query('DELETE FROM document_favorites WHERE user_id = $1 AND document_id = $2', [user.id, doc.id]);
+    } else {
+      await pool.query('INSERT INTO document_favorites (user_id, document_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [user.id, doc.id]);
+    }
+    return res.json({ ...toDocumentDto(doc), isFavorite: !favs.has(doc.id) });
   } catch (err: any) {
     console.error('[DOCUMENTS FAVORITE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao alternar favorito.' });

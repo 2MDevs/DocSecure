@@ -463,7 +463,6 @@ html.dark .ds-app .divide-yellow-200 > :not(:last-child){border-color:rgb(234 17
 html.dark .ds-app .divide-yellow-300 > :not(:last-child){border-color:rgb(234 179 8 / 0.32)}
 html.dark .ds-app .divide-yellow-50 > :not(:last-child){border-color:rgb(234 179 8 / 0.22)}
 html.dark .ds-app .focus\:bg-white:focus, html.dark .ds-app.focus\:bg-white:focus{background-color:#111a2b}
-html.dark .ds-app .from-blue-50, html.dark .ds-app.from-blue-50{--tw-gradient-from:rgb(59 130 246 / 0.18)}
 html.dark .ds-app .from-sky-100, html.dark .ds-app.from-sky-100{--tw-gradient-from:rgb(14 165 233 / 0.18)}
 html.dark .ds-app .hover\:bg-amber-100:hover, html.dark .ds-app.hover\:bg-amber-100:hover{background-color:rgb(245 158 11 / 0.16)}
 html.dark .ds-app .hover\:bg-amber-200:hover, html.dark .ds-app.hover\:bg-amber-200:hover{background-color:rgb(245 158 11 / 0.24)}
@@ -760,4 +759,3 @@ html.dark .ds-app .text-yellow-700, html.dark .ds-app.text-yellow-700{color:#fde
 html.dark .ds-app .text-yellow-800, html.dark .ds-app.text-yellow-800{color:#fde047}
 html.dark .ds-app .text-yellow-900, html.dark .ds-app.text-yellow-900{color:#fde047}
 html.dark .ds-app .to-indigo-100, html.dark .ds-app.to-indigo-100{--tw-gradient-to:rgb(99 102 241 / 0.18)}
-html.dark .ds-app .to-indigo-50, html.dark .ds-app.to-indigo-50{--tw-gradient-to:rgb(99 102 241 / 0.18)}

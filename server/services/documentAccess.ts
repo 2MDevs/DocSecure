@@ -100,6 +100,10 @@ export function folderVisible(user: any, folderId: string, index: FolderIndex): 
   const explicitly = (id: string) => permitted.includes(id) || granular[id] !== undefined;
 
   const chain = ancestry(folderId, index);
+  // Pasta compartilhada com a pessoa (ou dentro de uma compartilhada): visível, mesmo de outro setor
+  const shared: string[] = user.sharedFolderIds || [];
+  if (shared.length && chain.some((f) => shared.includes(f.id))) return true;
+
   // Pasta privada de outra pessoa nunca aparece para colaboradores
   if (chain.some((f) => f.is_private && f.created_by !== user.id)) return false;
 

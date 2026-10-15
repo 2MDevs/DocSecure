@@ -30,6 +30,24 @@ function getLoginUrl(req: Request): string {
 export const usersRouter = Router();
 
 // Listar Usuários (Filtrado por permissão do requisitante)
+// Busca de pessoas de qualquer área para compartilhar pastas (só nome, e-mail e setor)
+usersRouter.get('/directory', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const q = String(req.query.q || '').trim().slice(0, 60);
+    if (q.length < 2) return res.json([]);
+    const { rows } = await pool.query(
+      `SELECT id, name, email, department_id, department_name FROM users
+        WHERE status <> 'BLOCKED' AND (name ILIKE $1 OR email ILIKE $1 OR department_name ILIKE $1)
+        ORDER BY name LIMIT 20`,
+      [`%${q.replace(/[%_]/g, '')}%`]
+    );
+    return res.json(rows.map((r: any) => ({ id: r.id, name: r.name, email: r.email, departmentId: r.department_id, departmentName: r.department_name })));
+  } catch (err: any) {
+    console.error('[USERS DIRECTORY ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao buscar pessoas.' });
+  }
+});
+
 usersRouter.get('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR', 'MANAGER'), async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;

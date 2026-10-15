@@ -9,6 +9,7 @@ import {
   ApiKey,
   WebhookConfig,
   PermissionType,
+  FolderShare,
 } from '../types';
 
 export interface BootstrapData {
@@ -481,6 +482,21 @@ export const apiClient = {
     return apiRequest(`/api/documents/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+  },
+
+  /** Compartilhamento de pasta com pessoas de outras áreas */
+  async getFolderShares(folderId: string): Promise<FolderShare[]> {
+    return apiRequest<FolderShare[]>(`/api/folders/${encodeURIComponent(folderId)}/shares`, { cache: 'no-store' });
+  },
+  async setFolderShares(folderId: string, shares: Array<{ userId: string; canDownload: boolean }>): Promise<{ success: boolean; count: number }> {
+    return apiRequest(`/api/folders/${encodeURIComponent(folderId)}/shares`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shares }),
+    });
+  },
+  async searchPeople(q: string): Promise<Array<{ id: string; name: string; email: string; departmentId: string; departmentName: string }>> {
+    return apiRequest(`/api/users/directory?q=${encodeURIComponent(q)}`, { cache: 'no-store' });
   },
 
   /** Antes de enviar: quais nomes já existem no destino (para perguntar se substitui ou mantém os dois) */

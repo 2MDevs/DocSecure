@@ -434,6 +434,9 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
         </div>
       </div>
 
+      {/* ATUALIZAÇÃO DO SISTEMA (GITHUB → VPS) — no topo da tela */}
+      <SystemUpdatePanel />
+
       {/* Global Alerts */}
       {successMessage && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3 text-emerald-900 text-xs animate-in fade-in">
@@ -991,9 +994,6 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
           </div>
         </div>
       </div>
-
-      {/* SECTION: ATUALIZAÇÃO DO SISTEMA (GITHUB → VPS) */}
-      <SystemUpdatePanel />
 
       {/* SECTION: VARIÁVEIS EXCLUSIVAS DO .ENV (SOMENTE LEITURA) */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
