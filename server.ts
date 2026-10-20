@@ -15,6 +15,8 @@ import { departmentsRouter } from './server/routes/departments';
 import { foldersRouter } from './server/routes/folders';
 import { documentsRouter, startTrashPurgeJob } from './server/routes/documents';
 import { startUploadSessionCleanup } from './server/services/uploadSessions';
+import { previewRouter } from './server/routes/preview';
+import { startPreviewCacheCleanup } from './server/services/previewCache';
 import { ensureStorageDirs, FILES_DIR, isFileStorageReady } from './server/services/fileStorage';
 import { auditRouter } from './server/routes/audit';
 import { devicesRouter } from './server/routes/devices';
@@ -82,6 +84,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/departments', departmentsRouter);
 app.use('/api/folders', foldersRouter);
 app.use('/api/documents', documentsRouter);
+app.use('/api/preview', previewRouter);
 app.use('/api/audit-logs', auditRouter);
 app.use('/api/devices', devicesRouter);
 app.use('/api/api-keys', apiKeysRouter);
@@ -115,6 +118,7 @@ async function startServer() {
   console.log(`[STORAGE] Arquivos criptografados em: ${FILES_DIR}`);
   startTrashPurgeJob();
   startUploadSessionCleanup();
+  startPreviewCacheCleanup();
 
   // Integração com Frontend Vite (Dev) ou Arquivos Estáticos Compilados (Prod)
   if (!isProduction) {
