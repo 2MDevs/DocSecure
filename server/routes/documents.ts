@@ -5,7 +5,16 @@ import fs from 'fs';
 import { pool } from '../db';
 import { requireAuth } from '../auth/middleware';
 import { decorateDocuments, favoriteIds } from '../services/sharing';
-import { getEffectiveSetting } from '../services/systemSettings';
+import { getEffectiveSetting, getMaxUploadBytes } from '../services/systemSettings';
+import { getServerDisk } from '../services/diskInfo';
+import {
+  CHUNK_BYTES,
+  createUploadSession,
+  getUploadSession,
+  appendChunk,
+  dropUploadSession,
+  UploadSessionError,
+} from '../services/uploadSessions';
 import {
   canAccess as can,
   isDepartmentManager,
@@ -90,12 +99,6 @@ function sanitizeFileName(name: string): string {
 function contentDisposition(fileName: string): string {
   const ascii = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
-}
-
-async function getMaxUploadBytes(): Promise<number> {
-  const raw = parseInt((await getEffectiveSetting('MAX_UPLOAD_MB')).value || '25', 10);
-  const mb = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 500) : 25;
-  return mb * 1024 * 1024;
 }
 
 async function loadDocument(id: string) {
@@ -199,6 +202,84 @@ documentsRouter.get('/trash', requireAuth, async (req: Request, res: Response) =
   }
 });
 
+// Lixeira: ações em vários itens de uma vez (restaurar / excluir definitivamente / esvaziar)
+async function runTrashBatch(
+  req: Request,
+  res: Response,
+  ids: string[],
+  action: (doc: any) => Promise<unknown>,
+  label: string
+) {
+  const user = (req as any).user;
+  const done: unknown[] = [];
+  const failed: Array<{ id: string; name: string; error: string }> = [];
+  for (const id of ids) {
+    const doc = await loadDocument(id);
+    // Só itens da lixeira que esta pessoa consegue ver
+    const visible =
+      doc &&
+      doc.status === 'trash' &&
+      (isDocAdmin(user) || doc.department_id === user.departmentId) &&
+      docPolicyDecision(user, doc, 'view') !== false;
+    if (!visible) {
+      failed.push({ id, name: doc?.name || id, error: 'Item não encontrado na lixeira.' });
+      continue;
+    }
+    try {
+      done.push(await action(doc));
+    } catch (err: any) {
+      if (!(err instanceof TrashActionError)) console.error(`[TRASH ${label} ERROR]`, id, err);
+      failed.push({ id, name: doc.name, error: err instanceof TrashActionError ? err.message : 'Erro inesperado.' });
+    }
+  }
+  return { done, failed };
+}
+
+const batchIds = (body: any): string[] =>
+  Array.isArray(body?.ids) ? [...new Set(body.ids.map((x: any) => String(x)))].slice(0, 5000) as string[] : [];
+
+documentsRouter.post('/trash/restore', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const ids = batchIds(req.body);
+    if (!ids.length) return res.status(400).json({ error: 'Selecione ao menos um item.' });
+    const { done, failed } = await runTrashBatch(req, res, ids, (doc) => restoreFromTrash(req, doc), 'RESTORE');
+    return res.json({ restored: done, failed });
+  } catch (err: any) {
+    console.error('[TRASH RESTORE BATCH ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao restaurar os itens.' });
+  }
+});
+
+documentsRouter.post('/trash/purge', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const ids = batchIds(req.body);
+    if (!ids.length) return res.status(400).json({ error: 'Selecione ao menos um item.' });
+    const { done, failed } = await runTrashBatch(req, res, ids, async (doc) => (await purgeFromTrash(req, doc), doc.id), 'PURGE');
+    return res.json({ purged: done, failed });
+  } catch (err: any) {
+    console.error('[TRASH PURGE BATCH ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao excluir definitivamente.' });
+  }
+});
+
+// Esvaziar a lixeira de um setor (somente gestão do setor, Diretoria ou Desenvolvedor)
+documentsRouter.post('/trash/empty', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const departmentId = String(req.body?.departmentId || '');
+    if (!departmentId) return res.status(400).json({ error: 'Informe o setor.' });
+    if (!isDepartmentManager(user, departmentId)) {
+      return res.status(403).json({ error: 'Somente o gestor do setor, a Diretoria ou o Desenvolvedor podem esvaziar a lixeira.' });
+    }
+    const { rows } = await pool.query("SELECT id FROM documents WHERE status = 'trash' AND department_id = $1", [departmentId]);
+    const { done, failed } = await runTrashBatch(req, res, rows.map((r: any) => r.id), async (doc) => (await purgeFromTrash(req, doc), doc.id), 'EMPTY');
+    return res.json({ purged: done, failed });
+  } catch (err: any) {
+    console.error('[TRASH EMPTY ERROR]', err);
+    return res.status(500).json({ error: 'Erro ao esvaziar a lixeira.' });
+  }
+});
+
 // Antes de enviar: quais nomes já existem no destino?
 documentsRouter.post('/check-names', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -268,15 +349,19 @@ async function receiveUpload(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request, res: Response) => {
-  const file = (req as any).file as Express.Multer.File | undefined;
+type ReceivedFile = { path: string; originalname: string; size: number };
+
+/**
+ * Conclui um envio já recebido em disco (arquivo temporário): valida permissão, extensão, conteúdo e quota,
+ * criptografa para o armazenamento definitivo e registra no banco. Usado pelo envio simples e pelo envio em partes.
+ * Quem chama é responsável por apagar o temporário.
+ */
+async function finalizeUpload(req: Request, res: Response, file: ReceivedFile, fields: Record<string, any>) {
   const user = (req as any).user;
   const ip = getClientIp(req);
-  try {
-    if (!file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
-
-    const departmentId = String(req.body.departmentId || '');
-    const folderId = req.body.folderId ? String(req.body.folderId) : null;
+  {
+    const departmentId = String(fields.departmentId || '');
+    const folderId = fields.folderId ? String(fields.folderId) : null;
     if (!departmentId) return res.status(400).json({ error: 'Informe o setor de destino.' });
 
     const { rows: deptRows } = await pool.query('SELECT * FROM departments WHERE id = $1', [departmentId]);
@@ -303,7 +388,7 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
       return res.status(415).json({ error: `Arquivos .${extension} não são permitidos por segurança.` });
     }
 
-    let displayName = req.body.name ? sanitizeFileName(String(req.body.name)) : originalName;
+    let displayName = fields.name ? sanitizeFileName(String(fields.name)) : originalName;
     if (!displayName) displayName = originalName;
     if (getExtension(displayName) !== extension) {
       displayName = `${displayName.replace(/\.[a-zA-Z0-9]{1,10}$/, '')}.${extension}`;
@@ -312,7 +397,7 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
     // Já existe um arquivo com este nome nesta pasta?
     //  replace = o antigo vai para a lixeira (7 dias) e o novo ocupa o lugar
     //  rename (padrão) = o novo recebe "(1)", "(2)"... no nome
-    const onConflict = String(req.body.onConflict || 'rename');
+    const onConflict = String(fields.onConflict || 'rename');
     let replacedDoc: any = null;
     const sameName = await findSameName(departmentId, folderId, displayName);
     if (sameName) {
@@ -353,16 +438,16 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
 
     const docId = 'doc-' + crypto.randomBytes(12).toString('hex');
     const { storagePath, sha256 } = await storeEncryptedFromTemp(file.path, departmentId, docId);
-    const tags = String(req.body.tags || '')
+    const tags = String(fields.tags || '')
       .split(',')
       .map((t) => t.trim().slice(0, 40))
       .filter(Boolean)
       .slice(0, 15);
     // Segurança definida no momento do envio (padrão: segue a pasta)
     const pick = (v: unknown, allowed: string[]) => (allowed.includes(String(v)) ? String(v) : 'folder');
-    const visibility = pick(req.body.visibility, VISIBILITY_VALUES);
-    const downloadPolicy = pick(req.body.downloadPolicy, DOWNLOAD_POLICY_VALUES);
-    const deletePolicy = pick(req.body.deletePolicy, DELETE_POLICY_VALUES);
+    const visibility = pick(fields.visibility, VISIBILITY_VALUES);
+    const downloadPolicy = pick(fields.downloadPolicy, DOWNLOAD_POLICY_VALUES);
+    const deletePolicy = pick(fields.deletePolicy, DELETE_POLICY_VALUES);
 
     try {
       await pool.query(
@@ -439,13 +524,158 @@ documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request,
 
     const saved = await loadDocument(docId);
     return res.status(201).json({ ...toDocumentDto(saved), replacedDocumentId: replacedDoc?.id || null });
+  }
+}
+
+function sendUploadError(res: Response, err: any) {
+  if (err instanceof StorageKeyError) return res.status(503).json({ error: err.message });
+  console.error('[DOCUMENTS UPLOAD ERROR]', err);
+  return res.status(500).json({ error: 'Falha ao processar o envio do arquivo.' });
+}
+
+// Envio simples (um arquivo por requisição) — mantido para compatibilidade
+documentsRouter.post('/upload', requireAuth, receiveUpload, async (req: Request, res: Response) => {
+  const file = (req as any).file as Express.Multer.File | undefined;
+  try {
+    if (!file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+    return await finalizeUpload(req, res, file, req.body || {});
   } catch (err: any) {
-    if (err instanceof StorageKeyError) return res.status(503).json({ error: err.message });
-    console.error('[DOCUMENTS UPLOAD ERROR]', err);
-    return res.status(500).json({ error: 'Falha ao processar o envio do arquivo.' });
+    return sendUploadError(res, err);
   } finally {
     removeTempFile(file?.path);
   }
+});
+
+// ---------------------------------------------------------------------------
+// ENVIO EM PARTES (arquivos grandes): abrir → mandar pedaços → concluir
+// ---------------------------------------------------------------------------
+const formatMb = (bytes: number) =>
+  bytes >= 1073741824 ? `${(bytes / 1073741824).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} GB` : `${Math.round(bytes / 1048576)} MB`;
+
+function sendSessionError(res: Response, err: any) {
+  if (err instanceof UploadSessionError) return res.status(err.status).json({ error: err.message, ...err.extra });
+  return sendUploadError(res, err);
+}
+
+// 1) Abre o envio: confere tudo o que dá para conferir ANTES de mandar o conteúdo
+documentsRouter.post('/uploads', requireAuth, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  try {
+    if (!isFileStorageReady()) {
+      return res.status(503).json({
+        error: 'Armazenamento seguro indisponível: configure a SETTINGS_ENCRYPTION_KEY no servidor antes de enviar arquivos.',
+      });
+    }
+    const b = req.body || {};
+    const departmentId = String(b.departmentId || '');
+    const folderId = b.folderId ? String(b.folderId) : null;
+    const name = sanitizeFileName(String(b.name || '')) || '';
+    const size = Number(b.size);
+    if (!departmentId) return res.status(400).json({ error: 'Informe o setor de destino.' });
+    if (!name) return res.status(400).json({ error: 'Informe o nome do arquivo.' });
+    if (!Number.isSafeInteger(size) || size < 0) return res.status(400).json({ error: 'Tamanho do arquivo inválido.' });
+
+    const extension = getExtension(name);
+    if (!extension) return res.status(400).json({ error: 'O arquivo precisa ter uma extensão (ex: .pdf, .png).' });
+    if (BLOCKED_EXTENSIONS.has(extension)) return res.status(415).json({ error: `Arquivos .${extension} não são permitidos por segurança.` });
+
+    const maxBytes = await getMaxUploadBytes();
+    if (size > maxBytes) {
+      return res.status(413).json({
+        error: `O arquivo tem ${formatMb(size)} e o limite atual é ${formatMb(maxBytes)} por arquivo. O desenvolvedor pode aumentar em Integração › Segurança & Sessão.`,
+        code: 'FILE_TOO_LARGE',
+        maxBytes,
+      });
+    }
+
+    const { rows: deptRows } = await pool.query('SELECT * FROM departments WHERE id = $1', [departmentId]);
+    const dept = deptRows[0];
+    if (!dept) return res.status(404).json({ error: 'Setor de destino não encontrado.' });
+    if (folderId) {
+      const folder = await loadFolder(folderId);
+      if (!folder || folder.department_id !== departmentId) {
+        return res.status(400).json({ error: 'A pasta de destino não pertence a este setor.' });
+      }
+    }
+    if (!await can(user, 'UPLOAD_DOCUMENT', departmentId, folderId)) {
+      return res.status(403).json({ error: 'Você não tem permissão para enviar arquivos neste local.' });
+    }
+
+    const { rows: usage } = await pool.query(
+      'SELECT COALESCE(SUM(size_bytes), 0)::bigint AS used FROM documents WHERE department_id = $1',
+      [departmentId]
+    );
+    const limit = Number(dept.storage_limit_bytes || 0);
+    if (limit > 0 && Number(usage[0].used) + size > limit) {
+      return res.status(507).json({
+        error: `A quota do setor ${dept.name} não comporta este arquivo (${formatMb(Number(usage[0].used))} de ${formatMb(limit)} em uso). Aumente a quota em Setores ou esvazie a lixeira.`,
+      });
+    }
+    // O arquivo fica temporariamente em dobro no disco (parcial + criptografado): exige folga
+    const disk = getServerDisk();
+    if (disk && disk.freeBytes < size * 2 + 512 * 1024 * 1024) {
+      return res.status(507).json({ error: 'O servidor está sem espaço livre suficiente para receber este arquivo. Avise a TI.' });
+    }
+
+    const session = createUploadSession(user.id, {
+      departmentId,
+      folderId,
+      name,
+      size,
+      onConflict: String(b.onConflict || 'rename'),
+      visibility: b.visibility ? String(b.visibility) : undefined,
+      downloadPolicy: b.downloadPolicy ? String(b.downloadPolicy) : undefined,
+      deletePolicy: b.deletePolicy ? String(b.deletePolicy) : undefined,
+      tags: Array.isArray(b.tags) ? b.tags.join(',') : b.tags ? String(b.tags) : '',
+    });
+    return res.status(201).json({ uploadId: session.id, chunkSize: CHUNK_BYTES, received: 0 });
+  } catch (err: any) {
+    return sendSessionError(res, err);
+  }
+});
+
+// 2) Um pedaço do arquivo (corpo binário cru, ?offset= posição inicial)
+documentsRouter.put('/uploads/:id/chunk', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const session = getUploadSession(String(req.params.id), (req as any).user.id);
+    const received = await appendChunk(session, Number(req.query.offset), req);
+    return res.json({ received });
+  } catch (err: any) {
+    return sendSessionError(res, err);
+  }
+});
+
+// 3) Conclui: o arquivo completo passa pelas mesmas validações do envio simples
+documentsRouter.post('/uploads/:id/finish', requireAuth, async (req: Request, res: Response) => {
+  let session: ReturnType<typeof getUploadSession> | null = null;
+  try {
+    session = getUploadSession(String(req.params.id), (req as any).user.id);
+    if (session.busy) return res.status(409).json({ error: 'Ainda gravando o último pedaço.', received: session.received });
+    if (session.received !== session.meta.size) {
+      return res.status(409).json({ error: 'O arquivo ainda não chegou por completo.', received: session.received });
+    }
+    const { meta, tmpPath } = session;
+    session.busy = true; // ninguém mexe mais neste arquivo
+    dropUploadSession(session.id, true);
+    try {
+      return await finalizeUpload(req, res, { path: tmpPath, originalname: meta.name, size: meta.size }, meta);
+    } finally {
+      removeTempFile(tmpPath);
+    }
+  } catch (err: any) {
+    return sendSessionError(res, err);
+  }
+});
+
+// Cancelar um envio em andamento
+documentsRouter.delete('/uploads/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const session = getUploadSession(String(req.params.id), (req as any).user.id);
+    dropUploadSession(session.id);
+  } catch {
+    /* já não existia */
+  }
+  return res.json({ success: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -713,17 +943,21 @@ documentsRouter.delete('/:id', requireAuth, async (req: Request, res: Response) 
   }
 });
 
-documentsRouter.post('/:id/restore', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const user = (req as any).user;
-    const doc = await loadDocument(req.params.id);
-    if (!doc || doc.status !== 'trash') return res.status(404).json({ error: 'Item não encontrado na lixeira.' });
+class TrashActionError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
 
+/** Restaura um item da lixeira (recria o caminho de pastas se ele não existir mais). */
+async function restoreFromTrash(req: Request, doc: any) {
+  const user = (req as any).user;
+  {
     const allowed =
       isDepartmentManager(user, doc.department_id) ||
       await can(user, 'DELETE_DOCUMENT', doc.department_id, doc.folder_id) ||
       (user.departmentId === doc.department_id && (doc.trashed_by === user.id || doc.owner_id === user.id));
-    if (!allowed) return res.status(403).json({ error: 'Você não tem permissão para restaurar este documento.' });
+    if (!allowed) throw new TrashActionError(403, 'Você não tem permissão para restaurar este documento.');
 
     // Se a pasta original foi excluída, recria o caminho (Pasta › Subpasta) com os mesmos nomes;
     // sem caminho conhecido, o arquivo volta para a raiz do setor
@@ -757,10 +991,15 @@ documentsRouter.post('/:id/restore', requireAuth, async (req: Request, res: Resp
       folderId = parent;
     }
 
+    // Já existe outro arquivo com o mesmo nome no destino? O restaurado ganha "(1)" no nome
+    let restoredName = doc.name;
+    if (await findSameName(doc.department_id, folderId, doc.name)) {
+      restoredName = await nextFreeName(doc.department_id, folderId, doc.name);
+    }
     await pool.query(
-      `UPDATE documents SET status = 'active', folder_id = $1, trashed_at = NULL, trashed_by = NULL, trashed_by_name = NULL,
+      `UPDATE documents SET status = 'active', folder_id = $1, name = $3, trashed_at = NULL, trashed_by = NULL, trashed_by_name = NULL,
        trashed_path = NULL, updated_at = NOW() WHERE id = $2`,
-      [folderId, doc.id]
+      [folderId, doc.id, restoredName]
     );
     await writeAudit(
       userCtx(req),
@@ -775,8 +1014,26 @@ documentsRouter.post('/:id/restore', requireAuth, async (req: Request, res: Resp
       'SUCCESS',
       getClientIp(req)
     );
-    return res.json(toDocumentDto(await loadDocument(doc.id)));
+    return toDocumentDto(await loadDocument(doc.id));
+  }
+}
+
+/** Apaga de vez (disco + banco). Só a gestão do setor, a Diretoria ou o Desenvolvedor. */
+async function purgeFromTrash(req: Request, doc: any) {
+  const user = (req as any).user;
+  if (!isDepartmentManager(user, doc.department_id)) {
+    throw new TrashActionError(403, 'Somente o gestor do setor, a Diretoria ou o Desenvolvedor podem excluir definitivamente.');
+  }
+  await purgeDocument(doc, userCtx(req), 'Excluído definitivamente da lixeira antes do prazo.', getClientIp(req));
+}
+
+documentsRouter.post('/:id/restore', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const doc = await loadDocument(req.params.id);
+    if (!doc || doc.status !== 'trash') return res.status(404).json({ error: 'Item não encontrado na lixeira.' });
+    return res.json(await restoreFromTrash(req, doc));
   } catch (err: any) {
+    if (err instanceof TrashActionError) return res.status(err.status).json({ error: err.message });
     console.error('[DOCUMENTS RESTORE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao restaurar documento.' });
   }
@@ -787,13 +1044,10 @@ documentsRouter.delete('/:id/permanent', requireAuth, async (req: Request, res: 
     const user = (req as any).user;
     const doc = await loadDocument(req.params.id);
     if (!doc || doc.status !== 'trash') return res.status(404).json({ error: 'Item não encontrado na lixeira.' });
-    if (!isDepartmentManager(user, doc.department_id)) {
-      return res.status(403).json({ error: 'Somente o gestor do setor, a Diretoria ou o Desenvolvedor podem excluir definitivamente.' });
-    }
-
-    await purgeDocument(doc, userCtx(req), 'Excluído definitivamente da lixeira antes do prazo.', getClientIp(req));
+    await purgeFromTrash(req, doc);
     return res.json({ success: true, deletedId: doc.id });
   } catch (err: any) {
+    if (err instanceof TrashActionError) return res.status(err.status).json({ error: err.message });
     console.error('[DOCUMENTS PURGE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao excluir definitivamente.' });
   }

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Upload, X, FolderUp, FileText, AlertTriangle, CheckCircle2, Loader2, XCircle, ChevronDown, ChevronUp, EyeOff } from 'lucide-react';
+import { Upload, X, FolderUp, FileText, AlertTriangle, CheckCircle2, Loader2, XCircle, ChevronDown, ChevronUp, EyeOff, RotateCcw } from 'lucide-react';
 import type { DocSecurity } from '../../types';
 import type { PickedFile } from '../../services/dropFiles';
 import { SecurityFields, DEFAULT_SECURITY } from './SecurityFields';
@@ -11,7 +11,7 @@ const BLOCKED = new Set([
   'aspx', 'jsp', 'app', 'dmg', 'apk', 'deb', 'rpm',
 ]);
 export const isBlockedFile = (name: string) => BLOCKED.has((name.split('.').pop() || '').toLowerCase());
-export const MAX_BULK_FILES = 1000;
+export const MAX_BULK_FILES = 5000;
 
 const fmt = (bytes: number) =>
   bytes >= 1073741824
@@ -28,13 +28,22 @@ export const BulkUploadConfirm: React.FC<{
   folders: string[];
   destination: string;
   online: boolean;
+  /** Limite por arquivo (Integração). Os maiores ficam de fora e são listados aqui. */
+  maxUploadBytes?: number;
   onCancel: () => void;
   onConfirm: (opts: { security: Required<DocSecurity>; privateFolders: boolean }) => void;
-}> = ({ files, folders, destination, online, onCancel, onConfirm }) => {
+}> = ({ files, folders, destination, online, maxUploadBytes, onCancel, onConfirm }) => {
   const [security, setSecurity] = useState<Required<DocSecurity>>(DEFAULT_SECURITY);
   const [privateFolders, setPrivateFolders] = useState(false);
-  const allowed = useMemo(() => files.filter((f) => !isBlockedFile(f.file.name)), [files]);
-  const blocked = files.length - allowed.length;
+  const tooBigList = useMemo(
+    () => (maxUploadBytes ? files.filter((f) => !isBlockedFile(f.file.name) && f.file.size > maxUploadBytes) : []),
+    [files, maxUploadBytes]
+  );
+  const allowed = useMemo(
+    () => files.filter((f) => !isBlockedFile(f.file.name) && !(maxUploadBytes && f.file.size > maxUploadBytes)),
+    [files, maxUploadBytes]
+  );
+  const blocked = files.length - allowed.length - tooBigList.length;
   const total = allowed.reduce((s, f) => s + f.file.size, 0);
   const tooMany = allowed.length > MAX_BULK_FILES;
   const foldersOffline = folders.length > 0 && !online;
@@ -110,6 +119,26 @@ export const BulkUploadConfirm: React.FC<{
               e .js, são bloqueados).
             </div>
           )}
+          {tooBigList.length > 0 && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-[12.5px] text-rose-800 space-y-1.5">
+              <div className="flex gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  {tooBigList.length} {tooBigList.length === 1 ? 'arquivo passa' : 'arquivos passam'} do limite de{' '}
+                  <strong>{fmt(maxUploadBytes || 0)}</strong> por arquivo e {tooBigList.length === 1 ? 'ficará' : 'ficarão'} de fora. O
+                  desenvolvedor pode aumentar o limite em Integração › Segurança &amp; Sessão.
+                </span>
+              </div>
+              <ul className="pl-6 text-[11.5px] text-rose-700 space-y-0.5">
+                {tooBigList.slice(0, 5).map((f, i) => (
+                  <li key={i} className="truncate">
+                    {f.file.name} — {fmt(f.file.size)}
+                  </li>
+                ))}
+                {tooBigList.length > 5 && <li>e mais {tooBigList.length - 5}…</li>}
+              </ul>
+            </div>
+          )}
           {tooMany && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-[12.5px] text-rose-800">
               São muitos arquivos de uma vez. Envie no máximo {MAX_BULK_FILES.toLocaleString('pt-BR')} por vez.
@@ -157,22 +186,37 @@ export const BulkUploadConfirm: React.FC<{
 // ---------------------------------------------------------------------------
 // 2) Progresso: painel no canto (no celular, acima da barra de abas)
 // ---------------------------------------------------------------------------
-export type BulkItemState = { name: string; path: string; status: 'wait' | 'up' | 'ok' | 'err' | 'skip'; error?: string; percent?: number };
+export type BulkItemState = { name: string; path: string; size?: number; status: 'wait' | 'up' | 'ok' | 'err' | 'skip'; error?: string; percent?: number };
 
 export const BulkUploadPanel: React.FC<{
   items: BulkItemState[];
   foldersCreated: number;
   running: boolean;
+  /** Reenviar só os que deram erro */
+  onRetry?: () => void;
   onClose: () => void;
-}> = ({ items, foldersCreated, running, onClose }) => {
+}> = ({ items, foldersCreated, running, onRetry, onClose }) => {
   const [open, setOpen] = useState(true);
   const done = items.filter((i) => i.status === 'ok').length;
   const failed = items.filter((i) => i.status === 'err').length;
   const skipped = items.filter((i) => i.status === 'skip').length;
   const finished = done + failed + skipped;
-  const percent = items.length ? Math.round((items.reduce((s, i) => s + (i.status === 'ok' || i.status === 'err' || i.status === 'skip' ? 100 : i.percent || 0), 0) / (items.length * 100)) * 100) : 0;
+  // Progresso pelo tamanho (um arquivo de 1 GB pesa mais que um de 10 KB)
+  const totalBytes = items.reduce((s, i) => s + Math.max(1, i.size || 1), 0);
+  const doneBytes = items.reduce(
+    (s, i) => s + Math.max(1, i.size || 1) * (i.status === 'ok' || i.status === 'err' || i.status === 'skip' ? 1 : (i.percent || 0) / 100),
+    0
+  );
+  const percent = totalBytes ? Math.min(100, Math.floor((doneBytes / totalBytes) * 100)) : 0;
+  const sentBytes = items.filter((i) => i.status === 'ok').reduce((s, i) => s + (i.size || 0), 0);
+  // Lista: primeiro o que está subindo e os erros; o resto resumido (milhares de linhas travariam a tela)
+  const visible = useMemo(() => {
+    const idx = items.map((_, i) => i);
+    const order = (st: BulkItemState['status']) => (st === 'up' ? 0 : st === 'err' ? 1 : st === 'wait' ? 2 : 3);
+    return idx.sort((a, b) => order(items[a].status) - order(items[b].status) || a - b).slice(0, 200);
+  }, [items]);
   const title = running
-    ? `Enviando ${Math.min(finished + 1, items.length)} de ${items.length}…`
+    ? `Enviando ${Math.min(finished + 1, items.length)} de ${items.length}… (não feche a página)`
     : failed
     ? `${done} enviado(s), ${failed} com erro`
     : `${done} ${done === 1 ? 'arquivo enviado' : 'arquivos enviados'}${skipped ? `, ${skipped} ignorado(s)` : ''}`;
@@ -191,7 +235,7 @@ export const BulkUploadPanel: React.FC<{
           <div className="text-[13.5px] font-semibold text-slate-900 truncate">{title}</div>
           <div className="text-[11.5px] text-slate-500">
             {foldersCreated > 0 ? `${foldersCreated} pasta(s) criada(s) • ` : ''}
-            {percent}%
+            {fmt(sentBytes)} de {fmt(totalBytes)} • {percent}%
           </div>
         </div>
         <button type="button" onClick={() => setOpen((v) => !v)} className="h-8 w-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500" aria-label={open ? 'Recolher' : 'Expandir'}>
@@ -206,9 +250,23 @@ export const BulkUploadPanel: React.FC<{
       <div className="h-1 bg-slate-100">
         <div className={`h-full transition-all ${failed && !running ? 'bg-amber-500' : 'bg-blue-600'}`} style={{ width: `${percent}%` }} />
       </div>
+      {!running && failed > 0 && onRetry && (
+        <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-100 flex items-center gap-2">
+          <span className="flex-1 text-[12px] text-rose-800">
+            {failed} {failed === 1 ? 'arquivo não subiu' : 'arquivos não subiram'}. Veja o motivo abaixo.
+          </span>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="h-8 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 shrink-0"
+          >
+            <RotateCcw className="w-3.5 h-3.5" /> Tentar de novo
+          </button>
+        </div>
+      )}
       {open && (
         <ul className="max-h-60 overflow-y-auto divide-y divide-slate-100">
-          {items.map((it, i) => (
+          {visible.map((i) => [items[i], i] as const).map(([it, i]) => (
             <li key={i} className="px-4 py-2 flex items-center gap-2.5 text-[12.5px]">
               {it.status === 'ok' ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -230,6 +288,9 @@ export const BulkUploadPanel: React.FC<{
               {it.status === 'up' && typeof it.percent === 'number' && <span className="text-[11px] text-slate-500 tabular-nums">{it.percent}%</span>}
             </li>
           ))}
+          {items.length > visible.length && (
+            <li className="px-4 py-2 text-[11.5px] text-slate-500">e mais {items.length - visible.length} arquivo(s)…</li>
+          )}
         </ul>
       )}
     </div>

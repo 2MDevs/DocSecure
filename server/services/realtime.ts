@@ -101,6 +101,8 @@ const TOPIC_BY_PREFIX: Array<[string, string]> = [
 export function realtimeChangeNotifier(req: Request, res: Response, next: NextFunction) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
   const path = req.originalUrl.split('?')[0];
+  // Pedaços de um envio em andamento e consultas não mudam nada para os outros (só a conclusão avisa)
+  if (/^\/api\/documents\/(uploads(\/[^/]+(\/chunk)?)?|check-names)$/.test(path)) return next();
   const match = TOPIC_BY_PREFIX.find(([prefix]) => path === prefix || path.startsWith(prefix + '/'));
   if (!match) return next();
 
