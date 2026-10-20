@@ -220,6 +220,12 @@ export const PlatformUsagePanel: React.FC<{ usage: any; departments?: Department
               </span>
             </div>
           ))}
+          {Number(docs.trashBytes || 0) - deptTrash > 1024 * 1024 && (
+            <div className="flex items-center justify-between gap-3 py-2 text-[13px]">
+              <span className="text-slate-700 truncate">Setores removidos</span>
+              <span className="text-right shrink-0 text-[11px] text-slate-500">+ {fmt(Number(docs.trashBytes) - deptTrash)} na lixeira</span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3 pt-2 text-[13px] font-semibold">
             <span className="text-slate-900">Total dos setores</span>
             <span className="text-slate-900 tabular-nums">

@@ -47,7 +47,7 @@ interface TrashViewProps {
 type ViewMode = 'large' | 'medium' | 'details';
 type SortKey = 'name' | 'deleted' | 'size' | 'remaining';
 type Item =
-  | { kind: 'dept'; key: string; name: string; dept: Department; docs: DocumentItem[] }
+  | { kind: 'dept'; key: string; name: string; dept: Department; docs: DocumentItem[]; locked?: boolean }
   | { kind: 'dir'; key: string; name: string; path: string[]; docs: DocumentItem[] }
   | { kind: 'doc'; key: string; name: string; doc: DocumentItem; docs: DocumentItem[] };
 
@@ -95,12 +95,15 @@ const latestDeleted = (docs: DocumentItem[]) =>
  */
 export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, folders, onRestored, refreshKey, onGoHome }) => {
   const isMobile = useIsMobile();
-  const isAdmin = currentUser.role === 'DEVELOPER' || currentUser.role === 'DIRECTOR';
+  // Mesma regra do servidor: só a diretoria (ou quem tem "acesso de diretoria") vê a lixeira de todos os setores.
+  // O desenvolvedor, sem esse acesso, vê só a lixeira da TI.
+  const isAdmin = currentUser.role === 'DIRECTOR' || Boolean(currentUser.directorAccess);
 
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [retentionDays, setRetentionDays] = useState(7);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; failures: TrashFailure[] } | null>(null);
 
   // Navegação: setor + caminho original dentro dele
@@ -130,14 +133,31 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
   const [busy, setBusy] = useState<null | { label: string; done: number; total: number }>(null);
 
   // Setores cuja lixeira o usuário pode ver
-  const trashDepartments = useMemo(
-    () => (isAdmin ? departments : departments.filter((d) => d.id === currentUser.departmentId)),
+  const orphanDeptIds = useMemo(() => {
+    if (!isAdmin || !departments.length) return [];
+    const known = new Set(departments.map((d) => d.id));
+    return [...new Set(items.map((i) => i.departmentId).filter((id) => id && !known.has(id)))];
+  }, [isAdmin, departments, items]);
+  const trashDepartments = useMemo(() => {
+    const list = isAdmin ? departments : departments.filter((d) => d.id === currentUser.departmentId);
+    // Itens de um setor que não existe mais: aparecem num setor "removido" para a diretoria poder limpar
+    const extra = isAdmin
+      ? orphanDeptIds.map(
+          (id) =>
+            ({ id, name: 'Setor removido', code: '', iconName: '', color: '', storageLimitBytes: 0, storageUsedBytes: 0, description: '', isLocked: false, itemCount: 0 }) as Department
+        )
+      : [];
+    return [...list, ...extra];
+  }, [isAdmin, departments, currentUser.departmentId, orphanDeptIds]);
+  // Lixeira de outros setores (só números, sem os arquivos): para explicar o total mostrado em Sistema
+  const hiddenTrash = useMemo(
+    () => (isAdmin ? [] : departments.filter((d) => d.id !== currentUser.departmentId && ((d.trashItemCount || 0) > 0 || (d.trashBytes || 0) > 0))),
     [isAdmin, departments, currentUser.departmentId]
   );
-  // Quem vê um setor só entra direto nele
-  const singleDept = trashDepartments.length === 1 ? trashDepartments[0].id : null;
+  // Quem vê um setor só entra direto nele (a não ser que existam outros setores com itens na lixeira para mostrar a quantidade)
+  const singleDept = trashDepartments.length === 1 && !hiddenTrash.length ? trashDepartments[0].id : null;
   const currentDeptId = deptId || singleDept;
-  const currentDept = departments.find((d) => d.id === currentDeptId) || null;
+  const currentDept = trashDepartments.find((d) => d.id === currentDeptId) || departments.find((d) => d.id === currentDeptId) || null;
 
   const load = useCallback(
     async (silent = false) => {
@@ -146,15 +166,15 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
         setError(null);
         const res = await apiClient.getTrash();
         setRetentionDays(res.retentionDays);
-        const allowed = new Set(trashDepartments.map((d) => d.id));
-        setItems(res.items.filter((i) => allowed.has(i.departmentId)));
+        const allowed = isAdmin ? null : new Set([currentUser.departmentId]);
+        setItems(allowed ? res.items.filter((i) => allowed.has(i.departmentId)) : res.items);
       } catch (err: any) {
         if (!silent) setError(err?.message || 'Não foi possível carregar a lixeira.');
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [trashDepartments]
+    [isAdmin, currentUser.departmentId]
   );
 
   useEffect(() => {
@@ -201,6 +221,8 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
         const docs = items.filter((d) => d.departmentId === dept.id);
         return { kind: 'dept', key: `dept:${dept.id}`, name: dept.name, dept, docs } as Item;
       });
+      // Outros setores: só a quantidade e o tamanho (os arquivos não são mostrados)
+      hiddenTrash.forEach((dept) => list.push({ kind: 'dept', key: `locked:${dept.id}`, name: dept.name, dept, docs: [], locked: true }));
     } else if (query) {
       // Pesquisa: todos os arquivos do setor (em qualquer pasta) que combinam com o texto
       list = items
@@ -240,7 +262,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
       if (cmp === 0) cmp = a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' }) * (sortKey === 'name' ? 1 : dir);
       return cmp * dir;
     });
-  }, [currentDeptId, trashDepartments, items, query, path, pathOf, sortKey, sortAsc]);
+  }, [currentDeptId, trashDepartments, hiddenTrash, items, query, path, pathOf, sortKey, sortAsc]);
 
   // A pasta (caminho) atual ficou vazia depois de restaurar/apagar: sobe até onde ainda há itens
   useEffect(() => {
@@ -304,6 +326,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
   };
 
   const openItem = (it: Item) => {
+    if (isLocked(it)) return lockedNotice(it);
     if (it.kind === 'dept') {
       go({ deptId: it.dept.id, path: [] });
     } else if (it.kind === 'dir') {
@@ -345,6 +368,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
   // ------------------------------------------------------------- seleção
   const onItemClick = (e: React.MouseEvent, it: Item) => {
     e.stopPropagation();
+    if (isLocked(it)) return;
     if (e.ctrlKey || e.metaKey) {
       setSelKeys((prev) => {
         const next = new Set(prev);
@@ -541,6 +565,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
   const handleContextMenu = (e: React.MouseEvent, it: Item | null) => {
     e.preventDefault();
     e.stopPropagation();
+    if (it && isLocked(it)) return lockedNotice(it);
     if (it && !selKeys.has(it.key)) setSelKeys(new Set([it.key]));
     if (!it && !currentDeptId) return;
     const x = Math.min(e.clientX, window.innerWidth - 250);
@@ -592,13 +617,19 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
   // ------------------------------------------------------------- textos e ícones
   const locationName = search ? `Resultados para “${search}”` : path.length ? path[path.length - 1] : currentDept ? currentDept.name : 'Lixeira';
   const renderIcon = (it: Item, size: number) =>
-    it.kind === 'dept' ? <DriveGlyph size={size} /> : it.kind === 'dir' ? <FolderGlyph size={size} /> : <FileGlyph ext={it.doc.extension} size={size} />;
+    it.kind === 'dept' ? <DriveGlyph size={size} locked={Boolean(it.locked)} /> : it.kind === 'dir' ? <FolderGlyph size={size} /> : <FileGlyph ext={it.doc.extension} size={size} />;
   const countLabel = (n: number) => `${n} ${n === 1 ? 'arquivo' : 'arquivos'}`;
+  const isLocked = (it: Item) => it.kind === 'dept' && Boolean(it.locked);
+  const cnt = (it: Item) => (it.kind === 'dept' && it.locked ? it.dept.trashItemCount || 0 : it.docs.length);
+  const bytesOf = (it: Item) => (it.kind === 'dept' && it.locked ? it.dept.trashBytes || 0 : sizeOf(it.docs));
+  const lockedNotice = (it: Item) =>
+    setInfo(`A lixeira de ${it.name} tem ${countLabel(cnt(it))} (${formatBytes(bytesOf(it))}). Só o gestor do setor e a diretoria podem abrir, restaurar ou excluir.`);
   const itemMeta = (it: Item) => {
     if (it.kind === 'doc') {
       const r = remaining(it.doc.purgeAt);
       return `${formatBytes(it.doc.sizeBytes)} • excluído ${formatDate(it.doc.trashedAt)} • apaga em ${r.text}`;
     }
+    if (isLocked(it)) return `${countLabel(cnt(it))} • ${formatBytes(bytesOf(it))} • sem acesso`;
     return `${countLabel(it.docs.length)} • ${formatBytes(sizeOf(it.docs))}`;
   };
   const originalLocation = (d: DocumentItem) => {
@@ -881,7 +912,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-500" /> Lixeira
             </button>
-            {currentDept && !singleDept && (
+            {currentDept && (
               <>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <button type="button" onClick={() => go({ deptId, path: [] })} className="px-1.5 py-1 rounded hover:bg-slate-100">
@@ -917,6 +948,25 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
             <Clock className="w-3.5 h-3.5 text-amber-500" />
             Os itens ficam {retentionDays} dias na lixeira e depois são apagados do servidor automaticamente. Excluir definitivamente apaga na hora, do disco e do banco de dados.
           </div>
+          {hiddenTrash.length > 0 && currentDeptId && (
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-slate-400 shrink-0" />
+              <span>
+                Você vê só a lixeira de {departments.find((d) => d.id === currentUser.departmentId)?.name || 'seu setor'}. Outros setores também têm
+                itens na lixeira ({hiddenTrash.map((d) => `${d.name}: ${formatBytes(d.trashBytes || 0)}`).join(' • ')}) — eles aparecem para o
+                gestor de cada setor e para a diretoria, que podem restaurar ou excluir definitivamente.
+              </span>
+            </div>
+          )}
+          {info && (
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-slate-400 shrink-0" />
+              <span className="flex-1">{info}</span>
+              <button type="button" onClick={() => setInfo(null)} className="font-semibold">
+                OK
+              </button>
+            </div>
+          )}
           {error && (
             <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -1084,7 +1134,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
                     return (
                       <tr
                         key={it.key}
-                        data-sel-key={it.key}
+                        data-sel-key={isLocked(it) ? undefined : it.key}
                         onClick={(e) => onItemClick(e, it)}
                         onDoubleClick={() => openItem(it)}
                         onContextMenu={(e) => handleContextMenu(e, it)}
@@ -1094,11 +1144,17 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="shrink-0">{renderIcon(it, 20)}</span>
                             <span className="truncate">{it.name}</span>
-                            {it.kind !== 'doc' && <span className="text-[11px] text-slate-400 shrink-0">({it.docs.length})</span>}
+                            {it.kind !== 'doc' && <span className="text-[11px] text-slate-400 shrink-0">({cnt(it)})</span>}
                           </div>
                         </td>
                         <td className="py-1 px-2 text-slate-500 hidden lg:table-cell truncate max-w-[220px]">
-                          {it.kind === 'doc' ? originalLocation(it.doc) : it.kind === 'dir' ? [currentDept?.name, ...it.path].join(' › ') : '—'}
+                          {it.kind === 'doc'
+                            ? originalLocation(it.doc)
+                            : it.kind === 'dir'
+                            ? [currentDept?.name, ...it.path].join(' › ')
+                            : isLocked(it)
+                            ? 'Sem acesso (gestor do setor e diretoria)'
+                            : '—'}
                         </td>
                         <td className="py-1 px-2 text-slate-500 hidden sm:table-cell whitespace-nowrap">{formatDate(latestDeleted(it.docs))}</td>
                         <td className="py-1 px-2 text-slate-500 hidden xl:table-cell whitespace-nowrap truncate max-w-[140px]">
@@ -1107,7 +1163,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
                         <td className={`py-1 px-2 hidden md:table-cell whitespace-nowrap ${r.urgent ? 'text-rose-600 font-medium' : 'text-amber-700'}`}>
                           {it.docs.length ? r.text : '-'}
                         </td>
-                        <td className="py-1 px-2 text-slate-500 text-right whitespace-nowrap tabular-nums">{formatBytes(sizeOf(it.docs))}</td>
+                        <td className="py-1 px-2 text-slate-500 text-right whitespace-nowrap tabular-nums">{formatBytes(bytesOf(it))}</td>
                       </tr>
                     );
                   })}
@@ -1124,7 +1180,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
                       key={it.key}
                       role="button"
                       tabIndex={0}
-                      data-sel-key={it.key}
+                      data-sel-key={isLocked(it) ? undefined : it.key}
                       onClick={(e) => onItemClick(e, it)}
                       onDoubleClick={() => openItem(it)}
                       onContextMenu={(e) => handleContextMenu(e, it)}
@@ -1137,6 +1193,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
                         {renderIcon(it, iconSize)}
                       </div>
                       <span className={`text-[12.5px] leading-tight text-center break-words w-full ${isSel ? '' : 'line-clamp-3'} text-slate-800`}>{it.name}</span>
+                      {isLocked(it) && <span className="text-[10.5px] text-slate-400">{countLabel(cnt(it))} • {formatBytes(bytesOf(it))}</span>}
                       {it.docs.length > 0 && (
                         <span className={`text-[10.5px] inline-flex items-center gap-0.5 ${r.urgent ? 'text-rose-600' : 'text-slate-400'}`}>
                           <Clock className="w-3 h-3" /> {it.kind === 'doc' ? r.short : `${it.docs.length} • ${r.short}`}
