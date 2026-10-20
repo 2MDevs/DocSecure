@@ -95,7 +95,9 @@ const latestDeleted = (docs: DocumentItem[]) =>
  */
 export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, folders, onRestored, refreshKey, onGoHome }) => {
   const isMobile = useIsMobile();
-  const isAdmin = currentUser.role === 'DEVELOPER' || currentUser.role === 'DIRECTOR';
+  // Mesma regra do servidor: só a diretoria (ou quem tem "acesso de diretoria") vê a lixeira de todos os setores.
+  // O desenvolvedor, sem esse acesso, vê só a lixeira da TI.
+  const isAdmin = currentUser.role === 'DIRECTOR' || Boolean(currentUser.directorAccess);
 
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [retentionDays, setRetentionDays] = useState(7);
@@ -130,14 +132,31 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
   const [busy, setBusy] = useState<null | { label: string; done: number; total: number }>(null);
 
   // Setores cuja lixeira o usuário pode ver
-  const trashDepartments = useMemo(
-    () => (isAdmin ? departments : departments.filter((d) => d.id === currentUser.departmentId)),
+  const orphanDeptIds = useMemo(() => {
+    if (!isAdmin || !departments.length) return [];
+    const known = new Set(departments.map((d) => d.id));
+    return [...new Set(items.map((i) => i.departmentId).filter((id) => id && !known.has(id)))];
+  }, [isAdmin, departments, items]);
+  const trashDepartments = useMemo(() => {
+    const list = isAdmin ? departments : departments.filter((d) => d.id === currentUser.departmentId);
+    // Itens de um setor que não existe mais: aparecem num setor "removido" para a diretoria poder limpar
+    const extra = isAdmin
+      ? orphanDeptIds.map(
+          (id) =>
+            ({ id, name: 'Setor removido', code: '', iconName: '', color: '', storageLimitBytes: 0, storageUsedBytes: 0, description: '', isLocked: false, itemCount: 0 }) as Department
+        )
+      : [];
+    return [...list, ...extra];
+  }, [isAdmin, departments, currentUser.departmentId, orphanDeptIds]);
+  // Lixeira de outros setores (só números, sem os arquivos): para explicar o total mostrado em Sistema
+  const hiddenTrash = useMemo(
+    () => (isAdmin ? [] : departments.filter((d) => d.id !== currentUser.departmentId && (d.trashBytes || 0) > 0)),
     [isAdmin, departments, currentUser.departmentId]
   );
   // Quem vê um setor só entra direto nele
   const singleDept = trashDepartments.length === 1 ? trashDepartments[0].id : null;
   const currentDeptId = deptId || singleDept;
-  const currentDept = departments.find((d) => d.id === currentDeptId) || null;
+  const currentDept = trashDepartments.find((d) => d.id === currentDeptId) || departments.find((d) => d.id === currentDeptId) || null;
 
   const load = useCallback(
     async (silent = false) => {
@@ -146,15 +165,15 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
         setError(null);
         const res = await apiClient.getTrash();
         setRetentionDays(res.retentionDays);
-        const allowed = new Set(trashDepartments.map((d) => d.id));
-        setItems(res.items.filter((i) => allowed.has(i.departmentId)));
+        const allowed = isAdmin ? null : new Set([currentUser.departmentId]);
+        setItems(allowed ? res.items.filter((i) => allowed.has(i.departmentId)) : res.items);
       } catch (err: any) {
         if (!silent) setError(err?.message || 'Não foi possível carregar a lixeira.');
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [trashDepartments]
+    [isAdmin, currentUser.departmentId]
   );
 
   useEffect(() => {
@@ -881,7 +900,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-500" /> Lixeira
             </button>
-            {currentDept && !singleDept && (
+            {currentDept && (
               <>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <button type="button" onClick={() => go({ deptId, path: [] })} className="px-1.5 py-1 rounded hover:bg-slate-100">
@@ -917,6 +936,16 @@ export const TrashView: React.FC<TrashViewProps> = ({ currentUser, departments, 
             <Clock className="w-3.5 h-3.5 text-amber-500" />
             Os itens ficam {retentionDays} dias na lixeira e depois são apagados do servidor automaticamente. Excluir definitivamente apaga na hora, do disco e do banco de dados.
           </div>
+          {hiddenTrash.length > 0 && (
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-slate-400 shrink-0" />
+              <span>
+                Você vê só a lixeira de {departments.find((d) => d.id === currentUser.departmentId)?.name || 'seu setor'}. Outros setores também têm
+                itens na lixeira ({hiddenTrash.map((d) => `${d.name}: ${formatBytes(d.trashBytes || 0)}`).join(' • ')}) — eles aparecem para o
+                gestor de cada setor e para a diretoria, que podem restaurar ou excluir definitivamente.
+              </span>
+            </div>
+          )}
           {error && (
             <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
