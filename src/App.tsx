@@ -1852,6 +1852,7 @@ export default function App() {
           {activeTab === 'system' && (
             <SystemView
               currentUser={currentUser}
+              departments={departments}
               apiKeys={apiKeys}
               webhooks={webhooks}
               onCreateApiKey={handleCreateApiKey}

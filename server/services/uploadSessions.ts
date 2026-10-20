@@ -142,7 +142,15 @@ export function dropUploadSession(id: string, keepFile = false) {
   }
 }
 
-/** Apaga sessões paradas e arquivos parciais "órfãos" (ex.: de antes de reiniciar o servidor). */
+/** Arquivos temporários de envios em andamento (não podem ser apagados pela limpeza) */
+export function activeUploadTempFiles(): string[] {
+  return [...sessions.values()].map((s) => s.tmpPath);
+}
+
+/**
+ * Apaga sessões paradas e arquivos parciais que sobraram: do envio em partes ("chunked-")
+ * e do envio simples ("up-", quando a conexão cai no meio). Ex.: de antes de reiniciar o servidor.
+ */
 export function cleanupUploadSessions(now = Date.now(), atStartup = false) {
   let removed = 0;
   for (const s of sessions.values()) {
@@ -154,7 +162,7 @@ export function cleanupUploadSessions(now = Date.now(), atStartup = false) {
   try {
     const active = new Set([...sessions.values()].map((s) => path.basename(s.tmpPath)));
     for (const name of fs.readdirSync(UPLOAD_TMP_DIR)) {
-      if (!name.startsWith(FILE_PREFIX) || active.has(name)) continue;
+      if (!(name.startsWith(FILE_PREFIX) || name.startsWith('up-')) || active.has(name)) continue;
       const full = path.join(UPLOAD_TMP_DIR, name);
       try {
         if (atStartup || now - fs.statSync(full).mtimeMs > IDLE_TTL_MS) {

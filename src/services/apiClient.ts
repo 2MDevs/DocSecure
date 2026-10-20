@@ -413,6 +413,11 @@ export const apiClient = {
   },
 
   // Status do Sistema e Hardware
+  /** Apaga sobras do armazenamento (arquivos sem documento e temporários parados). Só desenvolvedor. */
+  async cleanStorageLeftovers(): Promise<{ files: number; bytes: number }> {
+    return apiRequest('/api/system/storage-cleanup', { method: 'POST' });
+  },
+
   async getSystemStatus(): Promise<{ db: any; server: any }> {
     return apiRequest<{ db: any; server: any }>('/api/system/status');
   },
