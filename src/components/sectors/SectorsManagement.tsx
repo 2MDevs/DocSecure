@@ -186,13 +186,13 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
           </div>
         ) : (
           departments.map((dept) => {
-          const usedFormatted = formatBytes(dept.storageUsedBytes || 0, 2);
+          // A quota conta os documentos ativos + a lixeira (que ainda ocupa o disco)
+          const quotaUsed = (dept.storageUsedBytes || 0) + (dept.trashBytes || 0);
+          const usedFormatted = formatBytes(quotaUsed, 2);
           const limitFormatted = formatBytes(dept.storageLimitBytes || 536870912000, 0);
           const percentUsed = Math.min(
             100,
-            dept.storageLimitBytes > 0
-              ? parseFloat(((dept.storageUsedBytes / dept.storageLimitBytes) * 100).toFixed(2))
-              : 0
+            dept.storageLimitBytes > 0 ? parseFloat(((quotaUsed / dept.storageLimitBytes) * 100).toFixed(2)) : 0
           );
           const isNearLimit = percentUsed >= 85;
 
@@ -254,6 +254,11 @@ export const SectorsManagement: React.FC<SectorsManagementProps> = ({
                           : 'bg-blue-600'
                       }`}
                     />
+                  </div>
+
+                  <div className="text-[11px] text-slate-500">
+                    {formatBytes(dept.storageUsedBytes || 0, 2)} em documentos
+                    {(dept.trashBytes || 0) > 0 ? ` • ${formatBytes(dept.trashBytes || 0, 2)} na lixeira` : ''}
                   </div>
 
                   {isNearLimit && (

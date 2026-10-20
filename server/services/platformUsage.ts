@@ -4,6 +4,7 @@ import os from 'os';
 import { pool } from '../db';
 import { FILES_DIR } from './fileStorage';
 import { getServerDisk } from './diskInfo';
+import { scanStorage } from './storageAudit';
 
 /**
  * Quanto o DocSecure (só a plataforma, não o servidor inteiro) está consumindo:
@@ -73,12 +74,16 @@ const APP_DIR = process.cwd();
 const STORAGE_ROOT = path.dirname(FILES_DIR);
 
 export async function getPlatformUsage() {
-  const [filesBytes, appBytes, dbRow, docsRow] = await Promise.all([
+  const inStorage = (p: string) => p === STORAGE_ROOT || p.startsWith(STORAGE_ROOT + path.sep);
+  const sub = (name: string) => path.join(APP_DIR, name);
+  const [filesBytes, appBytes, depsBytes, buildBytes, runtimeBytes, scan, dbRow, docsRow] = await Promise.all([
     cached('files', 60_000, () => dirSize(STORAGE_ROOT)),
     // Aplicação instalada (código, build e dependências), sem os arquivos dos usuários e sem o histórico do git
-    cached('app', 30 * 60_000, () =>
-      dirSize(APP_DIR, (p) => p === STORAGE_ROOT || p.startsWith(STORAGE_ROOT + path.sep) || p.endsWith(`${path.sep}.git`))
-    ),
+    cached('app', 30 * 60_000, () => dirSize(APP_DIR, (p) => inStorage(p) || p.endsWith(`${path.sep}.git`))),
+    cached('app-deps', 30 * 60_000, () => dirSize(sub('node_modules'))),
+    cached('app-build', 30 * 60_000, async () => (await dirSize(sub('dist'))) + (await dirSize(sub('dist-prev'))) + (await dirSize(sub('dist-next')))),
+    cached('app-runtime', 30 * 60_000, () => dirSize(sub('.node'))),
+    scanStorage().catch(() => null),
     pool.query('SELECT pg_database_size(current_database())::bigint AS bytes').then((r) => r.rows[0]).catch(() => null),
     pool
       .query(
@@ -99,8 +104,29 @@ export async function getPlatformUsage() {
   return {
     disk: {
       filesBytes, // arquivos enviados (criptografados) + temporários
+      // De onde vêm os "arquivos": documentos ativos, lixeira, envios em andamento/interrompidos e sobras
+      files: scan
+        ? {
+            activeBytes: scan.activeBytes,
+            trashBytes: scan.trashBytes,
+            tempBytes: scan.tempBytes,
+            orphanBytes: scan.orphanBytes,
+            orphanFiles: scan.orphanFiles,
+            missingFiles: scan.missingFiles,
+            cleanableBytes: scan.cleanableBytes,
+            cleanableFiles: scan.cleanableFiles,
+          }
+        : null,
       databaseBytes: dbBytes,
       appBytes,
+      // A aplicação: dependências (node_modules), builds (atual + anterior, para voltar se a atualização falhar),
+      // Node.js instalado junto e o código
+      app: {
+        dependenciesBytes: depsBytes,
+        buildBytes,
+        runtimeBytes,
+        codeBytes: Math.max(0, appBytes - depsBytes - buildBytes - runtimeBytes),
+      },
       totalBytes: totalDisk,
       serverTotalBytes: disk?.totalBytes ?? null,
       serverFreeBytes: disk?.freeBytes ?? null,

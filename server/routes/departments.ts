@@ -42,25 +42,31 @@ departmentsRouter.use((req: Request, res: Response, next) => {
 
 // Função auxiliar para recalcular dinamicamente o armazenamento dos setores
 export async function getDepartmentsWithRealStorage() {
+  // Em uso = documentos ativos; a lixeira continua ocupando o disco (e a quota) até ser apagada
   const statsRes = await pool.query(
-    `SELECT department_id, COALESCE(SUM(size_bytes), 0) as total_bytes, count(*) as total_items
+    `SELECT department_id,
+            COALESCE(SUM(size_bytes) FILTER (WHERE status <> 'trash'), 0) AS total_bytes,
+            COUNT(*) FILTER (WHERE status <> 'trash') AS total_items,
+            COALESCE(SUM(size_bytes) FILTER (WHERE status = 'trash'), 0) AS trash_bytes,
+            COUNT(*) FILTER (WHERE status = 'trash') AS trash_items
      FROM documents
-     WHERE status != 'trash'
      GROUP BY department_id`
   );
 
-  const statsMap = new Map<string, { bytes: number; items: number }>();
+  const statsMap = new Map<string, { bytes: number; items: number; trashBytes: number; trashItems: number }>();
   for (const row of statsRes.rows) {
     statsMap.set(row.department_id, {
       bytes: parseInt(row.total_bytes, 10),
       items: parseInt(row.total_items, 10),
+      trashBytes: parseInt(row.trash_bytes, 10),
+      trashItems: parseInt(row.trash_items, 10),
     });
   }
 
   const deptRes = await pool.query('SELECT * FROM departments ORDER BY name ASC');
 
   return deptRes.rows.map((d) => {
-    const stat = statsMap.get(d.id) || { bytes: 0, items: 0 };
+    const stat = statsMap.get(d.id) || { bytes: 0, items: 0, trashBytes: 0, trashItems: 0 };
     return {
       id: d.id,
       name: d.name,
@@ -69,6 +75,8 @@ export async function getDepartmentsWithRealStorage() {
       color: d.color || '#3b82f6',
       storageLimitBytes: parseInt(d.storage_limit_bytes, 10) || 536870912000,
       storageUsedBytes: stat.bytes,
+      trashBytes: stat.trashBytes,
+      trashItemCount: stat.trashItems,
       managerId: d.manager_id,
       managerName: d.manager_name,
       description: d.description || '',

@@ -8,6 +8,8 @@ import { isInitialSetupModeActive } from '../services/systemSettings';
 import { toDocumentDto, loadFolderIndex, visibleFolderIds, documentVisible } from '../services/documentAccess';
 import { toFolderDto } from './folders';
 import { getPlatformUsage } from '../services/platformUsage';
+import { cleanStorageLeftovers } from '../services/storageAudit';
+import { writeAudit, getClientIp } from '../services/documentAccess';
 import { decorateFolders, decorateDocuments } from '../services/sharing';
 
 export const systemRouter = Router();
@@ -20,6 +22,27 @@ function formatUptime(seconds: number): string {
   if (hours > 0) return `${hours} horas, ${mins} minutos ativos`;
   return `${mins} minutos ativos`;
 }
+
+// Limpar sobras do armazenamento: arquivos sem documento (envios interrompidos) e temporários parados há mais de 1 hora
+systemRouter.post('/storage-cleanup', requireAuth, requireRole('DEVELOPER'), async (req: Request, res: Response) => {
+  try {
+    const result = await cleanStorageLeftovers();
+    const u = (req as any).user;
+    await writeAudit(
+      { id: u.id, name: u.name, role: u.role, departmentName: u.departmentName },
+      'STORAGE_CLEANUP',
+      '',
+      'Armazenamento',
+      `Limpeza de sobras: ${result.files} arquivo(s), ${Math.round(result.bytes / 1048576)} MB liberados.`,
+      'SUCCESS',
+      getClientIp(req)
+    ).catch(() => {});
+    return res.json(result);
+  } catch (err: any) {
+    console.error('[STORAGE CLEANUP ERROR]', err);
+    return res.status(500).json({ error: 'Não foi possível limpar as sobras do armazenamento.' });
+  }
+});
 
 // Endpoint de Status do Sistema & Hardware Real da VPS
 systemRouter.get('/status', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (_req: Request, res: Response) => {

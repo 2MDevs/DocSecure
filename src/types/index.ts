@@ -54,6 +54,9 @@ export interface Department {
   color: string;
   storageLimitBytes: number; // in bytes
   storageUsedBytes: number;
+  /** Ocupado pela lixeira do setor (continua no disco e conta na quota até ser apagado) */
+  trashBytes?: number;
+  trashItemCount?: number;
   managerId?: string;
   managerName?: string;
   description: string;
