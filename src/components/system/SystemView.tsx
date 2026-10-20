@@ -30,12 +30,14 @@ import {
   Zap,
   Plus,
 } from 'lucide-react';
-import { ApiKey, WebhookConfig, User } from '../../types';
+import { ApiKey, WebhookConfig, User, Department } from '../../types';
 import { PlatformUsagePanel } from './PlatformUsagePanel';
 import { apiClient } from '../../services/apiClient';
 
 interface SystemViewProps {
   currentUser: User;
+  /** Setores com o espaço usado (para comparar com o total do DocSecure) */
+  departments?: Department[];
   apiKeys: ApiKey[];
   webhooks: WebhookConfig[];
   onCreateApiKey: (name: string, scopes: string[]) => void;
@@ -60,6 +62,7 @@ const fmtGb = (gb: number) =>
 
 export const SystemView: React.FC<SystemViewProps> = ({
   currentUser,
+  departments = [],
   apiKeys,
   webhooks,
   onCreateApiKey,
@@ -447,7 +450,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
       </div>
 
       {/* Aba: o que o DocSecure está consumindo (separado do servidor inteiro) */}
-      {activeTab === 'platform' && <PlatformUsagePanel usage={platformUsage} />}
+      {activeTab === 'platform' && <PlatformUsagePanel usage={platformUsage} departments={departments} canClean={currentUser.role === 'DEVELOPER'} />}
 
       {/* Tab 1: Métricas de Infraestrutura (Banco, Memória, Disco) */}
       {activeTab === 'metrics' && (
