@@ -25,7 +25,7 @@ import {
   PermissionType,
 } from './types';
 import { createAuditEntry, verifyPermission } from './services/securityEngine';
-import { apiClient, dispatchSessionExpired, SESSION_LOCKED_EVENT } from './services/apiClient';
+import { apiClient, dispatchSessionExpired, SESSION_LOCKED_EVENT, SESSION_UNLOCKED_EVENT } from './services/apiClient';
 import type { UpdateNotice } from './services/apiClient';
 import { UPDATE_CHECK_EVENT } from './components/settings/SystemUpdatePanel';
 import { isNewVersionAvailable } from './services/appVersion';
@@ -353,7 +353,7 @@ export default function App() {
   const [uploadingDocs, setUploadingDocs] = useState<DocumentItem[]>([]);
   const [syncStates, setSyncStates] = useState<Record<string, 'uploading' | 'pending' | 'synced' | 'error'>>({});
   const [isLocked, setIsLocked] = useState(false);
-  const [securityPolicy, setSecurityPolicy] = useState<{ lockIdleMinutes: number; hasPin: boolean }>({ lockIdleMinutes: 0, hasPin: false });
+  const [securityPolicy, setSecurityPolicy] = useState<{ lockIdleMinutes: number; hasPin: boolean; maxUploadBytes?: number }>({ lockIdleMinutes: 0, hasPin: false });
   const processingQueueRef = useRef(false);
 
   useEffect(() => {
@@ -430,7 +430,7 @@ export default function App() {
       apiClient
         .getSecurityPolicy()
         .then((p) => {
-          setSecurityPolicy({ lockIdleMinutes: p.lockIdleMinutes, hasPin: p.hasPin });
+          setSecurityPolicy({ lockIdleMinutes: p.lockIdleMinutes, hasPin: p.hasPin, maxUploadBytes: p.maxUploadBytes });
           if (p.sessionLocked) setIsLocked(true);
         })
         .catch(() => {});
@@ -521,6 +521,7 @@ export default function App() {
 
   const handleUnlocked = () => {
     setIsLocked(false);
+    window.dispatchEvent(new Event(SESSION_UNLOCKED_EVENT)); // envios pausados continuam
     try {
       localStorage.setItem('ds.unlockedAt', String(Date.now()));
       localStorage.setItem('ds.lastActivity', String(Date.now()));
@@ -567,6 +568,7 @@ export default function App() {
       }
       if (e.key === 'ds.unlockedAt') {
         setIsLocked(false);
+        window.dispatchEvent(new Event(SESSION_UNLOCKED_EVENT));
         loadBootstrapData({ silent: true });
       }
     };
@@ -995,6 +997,8 @@ export default function App() {
       tags: string[];
       security?: { visibility?: string; downloadPolicy?: string; deletePolicy?: string };
       onConflict?: 'replace' | 'rename';
+      /** Envio em lote: sem conexão, NÃO guarda na fila local (o lote mostra o erro e permite tentar de novo) */
+      noQueue?: boolean;
     },
     onProgress?: (percent: number) => void
   ): Promise<DocumentItem> => {
@@ -1005,9 +1009,12 @@ export default function App() {
       return pendingToDoc(p);
     };
 
-    if (!canWrite()) return queueIt();
+    if (!canWrite()) {
+      if (options.noQueue) throw new Error('Sem conexão com o servidor. Use “Tentar de novo” quando a conexão voltar.');
+      return queueIt();
+    }
 
-    const tempId = 'uploading-' + Date.now();
+    const tempId = 'uploading-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8); // únicos mesmo com vários envios no mesmo instante
     const temp: DocumentItem = {
       ...pendingToDoc({
         id: tempId,
@@ -1038,7 +1045,7 @@ export default function App() {
       markSynced(saved.id);
       return saved;
     } catch (err: any) {
-      if (err?.isConnectionError) return queueIt();
+      if (err?.isConnectionError && !options.noQueue) return queueIt();
       throw err;
     } finally {
       setUploadingDocs((prev) => prev.filter((d) => d.id !== tempId));
@@ -1181,12 +1188,6 @@ export default function App() {
   };
 
   // Restaurar da lixeira
-  const handleRestoreDocument = async (doc: DocumentItem) => {
-    const restored = await apiClient.restoreDocument(doc.id);
-    setDocuments((prev) => [restored, ...prev.filter((d) => d.id !== restored.id)]);
-    return restored;
-  };
-
   // Device Management Actions (Persisted to PostgreSQL)
   const handleApproveDevice = async (deviceId: string) => {
     setDevices((prev) =>
@@ -1781,6 +1782,7 @@ export default function App() {
               onDeleteMany={handleDeleteMany}
               onCreateFolderDirect={handleCreateFolder}
               onUploadFile={handleUploadDocument}
+              maxUploadBytes={securityPolicy.maxUploadBytes}
               isOnline={connectionStatus === 'online'}
               onUpdateUserPermissions={handleUpdatePermissions}
               onUpdateFolder={handleUpdateFolder}
@@ -1881,8 +1883,15 @@ export default function App() {
             <TrashView
               currentUser={currentUser}
               departments={departments}
-              onRestore={handleRestoreDocument}
+              folders={folders}
+              onRestored={(restored) => {
+                const ids = new Set(restored.map((d) => d.id));
+                setDocuments((prev) => [...restored, ...prev.filter((d) => !ids.has(d.id))]);
+                // pastas recriadas no caminho original aparecem com a recarga em tempo real
+                loadBootstrapData({ silent: true });
+              }}
               refreshKey={dataVersion}
+              onGoHome={() => navigateToTab('my_documents')}
             />
           )}
 

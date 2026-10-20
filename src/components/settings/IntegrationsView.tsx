@@ -63,7 +63,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
   const [smtpFrom, setSmtpFrom] = useState('');
 
   const [sessionTtlHours, setSessionTtlHours] = useState('8');
-  const [maxUploadMb, setMaxUploadMb] = useState('25');
+  const [maxUploadMb, setMaxUploadMb] = useState('2048');
   const [lockIdleMinutes, setLockIdleMinutes] = useState('10');
   const [pinMaxAttempts, setPinMaxAttempts] = useState('5');
 
@@ -157,7 +157,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
       setSmtpFrom(draft?.smtpFrom !== undefined ? draft.smtpFrom : (getVal('SMTP_FROM') || 'DocSecure <nao-responda@empresa.com.br>'));
 
       setSessionTtlHours(draft?.sessionTtlHours !== undefined ? draft.sessionTtlHours : (getVal('SESSION_TTL_HOURS') || '8'));
-      setMaxUploadMb(draft?.maxUploadMb !== undefined ? draft.maxUploadMb : (getVal('MAX_UPLOAD_MB') || '25'));
+      setMaxUploadMb(draft?.maxUploadMb !== undefined ? draft.maxUploadMb : (getVal('MAX_UPLOAD_MB') || '2048'));
       setLockIdleMinutes(getVal('LOCK_IDLE_MINUTES') || '10');
       setPinMaxAttempts(getVal('PIN_MAX_ATTEMPTS') || '5');
 
@@ -228,7 +228,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
         SMTP_USER: smtpUser,
         SMTP_FROM: smtpFrom,
         SESSION_TTL_HOURS: parseInt(sessionTtlHours, 10) || 8,
-        MAX_UPLOAD_MB: parseInt(maxUploadMb, 10) || 25,
+        MAX_UPLOAD_MB: parseInt(maxUploadMb, 10) || 2048,
         LOCK_IDLE_MINUTES: Number.isFinite(parseInt(lockIdleMinutes, 10)) ? parseInt(lockIdleMinutes, 10) : 10,
         PIN_MAX_ATTEMPTS: parseInt(pinMaxAttempts, 10) || 5,
         ADMIN_EMAIL: adminEmail,
@@ -740,13 +740,13 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
               <input
                 type="number"
                 min="1"
-                max="500"
+                max="10240"
                 value={maxUploadMb}
                 onChange={(e) => setMaxUploadMb(e.target.value)}
                 placeholder="25"
                 className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
               />
-              <p className="text-[10px] text-slate-400 mt-1">Padrão: 25 MB (mínimo 1, máximo 500 MB).</p>
+              <p className="text-[10px] text-slate-400 mt-1">Por arquivo. Padrão: 2048 MB (2 GB) · mínimo 1, máximo 10240 MB (10 GB). Arquivos grandes sobem em partes.</p>
             </div>
 
             {/* LOCK_IDLE_MINUTES */}

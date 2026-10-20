@@ -35,7 +35,8 @@ interface AppShellProps {
 }
 
 // Telas que já têm a própria barra de comandos/endereço (o explorador de arquivos)
-const EXPLORER_TABS: NavigationTab[] = ['my_documents', 'favorites', 'shared'];
+// Telas com barra de comandos e endereço próprias (visual do Explorador)
+const EXPLORER_TABS: NavigationTab[] = ['my_documents', 'favorites', 'shared', 'trash'];
 const ADMIN_TABS: NavigationTab[] = ['dev_dashboard', 'users', 'sectors', 'permissions', 'devices', 'audit_logs', 'system', 'integrations'];
 
 /**

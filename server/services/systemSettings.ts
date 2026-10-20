@@ -27,7 +27,7 @@ export const DEFAULT_SETTINGS: Record<string, { defaultValue: string; isSecret: 
   SMTP_PASS: { defaultValue: '', isSecret: true },
   SMTP_FROM: { defaultValue: 'DocSecure <nao-responda@docsecure.io>', isSecret: false },
   SESSION_TTL_HOURS: { defaultValue: '8', isSecret: false },
-  MAX_UPLOAD_MB: { defaultValue: '25', isSecret: false },
+  MAX_UPLOAD_MB: { defaultValue: '2048', isSecret: false },
   LOCK_IDLE_MINUTES: { defaultValue: '10', isSecret: false },
   PIN_MAX_ATTEMPTS: { defaultValue: '5', isSecret: false },
   ADMIN_EMAIL: { defaultValue: '', isSecret: false },
@@ -66,8 +66,8 @@ export const SettingsUpdateSchema = z.object({
     .refine((val) => {
       if (val === undefined || val === '') return true;
       const num = parseInt(val, 10);
-      return !isNaN(num) && num >= 1 && num <= 500;
-    }, { message: 'MAX_UPLOAD_MB deve estar entre 1 e 500 MB.' }),
+      return !isNaN(num) && num >= 1 && num <= 10240;
+    }, { message: 'MAX_UPLOAD_MB deve estar entre 1 e 10240 MB (10 GB).' }),
   LOCK_IDLE_MINUTES: z
     .union([z.number(), z.string()])
     .optional()
@@ -392,4 +392,14 @@ export async function saveSetting(
   }
 
   return { key, isSecret: meta.isSecret };
+}
+
+/** Limite padrão por arquivo e o máximo que pode ser configurado na tela Integração (10 GB) */
+export const DEFAULT_MAX_UPLOAD_MB = 2048;
+export const MAX_UPLOAD_MB_CAP = 10240;
+
+export async function getMaxUploadBytes(): Promise<number> {
+  const raw = parseInt((await getEffectiveSetting('MAX_UPLOAD_MB')).value || String(DEFAULT_MAX_UPLOAD_MB), 10);
+  const mb = Number.isFinite(raw) && raw > 0 ? Math.min(raw, MAX_UPLOAD_MB_CAP) : DEFAULT_MAX_UPLOAD_MB;
+  return mb * 1024 * 1024;
 }

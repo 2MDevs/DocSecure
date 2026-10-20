@@ -45,6 +45,9 @@ import { collectFromDrop, collectFromInput, hasExternalFiles, PickedFile } from 
 import { canAccessDepartment } from '../layout/NavPane';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { BottomSheet } from '../common/BottomSheet';
+import { formatBytes, typeLabel, IMAGE_EXT, FolderGlyph, DriveGlyph, FileGlyph } from './explorerGlyphs';
+
+export { formatBytes };
 
 interface DocumentsExplorerProps {
   currentUser: User;
@@ -71,9 +74,11 @@ interface DocumentsExplorerProps {
   }) => Promise<Folder>;
   onUploadFile?: (
     file: File,
-    options: { departmentId: string; folderId: string | null; name: string; tags: string[]; security?: any; onConflict?: 'replace' | 'rename' },
+    options: { departmentId: string; folderId: string | null; name: string; tags: string[]; security?: any; onConflict?: 'replace' | 'rename'; noQueue?: boolean },
     onProgress?: (percent: number) => void
   ) => Promise<DocumentItem>;
+  /** Limite por arquivo definido em Integração (para avisar antes de enviar) */
+  maxUploadBytes?: number;
   isOnline?: boolean;
   /** Excluir vários itens de uma vez (arquivos vão para a lixeira; pastas com o conteúdo) */
   onDeleteMany?: (docIds: string[], folderIds: string[]) => Promise<unknown>;
@@ -116,124 +121,10 @@ type Item =
 // ---------------------------------------------------------------------------
 // Utilidades
 // ---------------------------------------------------------------------------
-export function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 KB';
-  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-  const value = bytes / Math.pow(1024, i);
-  return `${value.toLocaleString('pt-BR', { maximumFractionDigits: i === 0 ? 0 : value < 10 ? 1 : 0 })} ${units[i]}`;
-}
-
 const formatDate = (value?: string) => {
   if (!value) return '';
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? value : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  pdf: 'Documento PDF',
-  doc: 'Documento do Word',
-  docx: 'Documento do Word',
-  xls: 'Planilha do Excel',
-  xlsx: 'Planilha do Excel',
-  csv: 'Arquivo CSV',
-  ppt: 'Apresentação do PowerPoint',
-  pptx: 'Apresentação do PowerPoint',
-  png: 'Imagem PNG',
-  jpg: 'Imagem JPEG',
-  jpeg: 'Imagem JPEG',
-  gif: 'Imagem GIF',
-  webp: 'Imagem WEBP',
-  zip: 'Pasta compactada',
-  rar: 'Arquivo compactado',
-  txt: 'Documento de texto',
-};
-const typeLabel = (ext: string) => TYPE_LABEL[ext?.toLowerCase()] || `Arquivo ${ext?.toUpperCase() || ''}`.trim();
-
-const EXT_COLORS: Record<string, string> = {
-  pdf: '#dc2626',
-  doc: '#2563eb',
-  docx: '#2563eb',
-  xls: '#16a34a',
-  xlsx: '#16a34a',
-  csv: '#15803d',
-  ppt: '#ea580c',
-  pptx: '#ea580c',
-  zip: '#ca8a04',
-  rar: '#ca8a04',
-  txt: '#64748b',
-};
-const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
-
-/** Ícone de pasta no estilo do Windows */
-const FolderGlyph: React.FC<{ size: number; locked?: boolean; dimmed?: boolean; privateFolder?: boolean; shared?: boolean }> = ({ size, locked, dimmed, privateFolder, shared }) => (
-  <div className={`relative ${dimmed ? 'opacity-60' : ''}`} style={{ width: size, height: size }}>
-    <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
-      <path d="M4 14a4 4 0 0 1 4-4h16l6 6h26a4 4 0 0 1 4 4v4H4z" fill="#e0a526" />
-      <path d="M4 22h56v28a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#f8c94a" />
-      <path d="M4 22h56v3H4z" fill="#fbd96b" />
-    </svg>
-    {shared && (
-      <span className="absolute -bottom-0.5 -left-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200" title="Pasta compartilhada">
-        <Users className="text-sky-600" style={{ width: size * 0.22, height: size * 0.22 }} />
-      </span>
-    )}
-    {(locked || privateFolder) && (
-      <span
-        className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200"
-        title={privateFolder ? 'Pasta privada' : 'Pasta trancada'}
-      >
-        {privateFolder ? (
-          <EyeOff className="text-violet-600" style={{ width: size * 0.22, height: size * 0.22 }} />
-        ) : (
-          <Lock className="text-slate-600" style={{ width: size * 0.22, height: size * 0.22 }} />
-        )}
-      </span>
-    )}
-  </div>
-);
-
-/** Ícone de unidade (setor) no estilo "Este Computador" */
-const DriveGlyph: React.FC<{ size: number; locked?: boolean }> = ({ size, locked }) => (
-  <div className={`relative ${locked ? 'opacity-60' : ''}`} style={{ width: size, height: size }}>
-    <FolderGlyph size={size} />
-    <HardDrive
-      className="absolute text-amber-900/70"
-      style={{ width: size * 0.32, height: size * 0.32, left: size * 0.34, top: size * 0.44 }}
-    />
-    {locked && (
-      <span className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow border border-slate-200">
-        <Lock className="text-rose-600" style={{ width: size * 0.22, height: size * 0.22 }} />
-      </span>
-    )}
-  </div>
-);
-
-/** Ícone de arquivo: folha com canto dobrado e etiqueta da extensão */
-const FileGlyph: React.FC<{ ext: string; size: number }> = ({ ext, size }) => {
-  const e = (ext || '').toLowerCase();
-  if (IMAGE_EXT.includes(e)) {
-    return (
-      <div
-        className="rounded-md bg-gradient-to-br from-sky-100 to-indigo-100 border border-slate-200 flex items-center justify-center"
-        style={{ width: size * 0.82, height: size }}
-      >
-        <ImageIcon className="text-indigo-500" style={{ width: size * 0.45, height: size * 0.45 }} />
-      </div>
-    );
-  }
-  const color = EXT_COLORS[e] || '#475569';
-  const label = (e || 'arq').toUpperCase().slice(0, 4);
-  return (
-    <svg viewBox="0 0 52 64" width={size * 0.82} height={size} aria-hidden="true">
-      <path d="M4 2h30l14 14v44a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="#fff" stroke="#cbd5e1" strokeWidth="2" />
-      <path d="M34 2v12a2 2 0 0 0 2 2h12" fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="2" />
-      <rect x="6" y="34" width="40" height="16" rx="3" fill={color} />
-      <text x="26" y="46" textAnchor="middle" fontSize={label.length > 3 ? 9 : 11} fontWeight="700" fill="#fff" fontFamily="Segoe UI, Arial, sans-serif">
-        {label}
-      </text>
-    </svg>
-  );
 };
 
 const readPref = <T,>(key: string, fallback: T): T => {
@@ -270,6 +161,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   onUpdateDocumentSecurity,
   onCreateFolderDirect,
   onUploadFile,
+  maxUploadBytes,
   isOnline = true,
   onDeleteMany,
   onUpdateUserPermissions,
@@ -338,6 +230,14 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     label: string;
   } | null>(null);
   const [bulk, setBulk] = useState<{ items: BulkItemState[]; foldersCreated: number; running: boolean } | null>(null);
+  /** O que o último envio em lote precisa para "Tentar de novo" só os que falharam */
+  const bulkRun = useRef<{
+    files: PickedFile[];
+    dest: { deptId: string; folderId: string | null };
+    security: any;
+    decision: Map<number, 'replace' | 'rename' | 'skip'>;
+    ensure: (dirs: string[]) => Promise<string | null>;
+  } | null>(null);
   const filesInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const foldersRef = useRef(folders);
@@ -857,12 +757,12 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   const runBulk = async (opts: { security: any; privateFolders: boolean }) => {
     if (!pick || !onUploadFile) return;
     const { dest } = pick;
-    const files = pick.files.filter((f) => !isBlockedFile(f.file.name));
+    const tooBig = (f: PickedFile) => Boolean(maxUploadBytes && f.file.size > maxUploadBytes);
+    const files = pick.files.filter((f) => !isBlockedFile(f.file.name) && !tooBig(f));
+    const emptyDirs = pick.folders;
     setPick(null);
-    const items: BulkItemState[] = files.map((f) => ({ name: f.file.name, path: f.dirs.join(' › '), status: 'wait' }));
+    const items: BulkItemState[] = files.map((f) => ({ name: f.file.name, path: f.dirs.join(' › '), size: f.file.size, status: 'wait' }));
     let foldersCreated = 0;
-    const update = (i: number, patch: Partial<BulkItemState>) =>
-      setBulk((b) => (b ? { ...b, items: b.items.map((it, k) => (k === i ? { ...it, ...patch } : it)) } : b));
     setBulk({ items, foldersCreated: 0, running: true });
 
     // 1) Pastas: criadas ANTES dos arquivos, uma de cada vez (pais antes dos filhos),
@@ -896,13 +796,15 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           setBulk((b) => (b ? { ...b, foldersCreated } : b));
           return created.id;
         } catch (err: any) {
+          folderIdByPath.delete(key); // permite tentar de novo depois
           throw new Error(`Pasta "${name}": ${err?.message || 'não foi possível criar'}`);
         }
       })();
       folderIdByPath.set(key, job); // guarda a promessa: ninguém cria a mesma pasta duas vezes
       return job;
     };
-    const allDirs = [...new Set(files.filter((f) => f.dirs.length).map((f) => f.dirs.join('/')))].sort(
+    // Todas as pastas, inclusive as vazias, na mesma organização do computador
+    const allDirs = [...new Set([...files.filter((f) => f.dirs.length).map((f) => f.dirs.join('/')), ...emptyDirs])].sort(
       (a, b) => a.split('/').length - b.split('/').length
     );
     for (const d of allDirs) {
@@ -921,14 +823,18 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       }
       const found: Array<BulkConflict & { idx: number[] }> = [];
       for (const [k, idxs] of groups) {
-        try {
-          const { conflicts } = await apiClient.checkFileNames(dest.deptId, k || null, idxs.map((i) => files[i].file.name));
-          conflicts.forEach((c) => {
-            const matching = idxs.filter((i) => files[i].file.name.toLowerCase() === c.name.toLowerCase());
-            found.push({ ...c, path: files[matching[0]]?.dirs.join(' › ') || '', idx: matching });
-          });
-        } catch {
-          /* se a verificação falhar, o servidor renomeia sozinho */
+        // de 500 em 500 nomes por consulta
+        for (let p = 0; p < idxs.length; p += 500) {
+          const part = idxs.slice(p, p + 500);
+          try {
+            const { conflicts } = await apiClient.checkFileNames(dest.deptId, k || null, part.map((i) => files[i].file.name));
+            conflicts.forEach((c) => {
+              const matching = part.filter((i) => files[i].file.name.toLowerCase() === c.name.toLowerCase());
+              found.push({ ...c, path: files[matching[0]]?.dirs.join(' › ') || '', idx: matching });
+            });
+          } catch {
+            /* se a verificação falhar, o servidor renomeia sozinho */
+          }
         }
       }
       if (found.length) {
@@ -941,17 +847,30 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
       }
     }
 
-    // 3) Arquivos: até 3 envios ao mesmo tempo
+    bulkRun.current = { files, dest, security: opts.security, decision, ensure };
+    await sendBulkFiles(files.map((_, i) => i));
+  };
+
+  /** Sobe os arquivos indicados, 3 ao mesmo tempo. Erros ficam marcados para "Tentar de novo". */
+  const sendBulkFiles = async (indexes: number[]) => {
+    const run = bulkRun.current;
+    if (!run || !onUploadFile) return;
+    const { files, dest, security, decision, ensure } = run;
+    const lastPct = new Map<number, number>();
+    const update = (i: number, patch: Partial<BulkItemState>) =>
+      setBulk((b) => (b ? { ...b, items: b.items.map((it, k) => (k === i ? { ...it, ...patch } : it)) } : b));
+    setBulk((b) => (b ? { ...b, running: true } : b));
+
     let next = 0;
     const worker = async () => {
-      while (next < files.length) {
-        const i = next++;
+      while (next < indexes.length) {
+        const i = indexes[next++];
         const f = files[i];
         if (decision.get(i) === 'skip') {
           update(i, { status: 'skip', error: 'Ignorado: já existia no destino' });
           continue;
         }
-        update(i, { status: 'up', percent: 0 });
+        update(i, { status: 'up', percent: 0, error: undefined });
         try {
           const folderId = await ensure(f.dirs);
           await onUploadFile(
@@ -961,10 +880,16 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
               folderId,
               name: f.file.name,
               tags: [],
-              security: opts.security,
+              security,
               onConflict: decision.get(i) === 'replace' ? 'replace' : 'rename',
+              noQueue: true,
             },
-            (pct) => update(i, { percent: pct })
+            (pct) => {
+              // atualiza a tela no máximo a cada 2%
+              if (pct - (lastPct.get(i) ?? -10) < 2 && pct < 100) return;
+              lastPct.set(i, pct);
+              update(i, { percent: pct });
+            }
           );
           update(i, { status: 'ok', percent: 100 });
         } catch (err: any) {
@@ -975,6 +900,23 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
     await Promise.all([worker(), worker(), worker()]);
     setBulk((b) => (b ? { ...b, running: false } : b));
   };
+
+  const retryFailedBulk = () => {
+    if (!bulk || bulk.running) return;
+    const failed = bulk.items.map((it, i) => (it.status === 'err' ? i : -1)).filter((i) => i >= 0);
+    if (failed.length) sendBulkFiles(failed);
+  };
+
+  // Envio em andamento: avisa antes de fechar/recarregar a página (o que falta não subiria)
+  useEffect(() => {
+    if (!bulk?.running) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [bulk?.running]);
 
   // ---------------------------------------------------------------- teclado e cliques fora
   useEffect(() => {
@@ -2244,6 +2186,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           folders={pick.folders}
           destination={pick.label}
           online={isOnline}
+          maxUploadBytes={maxUploadBytes}
           onCancel={() => setPick(null)}
           onConfirm={runBulk}
         />
@@ -2258,7 +2201,15 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           }}
         />
       )}
-      {bulk && <BulkUploadPanel items={bulk.items} foldersCreated={bulk.foldersCreated} running={bulk.running} onClose={() => setBulk(null)} />}
+      {bulk && (
+        <BulkUploadPanel
+          items={bulk.items}
+          foldersCreated={bulk.foldersCreated}
+          running={bulk.running}
+          onRetry={retryFailedBulk}
+          onClose={() => setBulk(null)}
+        />
+      )}
 
       {/* Propriedades: Geral + Segurança (arquivo ou pasta) */}
       {propsTarget &&

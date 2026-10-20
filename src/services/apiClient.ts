@@ -50,6 +50,12 @@ export interface NameConflict {
   suggestedName: string;
 }
 
+export interface TrashFailure {
+  id: string;
+  name: string;
+  error: string;
+}
+
 export interface UpdateNotice {
   updateAvailable: boolean;
   running?: boolean;
@@ -200,6 +206,103 @@ export async function apiRequest<T = any>(url: string, init?: RequestInit): Prom
   }
 }
 
+// ---------------------------------------------------------------------------
+// Envio em partes
+// ---------------------------------------------------------------------------
+const DEFAULT_CHUNK = 4 * 1024 * 1024;
+const MIN_CHUNK = 512 * 1024;
+export const SESSION_UNLOCKED_EVENT = 'docsecure:session-unlocked';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Enquanto um envio está andando a pessoa não está "inativa": não bloqueia a tela no meio do envio */
+let lastActivityMark = 0;
+function markUploadActivity() {
+  const now = Date.now();
+  if (now - lastActivityMark < 5000) return;
+  lastActivityMark = now;
+  try {
+    localStorage.setItem('ds.lastActivity', String(now));
+  } catch {}
+}
+
+/** Tela bloqueada no meio do envio: espera a pessoa desbloquear e continua de onde parou */
+function waitForUnlock(): Promise<void> {
+  dispatchSessionLocked();
+  return new Promise((resolve) => window.addEventListener(SESSION_UNLOCKED_EVENT, () => resolve(), { once: true }));
+}
+
+/** Espera a conexão com o servidor voltar (até 10 minutos) */
+async function waitForConnection() {
+  const until = Date.now() + 10 * 60_000;
+  while (!canWrite() && Date.now() < until) await sleep(2000);
+  if (!canWrite()) throw new ConnectionError();
+}
+
+class UploadHttpError extends Error {
+  constructor(message: string, public status: number, public code?: string, public received?: number) {
+    super(message);
+  }
+}
+
+function uploadError(status: number, body: any): Error {
+  if (status === 401) {
+    dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
+    return new UploadHttpError(SESSION_EXPIRED_MESSAGE, 401);
+  }
+  if (status === 0 || status === 502 || status === 504 || (status === 503 && !String(body?.error || '').includes('SETTINGS_ENCRYPTION_KEY'))) {
+    reportConnectionProblem();
+    return new ConnectionError();
+  }
+  if (status === 413 && !body?.error) {
+    return new UploadHttpError('O servidor recusou o tamanho do envio (limite do proxy).', 413, 'PROXY_LIMIT');
+  }
+  return new UploadHttpError(body?.error || `Falha no envio (HTTP ${status}).`, status, body?.code, body?.received);
+}
+
+async function uploadCall<T = any>(method: string, url: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      credentials: 'include',
+      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    reportConnectionProblem();
+    throw new ConnectionError();
+  }
+  let parsed: any = null;
+  try {
+    parsed = await res.json();
+  } catch {}
+  if (!res.ok) throw uploadError(res.status, parsed);
+  return parsed as T;
+}
+
+function putChunk(uploadId: string, offset: number, blob: Blob, onLoaded: (loaded: number) => void): Promise<{ received: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `/api/documents/uploads/${uploadId}/chunk?offset=${offset}`);
+    xhr.withCredentials = true;
+    xhr.timeout = 300_000; // conexões lentas: 4 MB podem levar alguns minutos
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.upload.onprogress = (e) => onLoaded(e.loaded);
+    xhr.onload = () => {
+      let body: any = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {}
+      if (xhr.status >= 200 && xhr.status < 300 && body && typeof body.received === 'number') return resolve(body);
+      reject(uploadError(xhr.status, body));
+    };
+    xhr.onerror = () => reject(uploadError(0, null));
+    xhr.ontimeout = () => reject(uploadError(0, null));
+    xhr.send(blob);
+  });
+}
+
 export const apiClient = {
   // Autenticação & Sessão
   async login(username: string, password: string): Promise<LoginResponse> {
@@ -260,7 +363,7 @@ export const apiClient = {
   },
 
   // Bloqueio por inatividade e PIN
-  async getSecurityPolicy(): Promise<{ lockIdleMinutes: number; pinMaxAttempts: number; hasPin: boolean; sessionLocked: boolean }> {
+  async getSecurityPolicy(): Promise<{ lockIdleMinutes: number; pinMaxAttempts: number; hasPin: boolean; sessionLocked: boolean; maxUploadBytes?: number }> {
     return apiRequest('/api/auth/security-policy');
   },
 
@@ -452,6 +555,31 @@ export const apiClient = {
     return apiRequest(`/api/documents/trash${qs}`);
   },
 
+  /** Lixeira: vários itens de uma vez. Devolve o que deu certo e o que falhou (com o motivo). */
+  async restoreTrashItems(ids: string[]): Promise<{ restored: DocumentItem[]; failed: TrashFailure[] }> {
+    return apiRequest('/api/documents/trash/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+  },
+
+  async purgeTrashItems(ids: string[]): Promise<{ purged: string[]; failed: TrashFailure[] }> {
+    return apiRequest('/api/documents/trash/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+  },
+
+  async emptyTrash(departmentId: string): Promise<{ purged: string[]; failed: TrashFailure[] }> {
+    return apiRequest('/api/documents/trash/empty', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ departmentId }),
+    });
+  },
+
   async restoreDocument(id: string): Promise<DocumentItem> {
     return apiRequest<DocumentItem>(`/api/documents/${encodeURIComponent(id)}/restore`, { method: 'POST' });
   },
@@ -512,7 +640,13 @@ export const apiClient = {
     });
   },
 
-  /** Envia o arquivo real. folderId vazio/null = raiz do setor. */
+  /**
+   * Envia o arquivo real, em partes (funciona para arquivos de vários GB).
+   * - Cada parte é reenviada sozinha se a internet oscilar; quedas curtas não perdem o que já subiu.
+   * - Se o proxy recusar o tamanho da parte, diminui a parte e continua.
+   * - Se a tela for bloqueada por inatividade no meio, espera o desbloqueio e continua.
+   * folderId vazio/null = raiz do setor.
+   */
   async uploadFile(
     file: File,
     options: {
@@ -526,52 +660,89 @@ export const apiClient = {
     },
     onProgress?: (percent: number) => void
   ): Promise<DocumentItem & { replacedDocumentId?: string | null }> {
-    const formData = new FormData();
-    if (options.onConflict) formData.append('onConflict', options.onConflict);
-    // Campos de texto antes do arquivo (o servidor lê junto com o envio)
-    if (options.security?.visibility) formData.append('visibility', options.security.visibility);
-    if (options.security?.downloadPolicy) formData.append('downloadPolicy', options.security.downloadPolicy);
-    if (options.security?.deletePolicy) formData.append('deletePolicy', options.security.deletePolicy);
-    formData.append('departmentId', options.departmentId);
-    if (options.folderId) formData.append('folderId', options.folderId);
-    if (options.name) formData.append('name', options.name);
-    if (options.tags?.length) formData.append('tags', options.tags.join(','));
-    formData.append('file', file);
+    const startBody = {
+      departmentId: options.departmentId,
+      folderId: options.folderId || null,
+      name: options.name || file.name,
+      size: file.size,
+      onConflict: options.onConflict || 'rename',
+      tags: options.tags || [],
+      ...(options.security || {}),
+    };
+    const report = (sent: number) => {
+      markUploadActivity();
+      if (onProgress) onProgress(file.size ? Math.min(99, Math.floor((sent / file.size) * 100)) : 99);
+    };
 
-    // XMLHttpRequest para acompanhar o progresso do envio
-    return new Promise<DocumentItem>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/documents/upload');
-      xhr.withCredentials = true;
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
-        let body: any = null;
-        try {
-          body = JSON.parse(xhr.responseText);
-        } catch {}
-        if (xhr.status === 401) {
-          dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
-          return reject(new Error(SESSION_EXPIRED_MESSAGE));
+    let session = await uploadCall<{ uploadId: string; chunkSize: number }>('POST', '/api/documents/uploads', startBody);
+    let chunkSize = Math.max(MIN_CHUNK, session.chunkSize || DEFAULT_CHUNK);
+    let offset = 0;
+    let failures = 0;
+    let restarts = 0;
+    report(0);
+
+    while (offset < file.size) {
+      const end = Math.min(file.size, offset + chunkSize);
+      try {
+        const r = await putChunk(session.uploadId, offset, file.slice(offset, end), (loaded) => report(offset + loaded));
+        offset = r.received;
+        failures = 0;
+        report(offset);
+      } catch (err: any) {
+        if (err?.status === 409 && typeof err.received === 'number') {
+          offset = err.received; // o servidor diz até onde já chegou
+          await sleep(400);
+          continue;
         }
-        if (xhr.status === 423) {
-          dispatchSessionLocked();
-          return reject(new Error('Sessão bloqueada por inatividade. Desbloqueie para continuar.'));
+        if (err?.status === 413 && chunkSize > MIN_CHUNK) {
+          chunkSize = MIN_CHUNK; // proxy com limite baixo por requisição
+          continue;
         }
-        if (xhr.status === 0 || xhr.status === 502 || xhr.status === 504 || (xhr.status === 503 && !body?.error?.includes('SETTINGS_ENCRYPTION_KEY'))) {
-          reportConnectionProblem();
-          return reject(new ConnectionError());
+        if (err?.code === 'UPLOAD_SESSION_NOT_FOUND' && restarts < 2) {
+          // Servidor reiniciou no meio (ex.: atualização): recomeça este arquivo
+          restarts += 1;
+          session = await uploadCall('POST', '/api/documents/uploads', startBody);
+          offset = 0;
+          continue;
         }
-        if (xhr.status >= 200 && xhr.status < 300 && body) return resolve(body as DocumentItem);
-        reject(new Error(body?.error || `Falha no envio (HTTP ${xhr.status}).`));
-      };
-      xhr.onerror = () => {
-        reportConnectionProblem();
-        reject(new ConnectionError());
-      };
-      xhr.send(formData);
-    });
+        if (err?.status === 423) {
+          await waitForUnlock();
+          continue;
+        }
+        if (err?.isConnectionError) {
+          failures += 1;
+          if (failures >= 2 && chunkSize > MIN_CHUNK) chunkSize = MIN_CHUNK;
+          if (failures > 8) throw new ConnectionError('A conexão caiu várias vezes durante o envio. Tente de novo quando a internet estabilizar.');
+          await sleep(Math.min(30_000, 1000 * 2 ** failures));
+          await waitForConnection();
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    // Concluir (com novas tentativas se a conexão oscilar)
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const saved = await uploadCall<DocumentItem & { replacedDocumentId?: string | null }>(
+          'POST',
+          `/api/documents/uploads/${session.uploadId}/finish`
+        );
+        onProgress?.(100);
+        return saved;
+      } catch (err: any) {
+        if (err?.status === 423) {
+          await waitForUnlock();
+          continue;
+        }
+        if (err?.isConnectionError && attempt < 5) {
+          await sleep(2000 * (attempt + 1));
+          await waitForConnection();
+          continue;
+        }
+        throw err;
+      }
+    }
   },
 
   // Auditoria
