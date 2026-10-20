@@ -50,6 +50,26 @@ export interface NameConflict {
   suggestedName: string;
 }
 
+export interface ArchiveItem {
+  path: string;
+  isDir: boolean;
+  size: number;
+  compressedSize: number;
+  encrypted: boolean;
+  modifiedAt: string | null;
+}
+export interface SheetPreview {
+  name: string;
+  rows: string[][];
+  totalRows: number;
+  totalCols: number;
+  truncated: boolean;
+}
+export type DocRun = { text?: string; b?: boolean; i?: boolean; u?: boolean; s?: boolean; href?: string; img?: string; imgAlt?: string; br?: boolean };
+export type DocBlock =
+  | { t: 'p'; style?: string; align?: string; list?: { level: number; ordered: boolean }; runs: DocRun[] }
+  | { t: 'table'; rows: Array<Array<{ span: number; blocks: DocBlock[] }>> };
+
 export interface TrashFailure {
   id: string;
   name: string;
@@ -553,6 +573,49 @@ export const apiClient = {
       throw new Error(msg);
     }
     return res.blob();
+  },
+
+  // ---------------------------------------------------------------- pré-visualização (compactados e Office)
+  async getArchiveItems(id: string): Promise<{ format: 'zip' | 'rar'; items: ArchiveItem[]; truncated: boolean }> {
+    return apiRequest(`/api/preview/${encodeURIComponent(id)}/archive`);
+  },
+
+  /** Endereço de um item de dentro do compactado (visualizar ou baixar) */
+  archiveItemUrl(id: string, path: string, download = false): string {
+    return `/api/preview/${encodeURIComponent(id)}/archive/file?path=${encodeURIComponent(path)}${download ? '&download=1' : ''}`;
+  },
+
+  async getArchiveItemBlob(id: string, path: string, download = false): Promise<Blob> {
+    const res = await fetch(this.archiveItemUrl(id, path, download), { credentials: 'include', cache: 'no-store' });
+    if (res.status === 401) {
+      dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
+      throw new Error(SESSION_EXPIRED_MESSAGE);
+    }
+    if (res.status === 423) {
+      dispatchSessionLocked();
+      throw new Error('Sessão bloqueada por inatividade.');
+    }
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.error) msg = body.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
+
+  async getSheetPreview(id: string, inner?: string): Promise<{ sheets: SheetPreview[] }> {
+    return apiRequest(`/api/preview/${encodeURIComponent(id)}/sheet${inner ? `?inner=${encodeURIComponent(inner)}` : ''}`);
+  },
+
+  async getDocxPreview(id: string, inner?: string): Promise<{ blocks: DocBlock[]; images: string[]; truncated: boolean }> {
+    return apiRequest(`/api/preview/${encodeURIComponent(id)}/docx${inner ? `?inner=${encodeURIComponent(inner)}` : ''}`);
+  },
+
+  docxImageUrl(id: string, part: string, inner?: string): string {
+    return `/api/preview/${encodeURIComponent(id)}/docx/image?part=${encodeURIComponent(part)}${inner ? `&inner=${encodeURIComponent(inner)}` : ''}`;
   },
 
   async getTrash(departmentId?: string): Promise<{ retentionDays: number; items: DocumentItem[] }> {

@@ -144,6 +144,19 @@ export async function streamDecryptedTo(storagePath: string, res: Response): Pro
   );
 }
 
+/** Descriptografa para um arquivo temporário (usado na pré-visualização de compactados e Office). */
+export async function decryptToFile(storagePath: string, destPath: string): Promise<void> {
+  const out = fs.createWriteStream(destPath, { mode: 0o600 });
+  try {
+    await streamDecryptedTo(storagePath, out as unknown as Response);
+  } catch (err) {
+    try {
+      fs.unlinkSync(destPath);
+    } catch {}
+    throw err;
+  }
+}
+
 /** Remove o arquivo do disco de forma definitiva (sobrescreve com dados aleatórios antes de apagar). */
 export function deleteStoredFile(storagePath: string | null | undefined) {
   if (!storagePath) return;

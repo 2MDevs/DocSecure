@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import { DocumentItem, DocumentVersion, User } from '../../types';
 import { verifyPermission } from '../../services/securityEngine';
-import { apiClient } from '../../services/apiClient';
+import { apiClient, ArchiveItem, DocBlock, SheetPreview } from '../../services/apiClient';
+import { ArchiveView, DocxView, SheetView, csvToSheet } from './OfficePreviews';
 
 interface DocumentViewerModalProps {
   document: DocumentItem | null;
@@ -26,16 +27,70 @@ interface DocumentViewerModalProps {
   onRestoreVersion?: (doc: DocumentItem, version: DocumentVersion) => void;
 }
 
-const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
-const TEXT_EXT = ['txt', 'csv', 'json', 'log', 'md'];
+const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
+const TEXT_EXT = ['txt', 'json', 'log', 'md', 'xml'];
+const SHEET_EXT = ['xlsx', 'xlsm'];
+const DOCX_EXT = ['docx', 'docm'];
+const ARCHIVE_EXT = ['zip', 'rar'];
 const MAX_TEXT_PREVIEW = 1024 * 1024; // 1 MB
+const MAX_CSV_PREVIEW = 10 * 1024 * 1024;
+
+type Kind = 'image' | 'pdf' | 'text' | 'csv' | 'sheet' | 'docx' | 'archive';
+const kindOf = (ext: string, inner = false): Kind | null =>
+  IMAGE_EXT.includes(ext)
+    ? 'image'
+    : ext === 'pdf'
+    ? 'pdf'
+    : ext === 'csv'
+    ? 'csv'
+    : TEXT_EXT.includes(ext)
+    ? 'text'
+    : SHEET_EXT.includes(ext)
+    ? 'sheet'
+    : DOCX_EXT.includes(ext)
+    ? 'docx'
+    : ARCHIVE_EXT.includes(ext) && !inner
+    ? 'archive'
+    : null;
 
 type PreviewState =
   | { kind: 'loading' }
   | { kind: 'image' | 'pdf'; url: string }
   | { kind: 'text'; text: string; truncated: boolean }
+  | { kind: 'sheet'; sheets: SheetPreview[] }
+  | { kind: 'docx'; blocks: DocBlock[]; truncated: boolean }
+  | { kind: 'archive'; format: 'zip' | 'rar'; items: ArchiveItem[]; truncated: boolean }
   | { kind: 'unsupported' }
   | { kind: 'error'; message: string };
+
+/**
+ * Carrega a pré-visualização do documento (ou de um item de dentro do compactado, quando "inner" é informado).
+ * Devolve a função que libera a memória (URLs de imagem/PDF).
+ */
+async function loadPreview(docId: string, kind: Kind, ext: string, inner?: string): Promise<{ state: PreviewState; cleanup?: () => void }> {
+  const blob = () => (inner ? apiClient.getArchiveItemBlob(docId, inner) : apiClient.getDocumentContent(docId));
+  if (kind === 'sheet') return { state: { kind: 'sheet', sheets: (await apiClient.getSheetPreview(docId, inner)).sheets } };
+  if (kind === 'docx') {
+    const r = await apiClient.getDocxPreview(docId, inner);
+    return { state: { kind: 'docx', blocks: r.blocks, truncated: r.truncated } };
+  }
+  if (kind === 'archive') {
+    const r = await apiClient.getArchiveItems(docId);
+    return { state: { kind: 'archive', format: r.format, items: r.items, truncated: r.truncated } };
+  }
+  const b = await blob();
+  if (kind === 'csv') {
+    const text = await b.slice(0, MAX_CSV_PREVIEW).text();
+    return { state: { kind: 'sheet', sheets: [csvToSheet(text)] } };
+  }
+  if (kind === 'text') {
+    const text = await b.slice(0, MAX_TEXT_PREVIEW).text();
+    return { state: { kind: 'text', text, truncated: b.size > MAX_TEXT_PREVIEW } };
+  }
+  const typed = new Blob([b], { type: kind === 'pdf' ? 'application/pdf' : b.type || `image/${ext}` });
+  const url = URL.createObjectURL(typed);
+  return { state: { kind: kind as 'image' | 'pdf', url }, cleanup: () => URL.revokeObjectURL(url) };
+}
 
 const formatSize = (bytes: number) =>
   bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -58,18 +113,15 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   const [preview, setPreview] = useState<PreviewState>({ kind: 'loading' });
 
   const ext = (document?.extension || '').toLowerCase();
-  const previewKind: 'image' | 'pdf' | 'text' | null = IMAGE_EXT.includes(ext)
-    ? 'image'
-    : ext === 'pdf'
-    ? 'pdf'
-    : TEXT_EXT.includes(ext)
-    ? 'text'
-    : null;
+  const previewKind = kindOf(ext);
+  // Item aberto de dentro do .zip/.rar
+  const [inner, setInner] = useState<{ item: ArchiveItem; preview: PreviewState } | null>(null);
 
   // Carrega o conteúdo REAL do arquivo enviado
   useEffect(() => {
     if (!isOpen || !document) return;
     setActiveTab('preview');
+    setInner(null);
 
     if (document.hasContent === false) {
       setPreview({
@@ -85,22 +137,13 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
     }
 
     let cancelled = false;
-    let objectUrl: string | null = null;
+    let cleanup: (() => void) | undefined;
     setPreview({ kind: 'loading' });
-
-    apiClient
-      .getDocumentContent(document.id)
-      .then(async (blob) => {
-        if (cancelled) return;
-        if (previewKind === 'text') {
-          const truncated = blob.size > MAX_TEXT_PREVIEW;
-          const text = await blob.slice(0, MAX_TEXT_PREVIEW).text();
-          if (!cancelled) setPreview({ kind: 'text', text, truncated });
-          return;
-        }
-        const typed = new Blob([blob], { type: previewKind === 'pdf' ? 'application/pdf' : blob.type || `image/${ext}` });
-        objectUrl = URL.createObjectURL(typed);
-        setPreview({ kind: previewKind, url: objectUrl });
+    loadPreview(document.id, previewKind, ext)
+      .then((r) => {
+        if (cancelled) return r.cleanup?.();
+        cleanup = r.cleanup;
+        setPreview(r.state);
       })
       .catch((err) => {
         if (!cancelled) setPreview({ kind: 'error', message: err?.message || 'Não foi possível carregar o arquivo.' });
@@ -108,9 +151,49 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      cleanup?.();
     };
   }, [isOpen, document?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Abre um item de dentro do compactado
+  useEffect(() => {
+    if (!inner || inner.preview.kind !== 'loading' || !document) return;
+    const innerExt = (inner.item.path.split('.').pop() || '').toLowerCase();
+    const k = kindOf(innerExt, true);
+    if (!k) {
+      setInner({ ...inner, preview: { kind: 'unsupported' } });
+      return;
+    }
+    if (inner.item.encrypted) {
+      setInner({ ...inner, preview: { kind: 'error', message: 'Este item está protegido por senha.' } });
+      return;
+    }
+    let cancelled = false;
+    let cleanup: (() => void) | undefined;
+    loadPreview(document.id, k, innerExt, inner.item.path)
+      .then((r) => {
+        if (cancelled) return r.cleanup?.();
+        cleanup = r.cleanup;
+        setInner((cur) => (cur && cur.item.path === inner.item.path ? { ...cur, preview: r.state } : cur));
+      })
+      .catch((err) => {
+        if (!cancelled) setInner((cur) => (cur ? { ...cur, preview: { kind: 'error', message: err?.message || 'Não foi possível abrir este item.' } } : cur));
+      });
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, [inner?.item.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const downloadInner = (item: ArchiveItem) => {
+    if (!document) return;
+    const a = window.document.createElement('a');
+    a.href = apiClient.archiveItemUrl(document.id, item.path, true);
+    a.download = item.path.split('/').pop() || 'arquivo';
+    window.document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   if (!isOpen || !document) return null;
 
@@ -122,6 +205,72 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
     'DOWNLOAD_DOCUMENT',
     document.folderId || undefined
   ).allowed;
+
+  const renderPreview = (state: PreviewState, name: string, fileExt: string, isInner: boolean) => {
+    switch (state.kind) {
+      case 'loading':
+        return (
+          <div className="text-slate-400 text-xs flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> {['zip', 'rar'].includes(fileExt) ? 'Abrindo o arquivo compactado...' : 'Carregando arquivo...'}
+          </div>
+        );
+      case 'image':
+        return <img src={state.url} alt={name} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white" />;
+      case 'pdf':
+        return <iframe src={state.url} title={name} className="w-full h-full min-h-[60dvh] rounded-lg bg-white" />;
+      case 'text':
+        return (
+          <div className="w-full h-full flex flex-col">
+            {state.truncated && <div className="mb-2 text-[11px] text-amber-300">Mostrando apenas o primeiro 1 MB. Baixe para ver o arquivo completo.</div>}
+            <pre className="flex-1 overflow-auto bg-white text-slate-800 rounded-lg p-4 text-xs leading-relaxed whitespace-pre-wrap break-words select-text">{state.text}</pre>
+          </div>
+        );
+      case 'sheet':
+        return <SheetView sheets={state.sheets} />;
+      case 'docx':
+        return (
+          <DocxView
+            blocks={state.blocks}
+            truncated={state.truncated}
+            imageUrl={(part) => apiClient.docxImageUrl(document!.id, part, isInner ? inner?.item.path : undefined)}
+          />
+        );
+      case 'archive':
+        return (
+          <ArchiveView
+            format={state.format}
+            items={state.items}
+            truncated={state.truncated}
+            canDownload={canDownload}
+            onOpen={(item) => setInner({ item, preview: { kind: 'loading' } })}
+            onDownload={downloadInner}
+          />
+        );
+      case 'unsupported':
+        return (
+          <div className="text-center max-w-sm space-y-3">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-800 text-slate-300 flex items-center justify-center">
+              <FileText className="w-7 h-7" />
+            </div>
+            <p className="text-sm font-semibold text-white">Pré-visualização indisponível para .{fileExt || 'arquivo'}</p>
+            <p className="text-xs text-slate-400">
+              Dá para visualizar no navegador: PDF, imagens, textos, planilhas (.xlsx, .csv), documentos do Word (.docx) e o conteúdo de .zip e
+              .rar. {['doc', 'xls', 'ppt', 'pptx'].includes(fileExt) ? 'Formatos antigos do Office e o PowerPoint ainda não. ' : ''}
+              {canDownload ? `Use “${isInner ? 'Baixar item' : 'Baixar'}” para abrir no seu computador.` : 'O download deste arquivo está bloqueado.'}
+            </p>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="text-center max-w-md space-y-3">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-950 text-rose-400 flex items-center justify-center">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+            <p className="text-sm text-rose-200">{state.message}</p>
+          </div>
+        );
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150">
@@ -203,58 +352,37 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
         {/* Conteúdo */}
         <div className="flex-1 min-h-0 overflow-auto bg-slate-950 flex">
           {activeTab === 'preview' ? (
-            <div className="flex-1 flex items-center justify-center p-3 sm:p-6 min-h-0">
-              {preview.kind === 'loading' && (
-                <div className="text-slate-400 text-xs flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Carregando arquivo...
-                </div>
-              )}
-
-              {preview.kind === 'image' && (
-                <img
-                  src={preview.url}
-                  alt={document.name}
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white"
-                />
-              )}
-
-              {preview.kind === 'pdf' && (
-                <iframe src={preview.url} title={document.name} className="w-full h-full min-h-[60dvh] rounded-lg bg-white" />
-              )}
-
-              {preview.kind === 'text' && (
-                <div className="w-full h-full flex flex-col">
-                  {preview.truncated && (
-                    <div className="mb-2 text-[11px] text-amber-300">Mostrando apenas o primeiro 1 MB. Baixe para ver o arquivo completo.</div>
+            inner ? (
+              <div className="flex-1 flex flex-col min-h-0">
+                {/* Item de dentro do compactado */}
+                <div className="shrink-0 px-3 sm:px-5 py-2 bg-slate-900 border-b border-slate-800 flex items-center gap-2 text-white">
+                  <button
+                    type="button"
+                    onClick={() => setInner(null)}
+                    className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1.5 shrink-0"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Voltar ao {ext.toUpperCase()}
+                  </button>
+                  <span className="text-xs text-slate-300 truncate flex-1" title={inner.item.path}>
+                    {inner.item.path.split('/').join(' › ')}
+                  </span>
+                  {canDownload && !inner.item.encrypted && (
+                    <button
+                      type="button"
+                      onClick={() => downloadInner(inner.item)}
+                      className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 inline-flex items-center gap-1.5 shrink-0"
+                    >
+                      <Download className="w-4 h-4" /> <span className="hidden sm:inline">Baixar item</span>
+                    </button>
                   )}
-                  <pre className="flex-1 overflow-auto bg-white text-slate-800 rounded-lg p-4 text-xs leading-relaxed whitespace-pre-wrap break-words select-text">
-                    {preview.text}
-                  </pre>
                 </div>
-              )}
-
-              {preview.kind === 'unsupported' && (
-                <div className="text-center max-w-sm space-y-3">
-                  <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-800 text-slate-300 flex items-center justify-center">
-                    <FileText className="w-7 h-7" />
-                  </div>
-                  <p className="text-sm font-semibold text-white">Pré-visualização indisponível para .{ext}</p>
-                  <p className="text-xs text-slate-400">
-                    A visualização no navegador funciona para PDF, imagens e arquivos de texto. Use “Baixar” para abrir este
-                    arquivo no seu computador.
-                  </p>
+                <div className="flex-1 flex items-center justify-center p-3 sm:p-6 min-h-0">
+                  {renderPreview(inner.preview, inner.item.path.split('/').pop() || '', (inner.item.path.split('.').pop() || '').toLowerCase(), true)}
                 </div>
-              )}
-
-              {preview.kind === 'error' && (
-                <div className="text-center max-w-md space-y-3">
-                  <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-950 text-rose-400 flex items-center justify-center">
-                    <AlertTriangle className="w-7 h-7" />
-                  </div>
-                  <p className="text-sm text-rose-200">{preview.message}</p>
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-3 sm:p-6 min-h-0">{renderPreview(preview, document.name, ext, false)}</div>
+            )
           ) : (
             <div className="w-full max-w-2xl mx-auto p-4 sm:p-6">
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white space-y-4">
