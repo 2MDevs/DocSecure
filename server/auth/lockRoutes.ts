@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { pool } from '../db';
 import { requireAuth, revokeAllUserSessions, authRateLimiter } from './middleware';
 import { getEffectiveSetting, getMaxUploadBytes } from '../services/systemSettings';
+import { officeMode } from '../services/officeEngine';
 import { writeAudit, getClientIp } from '../services/documentAccess';
 
 /**
@@ -36,7 +37,7 @@ lockRouter.get('/security-policy', requireAuth, async (req: Request, res: Respon
   const policy = await getPolicy();
   // Limite por arquivo: o navegador avisa ANTES de enviar quais arquivos passam do limite
   const maxUploadBytes = await getMaxUploadBytes().catch(() => 0);
-  return res.json({ ...policy, maxUploadBytes, hasPin: Boolean(user.hasPin), sessionLocked: Boolean((req as any).sessionLocked) });
+  return res.json({ ...policy, maxUploadBytes, officePreview: officeMode(), hasPin: Boolean(user.hasPin), sessionLocked: Boolean((req as any).sessionLocked) });
 });
 
 // Coloca a sessão em suspensão (chamado pelo navegador após o tempo de inatividade)

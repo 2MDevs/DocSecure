@@ -23,6 +23,8 @@ interface DocumentViewerModalProps {
   currentUser: User;
   onDownload: (doc: DocumentItem) => void;
   onDelete?: (doc: DocumentItem) => void;
+  /** Visualização de Office: completa (LibreOffice, idêntica ao original) ou básica */
+  officeMode?: 'full' | 'basic';
   /** Mantido por compatibilidade; o histórico de versões ainda não é editável. */
   onRestoreVersion?: (doc: DocumentItem, version: DocumentVersion) => void;
 }
@@ -35,9 +37,13 @@ const ARCHIVE_EXT = ['zip', 'rar'];
 const MAX_TEXT_PREVIEW = 1024 * 1024; // 1 MB
 const MAX_CSV_PREVIEW = 10 * 1024 * 1024;
 
-type Kind = 'image' | 'pdf' | 'text' | 'csv' | 'sheet' | 'docx' | 'archive';
-const kindOf = (ext: string, inner = false): Kind | null =>
-  IMAGE_EXT.includes(ext)
+const FULL_OFFICE_EXT = ['doc', 'docx', 'docm', 'odt', 'rtf', 'xls', 'xlsx', 'xlsm', 'ods', 'ppt', 'pptx', 'pps', 'ppsx', 'odp'];
+
+type Kind = 'image' | 'pdf' | 'text' | 'csv' | 'sheet' | 'docx' | 'archive' | 'office';
+const kindOf = (ext: string, inner = false, office: 'full' | 'basic' = 'basic'): Kind | null =>
+  office === 'full' && FULL_OFFICE_EXT.includes(ext)
+    ? 'office'
+    : IMAGE_EXT.includes(ext)
     ? 'image'
     : ext === 'pdf'
     ? 'pdf'
@@ -69,6 +75,18 @@ type PreviewState =
  */
 async function loadPreview(docId: string, kind: Kind, ext: string, inner?: string): Promise<{ state: PreviewState; cleanup?: () => void }> {
   const blob = () => (inner ? apiClient.getArchiveItemBlob(docId, inner) : apiClient.getDocumentContent(docId));
+  if (kind === 'office') {
+    try {
+      const pdf = await apiClient.getOfficePdf(docId, inner);
+      const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+      return { state: { kind: 'pdf', url }, cleanup: () => URL.revokeObjectURL(url) };
+    } catch (err: any) {
+      // Conversão indisponível/falhou: usa a visualização básica quando o formato permite
+      const basic = kindOf(ext, Boolean(inner), 'basic');
+      if (basic) return loadPreview(docId, basic, ext, inner);
+      throw err;
+    }
+  }
   if (kind === 'sheet') return { state: { kind: 'sheet', sheets: (await apiClient.getSheetPreview(docId, inner)).sheets } };
   if (kind === 'docx') {
     const r = await apiClient.getDocxPreview(docId, inner);
@@ -108,12 +126,13 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   currentUser,
   onDownload,
   onDelete,
+  officeMode = 'basic',
 }) => {
   const [activeTab, setActiveTab] = useState<'preview' | 'details'>('preview');
   const [preview, setPreview] = useState<PreviewState>({ kind: 'loading' });
 
   const ext = (document?.extension || '').toLowerCase();
-  const previewKind = kindOf(ext);
+  const previewKind = kindOf(ext, false, officeMode);
   // Item aberto de dentro do .zip/.rar
   const [inner, setInner] = useState<{ item: ArchiveItem; preview: PreviewState } | null>(null);
 
@@ -159,7 +178,7 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   useEffect(() => {
     if (!inner || inner.preview.kind !== 'loading' || !document) return;
     const innerExt = (inner.item.path.split('.').pop() || '').toLowerCase();
-    const k = kindOf(innerExt, true);
+    const k = kindOf(innerExt, true, officeMode);
     if (!k) {
       setInner({ ...inner, preview: { kind: 'unsupported' } });
       return;
@@ -211,7 +230,12 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
       case 'loading':
         return (
           <div className="text-slate-400 text-xs flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> {['zip', 'rar'].includes(fileExt) ? 'Abrindo o arquivo compactado...' : 'Carregando arquivo...'}
+            <Loader2 className="w-4 h-4 animate-spin" />{' '}
+            {['zip', 'rar'].includes(fileExt)
+              ? 'Abrindo o arquivo compactado...'
+              : officeMode === 'full' && FULL_OFFICE_EXT.includes(fileExt)
+              ? 'Preparando a visualização completa (alguns segundos)...'
+              : 'Carregando arquivo...'}
           </div>
         );
       case 'image':
@@ -255,7 +279,7 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
             <p className="text-sm font-semibold text-white">Pré-visualização indisponível para .{fileExt || 'arquivo'}</p>
             <p className="text-xs text-slate-400">
               Dá para visualizar no navegador: PDF, imagens, textos, planilhas (.xlsx, .csv), documentos do Word (.docx) e o conteúdo de .zip e
-              .rar. {['doc', 'xls', 'ppt', 'pptx'].includes(fileExt) ? 'Formatos antigos do Office e o PowerPoint ainda não. ' : ''}
+              .rar. {['doc', 'xls', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'].includes(fileExt) ? 'Este formato abre quando a visualização completa estiver ligada (tela Sistema). ' : ''}
               {canDownload ? `Use “${isInner ? 'Baixar item' : 'Baixar'}” para abrir no seu computador.` : 'O download deste arquivo está bloqueado.'}
             </p>
           </div>

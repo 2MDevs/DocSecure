@@ -353,7 +353,7 @@ export default function App() {
   const [uploadingDocs, setUploadingDocs] = useState<DocumentItem[]>([]);
   const [syncStates, setSyncStates] = useState<Record<string, 'uploading' | 'pending' | 'synced' | 'error'>>({});
   const [isLocked, setIsLocked] = useState(false);
-  const [securityPolicy, setSecurityPolicy] = useState<{ lockIdleMinutes: number; hasPin: boolean; maxUploadBytes?: number }>({ lockIdleMinutes: 0, hasPin: false });
+  const [securityPolicy, setSecurityPolicy] = useState<{ lockIdleMinutes: number; hasPin: boolean; maxUploadBytes?: number; officePreview?: 'full' | 'basic' }>({ lockIdleMinutes: 0, hasPin: false });
   const processingQueueRef = useRef(false);
 
   useEffect(() => {
@@ -430,7 +430,7 @@ export default function App() {
       apiClient
         .getSecurityPolicy()
         .then((p) => {
-          setSecurityPolicy({ lockIdleMinutes: p.lockIdleMinutes, hasPin: p.hasPin, maxUploadBytes: p.maxUploadBytes });
+          setSecurityPolicy({ lockIdleMinutes: p.lockIdleMinutes, hasPin: p.hasPin, maxUploadBytes: p.maxUploadBytes, officePreview: p.officePreview });
           if (p.sessionLocked) setIsLocked(true);
         })
         .catch(() => {});
@@ -1633,6 +1633,7 @@ export default function App() {
 
         {/* Document Viewer */}
         <DocumentViewerModal
+          officeMode={securityPolicy.officePreview}
           document={viewingDocument}
           isOpen={!!viewingDocument}
           onClose={() => setViewingDocument(null)}
@@ -1960,6 +1961,7 @@ export default function App() {
 
       {/* Document Viewer Modal */}
       <DocumentViewerModal
+        officeMode={securityPolicy.officePreview}
         document={viewingDocument}
         isOpen={!!viewingDocument}
         onClose={() => setViewingDocument(null)}

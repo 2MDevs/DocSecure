@@ -50,6 +50,24 @@ export interface NameConflict {
   suggestedName: string;
 }
 
+export interface OfficeEngineStatus {
+  mode: 'full' | 'basic';
+  installed: boolean;
+  state: 'installing' | 'removing' | 'installed' | 'not_installed' | 'failed' | null;
+  action: string | null;
+  message: string;
+  version: string;
+  diskBytes: number;
+  requestedBy: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  running: boolean;
+  pending: boolean;
+  canManage: boolean;
+  installedByDocSecure: boolean;
+  log: string;
+}
+
 export interface ArchiveItem {
   path: string;
   isDir: boolean;
@@ -383,7 +401,7 @@ export const apiClient = {
   },
 
   // Bloqueio por inatividade e PIN
-  async getSecurityPolicy(): Promise<{ lockIdleMinutes: number; pinMaxAttempts: number; hasPin: boolean; sessionLocked: boolean; maxUploadBytes?: number }> {
+  async getSecurityPolicy(): Promise<{ lockIdleMinutes: number; pinMaxAttempts: number; hasPin: boolean; sessionLocked: boolean; maxUploadBytes?: number; officePreview?: 'full' | 'basic' }> {
     return apiRequest('/api/auth/security-policy');
   },
 
@@ -612,6 +630,38 @@ export const apiClient = {
 
   async getDocxPreview(id: string, inner?: string): Promise<{ blocks: DocBlock[]; images: string[]; truncated: boolean }> {
     return apiRequest(`/api/preview/${encodeURIComponent(id)}/docx${inner ? `?inner=${encodeURIComponent(inner)}` : ''}`);
+  },
+
+  /** Visualização completa: o servidor converte Word/Excel/PowerPoint em PDF */
+  async getOfficePdf(id: string, inner?: string): Promise<Blob> {
+    const res = await fetch(`/api/preview/${encodeURIComponent(id)}/pdf${inner ? `?inner=${encodeURIComponent(inner)}` : ''}`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (res.status === 401) {
+      dispatchSessionExpired(SESSION_EXPIRED_MESSAGE);
+      throw new Error(SESSION_EXPIRED_MESSAGE);
+    }
+    if (!res.ok) {
+      let body: any = null;
+      try {
+        body = await res.json();
+      } catch {}
+      throw Object.assign(new Error(body?.error || `HTTP ${res.status}`), { code: body?.code, status: res.status });
+    }
+    return res.blob();
+  },
+
+  async getOfficeEngine(): Promise<OfficeEngineStatus> {
+    return apiRequest('/api/system/office-preview');
+  },
+
+  async setOfficeEngine(action: 'install' | 'uninstall', password: string): Promise<OfficeEngineStatus> {
+    return apiRequest('/api/system/office-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, password }),
+    });
   },
 
   docxImageUrl(id: string, part: string, inner?: string): string {

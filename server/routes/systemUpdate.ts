@@ -5,6 +5,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import bcrypt from 'bcryptjs';
+import { getOfficeEngineStatus } from '../services/officeEngine';
 import { pool } from '../db';
 import { requireAuth, requireRole } from '../auth/middleware';
 import { broadcastEvent } from '../services/realtime';
@@ -233,8 +234,10 @@ async function getLatestCommit(): Promise<CommitInfo> {
   return value;
 }
 
-function isUpdateRunning(): boolean {
+export function isUpdateRunning(): boolean {
   if (fs.existsSync(REQUEST_FILE)) return true;
+  // Instalando/removendo a visualização completa usa o mesmo serviço: um de cada vez
+  if (getOfficeEngineStatus().running) return true;
   const status = readJson(STATUS_FILE);
   if (status?.state !== 'running') return false;
   // Proteção contra status "preso" (ex.: VPS reiniciada no meio da atualização)
