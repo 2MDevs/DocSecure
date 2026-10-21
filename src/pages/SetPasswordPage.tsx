@@ -174,7 +174,7 @@ export const SetPasswordPage: React.FC<SetPasswordPageProps> = ({
               <div className="absolute w-40 h-40 rounded-3xl border border-indigo-500/20 -rotate-3" />
 
               <img
-                src="/icon.svg?v=3"
+                src="/icon.svg?v=4"
                 alt="DocSecure"
                 draggable={false}
                 className="relative z-10 w-36 h-36 drop-shadow-[0_18px_30px_rgba(246,211,92,0.30)] transform hover:scale-105 transition-transform duration-300"
