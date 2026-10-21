@@ -6,6 +6,7 @@
  *   GET /api/preview/:id/sheet[?inner=…]             → planilha como tabela (o arquivo ou um item do compactado)
  *   GET /api/preview/:id/docx[?inner=…]              → documento do Word como blocos de texto
  *   GET /api/preview/:id/docx/image?part=…[&inner=…] → imagem usada no documento
+ *   GET /api/preview/:id/pdf[?inner=…]               → Word/Excel/PowerPoint convertido em PDF (visualização completa)
  *
  * As mesmas regras do visualizador valem aqui: quem não pode ver o arquivo não vê o conteúdo;
  * baixar um item de dentro do compactado exige permissão de download do arquivo.
@@ -22,7 +23,8 @@ import {
   getClientIp,
 } from '../services/documentAccess';
 import { isFileStorageReady, StorageKeyError } from '../services/fileStorage';
-import { listArchive, archiveItemFile, archiveFormat, decryptedCopy } from '../services/previewCache';
+import { listArchive, archiveItemFile, archiveFormat, decryptedCopy, officePdf } from '../services/previewCache';
+import { FULL_OFFICE_EXT, officeMode, OfficeConvertError } from '../services/officeEngine';
 import { previewXlsx, previewDocx, docxImage } from '../services/officePreview';
 
 export const previewRouter = Router();
@@ -97,6 +99,7 @@ function fail(res: Response, err: any, label: string) {
   if (err instanceof StorageKeyError) return res.status(503).json({ error: err.message });
   if (err?.code === 'ENOENT') return res.status(410).json({ error: 'O arquivo não foi encontrado no armazenamento do servidor.' });
   if (err?.code === 'RAR_UNAVAILABLE') return res.status(501).json({ error: err.message });
+  if (err instanceof OfficeConvertError) return res.status(422).json({ error: err.message, code: 'OFFICE_CONVERT' });
   const known = /^(ZIP|RAR)_/.test(String(err?.code || '')) || err?.name === 'Error';
   if (!known) console.error(`[PREVIEW ${label} ERROR]`, err);
   return res.status(422).json({ error: err?.message || 'Não foi possível abrir este arquivo para visualização.' });
@@ -199,5 +202,26 @@ previewRouter.get('/:id/docx/image', requireAuth, async (req: Request, res: Resp
     return res.end(img.data);
   } catch (err: any) {
     return fail(res, err, 'DOCX IMAGE');
+  }
+});
+
+// Visualização completa: o LibreOffice converte o arquivo do Office em PDF (idêntico ao original)
+previewRouter.get('/:id/pdf', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const doc = await loadAllowed(req);
+    if (officeMode() !== 'full') return res.status(409).json({ error: 'A visualização completa está desligada.', code: 'OFFICE_BASIC' });
+    const inner = typeof req.query.inner === 'string' && req.query.inner ? req.query.inner : undefined;
+    const ext = extOf(inner || doc.name) || String(doc.extension || '').toLowerCase();
+    if (!FULL_OFFICE_EXT.has(ext)) return res.status(400).json({ error: 'Este formato não é do Office.' });
+    const pdf = await officePdf(doc, inner);
+    if (!inner) await writeAudit(userCtx(req), 'DOCUMENT_VIEWED', doc.id, doc.name, 'Pré-visualização completa (convertido em PDF).', 'SUCCESS', getClientIp(req));
+    noStore(res);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', disposition('inline', (inner ? inner.split('/').pop() || inner : doc.name).replace(/\.[^.]+$/, '') + '.pdf'));
+    res.setHeader('Content-Length', String(fs.statSync(pdf).size));
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    fs.createReadStream(pdf).pipe(res);
+  } catch (err: any) {
+    return fail(res, err, 'PDF');
   }
 });

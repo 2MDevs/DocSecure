@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import { UPLOAD_TMP_DIR, ensureStorageDirs, decryptToFile } from './fileStorage';
 import { listZip, extractZipEntry, isSafeEntryName } from './zipReader';
 import { listRar, extractRarEntry } from './rarReader';
+import { convertToPdf } from './officeEngine';
 
 const PREFIX = 'preview-';
 const TTL_MS = 15 * 60 * 1000;
@@ -134,6 +135,13 @@ export async function archiveItemFile(doc: DocRow, innerPath: string): Promise<{
     }
   });
   return { file, size: fs.statSync(file).size, name: innerPath.split('/').pop() || 'arquivo' };
+}
+
+/** PDF gerado pelo LibreOffice (visualização completa), guardado por alguns minutos */
+export async function officePdf(doc: DocRow, inner?: string): Promise<string> {
+  const source = inner ? (await archiveItemFile(doc, inner)).file : await decryptedCopy(doc);
+  const ext = (inner ? inner.split('.').pop() : doc.extension) || '';
+  return cached(`pdf:${doc.id}:${doc.hash_sha256}:${inner || ''}`, (dest) => convertToPdf(source, ext.toLowerCase(), dest));
 }
 
 /** Cópias em uso (a limpeza de sobras não pode apagar) */

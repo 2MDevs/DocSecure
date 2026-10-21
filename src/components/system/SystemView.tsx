@@ -29,9 +29,11 @@ import {
   Sparkles,
   Zap,
   Plus,
+  Eye,
 } from 'lucide-react';
 import { ApiKey, WebhookConfig, User, Department } from '../../types';
 import { PlatformUsagePanel } from './PlatformUsagePanel';
+import { OfficeEnginePanel } from './OfficeEnginePanel';
 import { apiClient } from '../../services/apiClient';
 
 interface SystemViewProps {
@@ -70,7 +72,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
   onRevokeApiKey,
   dbStatus: initialDbStatus,
 }) => {
-  const [activeTab, setActiveTab] = useState<'platform' | 'metrics' | 'api_webhooks'>('platform');
+  const [activeTab, setActiveTab] = useState<'platform' | 'viewer' | 'metrics' | 'api_webhooks'>('platform');
   const [platformUsage, setPlatformUsage] = useState<any>(null);
 
   // Real VPS System & Database Live Metrics State
@@ -431,6 +433,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
         <div className="flex items-center bg-white border border-slate-200 p-1 rounded-xl text-xs font-semibold shadow-2xs overflow-x-auto max-w-full [scrollbar-width:none]">
           {([
             ['platform', 'Recursos da plataforma', Gauge],
+            ['viewer', 'Visualização', Eye],
             ['metrics', 'Servidor', Server],
             ['api_webhooks', 'API & Webhooks', Code2],
           ] as const).map(([key, label, Icon]) => (
@@ -450,6 +453,8 @@ export const SystemView: React.FC<SystemViewProps> = ({
       </div>
 
       {/* Aba: o que o DocSecure está consumindo (separado do servidor inteiro) */}
+      {activeTab === 'viewer' && <OfficeEnginePanel canManage={currentUser.role === 'DEVELOPER'} />}
+
       {activeTab === 'platform' && <PlatformUsagePanel usage={platformUsage} departments={departments} canClean={currentUser.role === 'DEVELOPER'} />}
 
       {/* Tab 1: Métricas de Infraestrutura (Banco, Memória, Disco) */}

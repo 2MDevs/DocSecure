@@ -30,6 +30,15 @@ main() {
   local LOG="$STATE_DIR/update.log"
   mkdir -p "$STATE_DIR"
 
+  # Pedido da tela Sistema para instalar/remover a visualização completa (LibreOffice)
+  if [ -f "$REQUEST" ] && grep -q '"action":"office-' "$REQUEST"; then
+    local OFFICE_ACTION OFFICE_BY
+    OFFICE_ACTION=$(sed -n 's/.*"action":"office-\([a-z]*\)".*/\1/p' "$REQUEST")
+    OFFICE_BY=$(sed -n 's/.*"requestedBy":"\([^"]*\)".*/\1/p' "$REQUEST")
+    rm -f "$REQUEST"
+    exec /bin/bash "$APP_DIR/scripts/office-engine.sh" "$OFFICE_ACTION" "${OFFICE_BY:-painel}"
+  fi
+
   # Lê quem pediu e apaga a solicitação (senão o systemd dispara de novo)
   local REQUESTED_BY="painel"
   if [ -f "$REQUEST" ]; then

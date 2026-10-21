@@ -123,3 +123,10 @@ pm2 start "node --import tsx server.ts" --name docsecure
 # ou via npm start
 npm start
 ```
+
+## 6. Visualização de documentos (Sistema › Visualização)
+
+- **Básica (padrão):** Word (.docx), Excel (.xlsx), CSV, ZIP e RAR abrem no navegador sem nenhum programa extra no servidor.
+- **Completa:** o desenvolvedor ativa na tela e a VPS instala o LibreOffice (~500 MB de disco). Word, Excel e PowerPoint — inclusive .doc, .xls e .ppt antigos — abrem idênticos ao original (convertidos em PDF). O LibreOffice só roda durante a conversão (~200–300 MB de RAM por alguns segundos, uma conversão por vez).
+- Voltar para a básica remove só os pacotes que o DocSecure instalou (lista em `.office/packages.txt`); se outro sistema da VPS depender deles, a remoção é cancelada.
+- Usa o mesmo serviço do botão "Atualizar sistema" (`scripts/update.sh` → `scripts/office-engine.sh`). Requer VPS Debian/Ubuntu (apt).

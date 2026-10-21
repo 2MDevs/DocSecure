@@ -11,6 +11,9 @@ import { getPlatformUsage } from '../services/platformUsage';
 import { cleanStorageLeftovers } from '../services/storageAudit';
 import { writeAudit, getClientIp } from '../services/documentAccess';
 import { decorateFolders, decorateDocuments } from '../services/sharing';
+import bcrypt from 'bcryptjs';
+import { getOfficeEngineStatus, requestOfficeAction } from '../services/officeEngine';
+import { isUpdateRunning } from './systemUpdate';
 
 export const systemRouter = Router();
 
@@ -41,6 +44,51 @@ systemRouter.post('/storage-cleanup', requireAuth, requireRole('DEVELOPER'), asy
   } catch (err: any) {
     console.error('[STORAGE CLEANUP ERROR]', err);
     return res.status(500).json({ error: 'Não foi possível limpar as sobras do armazenamento.' });
+  }
+});
+
+// Visualização de documentos: básica (Caminho 1) ou completa com LibreOffice (Caminho 2)
+systemRouter.get('/office-preview', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(getOfficeEngineStatus(true));
+});
+
+// Alternar: instala (completa) ou remove (básica) o LibreOffice na VPS — só o desenvolvedor, com a senha
+systemRouter.post('/office-preview', requireAuth, requireRole('DEVELOPER'), async (req: Request, res: Response) => {
+  const u = (req as any).user;
+  try {
+    const action = req.body?.action === 'install' ? 'install' : req.body?.action === 'uninstall' ? 'uninstall' : null;
+    if (!action) return res.status(400).json({ error: 'Ação inválida.' });
+    const password = String(req.body?.password || '');
+    const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [u.id]);
+    if (!password || !rows[0]?.password_hash || !(await bcrypt.compare(password, rows[0].password_hash))) {
+      return res.status(401).json({ error: 'Senha incorreta.' });
+    }
+    const status = getOfficeEngineStatus();
+    if (!status.canManage) {
+      return res.status(409).json({
+        error: 'O serviço de atualização automática não está instalado nesta VPS. Rode uma vez: sudo bash scripts/install-auto-update.sh',
+      });
+    }
+    if (status.running || status.pending || isUpdateRunning()) {
+      return res.status(409).json({ error: 'Já existe uma instalação ou atualização em andamento. Aguarde terminar.' });
+    }
+    if (action === 'install' && status.installed) return res.status(409).json({ error: 'A visualização completa já está ativa.' });
+    if (action === 'uninstall' && !status.installed) return res.status(409).json({ error: 'A visualização completa já está desligada.' });
+    requestOfficeAction(action, u.email || u.name);
+    await writeAudit(
+      { id: u.id, name: u.name, role: u.role, departmentName: u.departmentName },
+      action === 'install' ? 'OFFICE_PREVIEW_INSTALL' : 'OFFICE_PREVIEW_UNINSTALL',
+      '',
+      'Visualização de documentos',
+      action === 'install' ? 'Solicitou ativar a visualização completa (instalar LibreOffice).' : 'Solicitou voltar para a visualização básica (remover LibreOffice).',
+      'SUCCESS',
+      getClientIp(req)
+    ).catch(() => {});
+    return res.status(202).json(getOfficeEngineStatus(true));
+  } catch (err: any) {
+    console.error('[OFFICE PREVIEW TOGGLE ERROR]', err);
+    return res.status(500).json({ error: 'Não foi possível alterar a visualização.' });
   }
 });
 
