@@ -213,7 +213,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
               {/* 3D Blue Folder with Glow & Padlock */}
               <img
-                src="/icon.svg?v=3"
+                src="/icon.svg?v=4"
                 alt="DocSecure"
                 draggable={false}
                 className="relative z-10 w-36 h-36 drop-shadow-[0_18px_30px_rgba(246,211,92,0.30)] transform hover:scale-105 transition-transform duration-300"
