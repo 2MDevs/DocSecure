@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronRight, Download, Lock, ArrowLeft, Search, Info } from 'lucide-react';
-import type { ArchiveItem, DocBlock, DocRun, SheetPreview } from '../../services/apiClient';
+import type { ArchiveItem, DocBlock, DocRun, SheetPreview, SheetCellStyle } from '../../services/apiClient';
 import { FileGlyph, FolderGlyph, formatBytes } from './explorerGlyphs';
 
 /**
@@ -15,50 +15,133 @@ const colName = (i: number) => {
   return s;
 };
 
+// Só aceita valores seguros vindos do servidor (cores #RRGGBB, bordas simples, tamanhos numéricos)
+const safeColor = (c?: string) => (c && /^#[0-9A-Fa-f]{6}$/.test(c) ? c : undefined);
+const safeBorder = (b?: string) => (b && /^[1-3]px (solid|dotted|dashed|double) #[0-9A-Fa-f]{6}$/.test(b) ? b : undefined);
+
+function cellCss(st: SheetCellStyle | undefined, numeric: boolean, grid: boolean): React.CSSProperties {
+  const gridLine = grid ? '1px solid #e2e8f0' : '1px solid transparent';
+  const css: React.CSSProperties = {
+    borderTop: gridLine,
+    borderBottom: gridLine,
+    borderLeft: gridLine,
+    borderRight: gridLine,
+    textAlign: numeric ? 'right' : 'left',
+    verticalAlign: 'bottom',
+    whiteSpace: 'nowrap',
+  };
+  if (!st) return css;
+  if (st.b) css.fontWeight = 700;
+  if (st.i) css.fontStyle = 'italic';
+  if (st.u || st.s) css.textDecoration = `${st.u ? 'underline' : ''} ${st.s ? 'line-through' : ''}`.trim();
+  if (st.sz && st.sz >= 6 && st.sz <= 72) css.fontSize = `${st.sz}pt`;
+  if (st.font && /^[\w .-]{1,40}$/.test(st.font)) css.fontFamily = `"${st.font}", Calibri, Arial, sans-serif`;
+  if (safeColor(st.color)) css.color = st.color;
+  if (safeColor(st.bg)) css.backgroundColor = st.bg;
+  if (st.h) css.textAlign = st.h;
+  if (st.v) css.verticalAlign = st.v;
+  if (st.wrap) css.whiteSpace = 'pre-wrap';
+  if (st.indent) css.paddingLeft = 6 + Math.min(st.indent, 15) * 9;
+  if (safeBorder(st.bt)) css.borderTop = st.bt;
+  if (safeBorder(st.bb)) css.borderBottom = st.bb;
+  if (safeBorder(st.bl)) css.borderLeft = st.bl;
+  if (safeBorder(st.br)) css.borderRight = st.br;
+  return css;
+}
+
 export const SheetView: React.FC<{ sheets: SheetPreview[] }> = ({ sheets }) => {
   const [active, setActive] = useState(0);
+  const [zoom, setZoom] = useState(100);
   const sheet = sheets[Math.min(active, sheets.length - 1)];
   const cols = Math.max(sheet?.totalCols || 0, ...(sheet?.rows || []).map((r) => r.length), 1);
   const numeric = (v: string) => /^-?(R\$|US\$|€)?\s?[\d.]+(,\d+)?%?$/.test(v.trim());
+  const formatted = Boolean(sheet?.styles);
+  const grid = sheet?.showGrid !== false;
+  const rows = sheet?.rows.length ? sheet.rows : [[]];
+
+  // Mescladas: a primeira célula ocupa as outras (que não são desenhadas)
+  const { spanAt, covered } = useMemo(() => {
+    const spanAt = new Map<string, { rs: number; cs: number }>();
+    const covered = new Set<string>();
+    for (const m of sheet?.merges || []) {
+      spanAt.set(`${m.r}:${m.c}`, { rs: m.rs, cs: m.cs });
+      for (let r = m.r; r < m.r + m.rs; r++) for (let c = m.c; c < m.c + m.cs; c++) if (r !== m.r || c !== m.c) covered.add(`${r}:${c}`);
+    }
+    return { spanAt, covered };
+  }, [sheet]);
+
+  const widths = Array.from({ length: cols }, (_, c) => sheet?.colWidths?.[c] ?? 100);
 
   return (
-    <div className="w-full h-full flex flex-col bg-white rounded-lg overflow-hidden text-slate-800">
-      {sheet?.truncated && (
-        <div className="px-3 py-1.5 text-[11.5px] bg-amber-50 text-amber-800 border-b border-amber-200 shrink-0">
-          Mostrando as primeiras {sheet.rows.length.toLocaleString('pt-BR')} linhas{sheet.totalRows ? ` de ${sheet.totalRows.toLocaleString('pt-BR')}` : ''}. Baixe o
-          arquivo para ver tudo.
+    <div className="w-full h-full flex flex-col bg-white rounded-lg overflow-hidden text-slate-900">
+      {(sheet?.truncated || formatted) && (
+        <div className="px-3 py-1.5 text-[11.5px] border-b border-slate-200 shrink-0 flex items-center gap-3 bg-slate-50 text-slate-600">
+          <span className="flex-1 min-w-0 truncate">
+            {sheet?.truncated
+              ? `Mostrando as primeiras ${sheet.rows.length.toLocaleString('pt-BR')} linhas${sheet.totalRows ? ` de ${sheet.totalRows.toLocaleString('pt-BR')}` : ''}. Baixe o arquivo para ver tudo.`
+              : 'Fontes, cores, bordas, larguras e células mescladas como no Excel.'}
+          </span>
+          <span className="inline-flex items-center gap-1 shrink-0">
+            <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className="h-6 w-6 rounded hover:bg-slate-200 font-bold" aria-label="Diminuir">
+              −
+            </button>
+            <span className="w-10 text-center tabular-nums">{zoom}%</span>
+            <button type="button" onClick={() => setZoom((z) => Math.min(200, z + 10))} className="h-6 w-6 rounded hover:bg-slate-200 font-bold" aria-label="Aumentar">
+              +
+            </button>
+          </span>
         </div>
       )}
       <div className="flex-1 min-h-0 overflow-auto">
-        <table className="border-collapse text-[12.5px] select-text">
+        <table
+          className="border-collapse select-text"
+          style={{ tableLayout: 'fixed', fontFamily: 'Calibri, Carlito, Arial, sans-serif', fontSize: '11pt', zoom: zoom / 100 } as React.CSSProperties}
+        >
+          <colgroup>
+            <col style={{ width: 40 }} />
+            {widths.map((w, c) => (
+              <col key={c} style={{ width: w || 0, visibility: w === 0 ? 'collapse' : undefined }} />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 z-10">
             <tr>
-              <th className="sticky left-0 z-20 bg-slate-100 border border-slate-200 w-10 min-w-10" />
-              {Array.from({ length: cols }, (_, c) => (
-                <th key={c} className="bg-slate-100 border border-slate-200 px-2 py-1 font-medium text-slate-500 min-w-[90px]">
+              <th className="sticky left-0 z-20 bg-slate-100 border border-slate-300" />
+              {widths.map((w, c) => (
+                <th key={c} className="bg-slate-100 border border-slate-300 px-1 py-0.5 font-normal text-[11px] text-slate-500" style={w === 0 ? { display: 'none' } : undefined}>
                   {colName(c)}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {(sheet?.rows.length ? sheet.rows : [[]]).map((row, r) => (
-              <tr key={r}>
-                <td className="sticky left-0 bg-slate-100 border border-slate-200 px-2 text-right text-slate-500 tabular-nums">{r + 1}</td>
-                {Array.from({ length: cols }, (_, c) => {
-                  const v = row[c] || '';
-                  return (
-                    <td
-                      key={c}
-                      title={v.length > 40 ? v : undefined}
-                      className={`border border-slate-200 px-2 py-1 whitespace-nowrap overflow-hidden text-ellipsis align-top max-w-[420px] ${numeric(v) ? 'text-right tabular-nums' : ''}`}
-                    >
-                      {v}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {rows.map((row, r) => {
+              const h = sheet?.rowHeights?.[r];
+              if (h === 0) return null;
+              return (
+                <tr key={r} style={h ? { height: h } : undefined}>
+                  <td className="sticky left-0 z-[1] bg-slate-100 border border-slate-300 px-1 text-right text-[11px] text-slate-500 tabular-nums">{r + 1}</td>
+                  {widths.map((w, c) => {
+                    const key = `${r}:${c}`;
+                    if (covered.has(key) || w === 0) return null;
+                    const v = row[c] || '';
+                    const span = spanAt.get(key);
+                    const st = sheet?.styles?.[sheet?.cellStyles?.[r]?.[c] ?? -1];
+                    return (
+                      <td
+                        key={c}
+                        rowSpan={span && span.rs > 1 ? span.rs : undefined}
+                        colSpan={span && span.cs > 1 ? span.cs : undefined}
+                        title={v.length > 60 ? v : undefined}
+                        className="px-1.5 py-0.5 overflow-hidden text-ellipsis"
+                        style={cellCss(st, numeric(v), grid)}
+                      >
+                        {v}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

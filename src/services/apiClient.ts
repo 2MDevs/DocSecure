@@ -76,12 +76,30 @@ export interface ArchiveItem {
   encrypted: boolean;
   modifiedAt: string | null;
 }
+export type SheetCellStyle = {
+  b?: 1; i?: 1; u?: 1; s?: 1;
+  sz?: number;
+  font?: string;
+  color?: string;
+  bg?: string;
+  h?: 'left' | 'center' | 'right' | 'justify';
+  v?: 'top' | 'middle' | 'bottom';
+  wrap?: 1;
+  indent?: number;
+  bt?: string; bb?: string; bl?: string; br?: string;
+};
 export interface SheetPreview {
   name: string;
   rows: string[][];
   totalRows: number;
   totalCols: number;
   truncated: boolean;
+  styles?: SheetCellStyle[];
+  cellStyles?: number[][];
+  colWidths?: number[];
+  rowHeights?: Array<number | null>;
+  merges?: Array<{ r: number; c: number; rs: number; cs: number }>;
+  showGrid?: boolean;
 }
 export type DocRun = { text?: string; b?: boolean; i?: boolean; u?: boolean; s?: boolean; href?: string; img?: string; imgAlt?: string; br?: boolean };
 export type DocBlock =

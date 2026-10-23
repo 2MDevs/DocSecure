@@ -101,7 +101,100 @@ function resolvePart(baseDir: string, target: string): string {
 }
 
 // ------------------------------------------------------------------ EXCEL
-export type SheetPreview = { name: string; rows: string[][]; totalRows: number; totalCols: number; truncated: boolean };
+/** Aparência de uma célula (só valores conferidos: cores #RRGGBB, tamanhos em números) */
+export type CellStyle = {
+  b?: 1; i?: 1; u?: 1; s?: 1;
+  sz?: number; // tamanho da fonte (pt)
+  font?: string;
+  color?: string;
+  bg?: string;
+  h?: 'left' | 'center' | 'right' | 'justify';
+  v?: 'top' | 'middle' | 'bottom';
+  wrap?: 1;
+  indent?: number;
+  bt?: string; bb?: string; bl?: string; br?: string; // bordas: "1px solid #RRGGBB"
+};
+export type SheetPreview = {
+  name: string;
+  rows: string[][];
+  totalRows: number;
+  totalCols: number;
+  truncated: boolean;
+  /** Formatação como no Excel (opcional: CSV não tem) */
+  styles?: CellStyle[];
+  cellStyles?: number[][]; // índice em styles por célula (-1 = sem formatação)
+  colWidths?: number[]; // px; 0 = coluna oculta
+  rowHeights?: Array<number | null>; // px; 0 = linha oculta
+  merges?: Array<{ r: number; c: number; rs: number; cs: number }>;
+  showGrid?: boolean;
+};
+
+// Paleta "indexed" padrão do Excel
+const INDEXED = '000000,FFFFFF,FF0000,00FF00,0000FF,FFFF00,FF00FF,00FFFF,000000,FFFFFF,FF0000,00FF00,0000FF,FFFF00,FF00FF,00FFFF,800000,008000,000080,808000,800080,008080,C0C0C0,808080,9999FF,993366,FFFFCC,CCFFFF,660066,FF8080,0066CC,CCCCFF,000080,FF00FF,FFFF00,00FFFF,800080,800000,008080,0000FF,00CCFF,CCFFFF,CCFFCC,FFFF99,99CCFF,FF99CC,CC99FF,FFCC99,3366FF,33CCCC,99CC00,FFCC00,FF9900,FF6600,666699,969696,003366,339966,003300,333300,993300,993366,333399,333333'.split(',');
+
+function applyTint(hex: string, tint: number): string {
+  if (!tint) return hex;
+  const n = parseInt(hex, 16);
+  let r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, sat = 0;
+  let l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    sat = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h /= 6;
+  }
+  l = tint < 0 ? l * (1 + tint) : l * (1 - tint) + tint;
+  const hue = (p: number, q: number, t: number) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  if (sat === 0) r = g = b = l;
+  else {
+    const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat;
+    const p = 2 * l - q;
+    r = hue(p, q, h + 1 / 3);
+    g = hue(p, q, h);
+    b = hue(p, q, h - 1 / 3);
+  }
+  return [r, g, b].map((x) => Math.round(Math.min(1, Math.max(0, x)) * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+/** Cor do Excel (rgb, theme ou indexed, com tint) → #RRGGBB */
+function excelColor(node: XNode | undefined, theme: string[]): string | undefined {
+  if (!node) return undefined;
+  const a = node.attrs;
+  let hex: string | undefined;
+  if (a.rgb && /^[0-9A-Fa-f]{6,8}$/.test(a.rgb)) hex = a.rgb.slice(-6);
+  else if (a.theme !== undefined && theme[Number(a.theme)]) hex = theme[Number(a.theme)];
+  else if (a.indexed !== undefined) {
+    const i = Number(a.indexed);
+    hex = i === 64 ? '000000' : i === 65 ? 'FFFFFF' : INDEXED[i];
+  } else if (a.auto) hex = '000000';
+  if (!hex) return undefined;
+  return '#' + applyTint(hex.toUpperCase(), Number(a.tint) || 0);
+}
+
+const BORDER_CSS: Record<string, string> = {
+  thin: '1px solid',
+  hair: '1px dotted',
+  dotted: '1px dotted',
+  dashed: '1px dashed',
+  dashDot: '1px dashed',
+  dashDotDot: '1px dashed',
+  medium: '2px solid',
+  mediumDashed: '2px dashed',
+  mediumDashDot: '2px dashed',
+  mediumDashDotDot: '2px dashed',
+  slantDashDot: '2px dashed',
+  thick: '3px solid',
+  double: '3px double',
+};
 
 const MAX_ROWS = 2000;
 const MAX_COLS = 100;
@@ -192,16 +285,82 @@ export async function previewXlsx(filePath: string): Promise<{ sheets: SheetPrev
     }
   }
 
-  // Formatos de número (datas, %, moeda)
+  // Cores do tema (para "theme" nas cores)
+  const theme: string[] = [];
+  const themeXml = await read('xl/theme/theme1.xml');
+  if (themeXml) {
+    const scheme = find(parseXml(themeXml), 'clrScheme');
+    const pick = (name: string) => {
+      const n = kid(scheme, name);
+      const c = kid(n, 'srgbClr') || kid(n, 'sysClr');
+      return (c?.attrs.val && c.name.endsWith('srgbClr') ? c.attrs.val : c?.attrs.lastClr) || undefined;
+    };
+    // Ordem usada pelo Excel nos índices de tema
+    for (const name of ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink']) {
+      theme.push((pick(name) || '').toUpperCase());
+    }
+  }
+
+  // Formatos de número (datas, %, moeda) e aparência (fonte, preenchimento, bordas, alinhamento)
   const styleFormats: NumFmt[] = [];
+  const xfStyle: CellStyle[] = [];
   const stylesXml = await read('xl/styles.xml');
   if (stylesXml) {
     const styles = parseXml(stylesXml);
     const custom = new Map<number, string>();
     for (const nf of kids(find(styles, 'numFmts'), 'numFmt')) custom.set(Number(nf.attrs.numFmtId), nf.attrs.formatCode);
+    const fonts = kids(find(styles, 'fonts'), 'font');
+    const fills = kids(find(styles, 'fills'), 'fill');
+    const borders = kids(find(styles, 'borders'), 'border');
+    const defaultFont = fonts[0];
+    const defaultSize = Number(attr(kid(defaultFont, 'sz'), 'val')) || 11;
+    const defaultName = attr(kid(defaultFont, 'name'), 'val') || 'Calibri';
     for (const xf of kids(find(styles, 'cellXfs'), 'xf')) {
       const id = Number(xf.attrs.numFmtId || 0);
       styleFormats.push(describeFormat(id, custom.get(id)));
+      const st: CellStyle = {};
+      const font = fonts[Number(xf.attrs.fontId || 0)];
+      if (font) {
+        if (kid(font, 'b') && attr(kid(font, 'b'), 'val') !== '0') st.b = 1;
+        if (kid(font, 'i') && attr(kid(font, 'i'), 'val') !== '0') st.i = 1;
+        if (kid(font, 'u') && attr(kid(font, 'u'), 'val') !== 'none') st.u = 1;
+        if (kid(font, 'strike') && attr(kid(font, 'strike'), 'val') !== '0') st.s = 1;
+        const sz = Number(attr(kid(font, 'sz'), 'val'));
+        if (sz && sz !== defaultSize) st.sz = Math.min(72, Math.max(6, sz));
+        const name = attr(kid(font, 'name'), 'val');
+        if (name && name !== defaultName && /^[\w .-]{1,40}$/.test(name)) st.font = name;
+        const color = excelColor(kid(font, 'color'), theme);
+        if (color && color !== '#000000') st.color = color;
+      }
+      const fill = fills[Number(xf.attrs.fillId || 0)];
+      const pattern = kid(fill, 'patternFill');
+      if (pattern && pattern.attrs.patternType && pattern.attrs.patternType !== 'none') {
+        const bg = excelColor(kid(pattern, 'fgColor'), theme) || excelColor(kid(pattern, 'bgColor'), theme);
+        if (bg) st.bg = bg;
+      }
+      const border = borders[Number(xf.attrs.borderId || 0)];
+      if (border) {
+        for (const [side, key] of [['top', 'bt'], ['bottom', 'bb'], ['left', 'bl'], ['right', 'br']] as const) {
+          const b = kid(border, side);
+          const css = b && BORDER_CSS[b.attrs.style || ''];
+          if (css) (st as any)[key] = `${css} ${excelColor(kid(b, 'color'), theme) || '#000000'}`;
+        }
+      }
+      const al = kid(xf, 'alignment');
+      if (al) {
+        const h = al.attrs.horizontal;
+        if (h === 'center' || h === 'centerContinuous') st.h = 'center';
+        else if (h === 'right') st.h = 'right';
+        else if (h === 'justify' || h === 'distributed') st.h = 'justify';
+        else if (h === 'left') st.h = 'left';
+        const v = al.attrs.vertical;
+        st.v = v === 'top' ? 'top' : v === 'center' || v === 'distributed' || v === 'justify' ? 'middle' : undefined;
+        if (al.attrs.wrapText === '1' || al.attrs.wrapText === 'true') st.wrap = 1;
+        const ind = Number(al.attrs.indent);
+        if (ind > 0) st.indent = Math.min(ind, 15);
+      }
+      if (!st.v) delete st.v;
+      xfStyle.push(st);
     }
   }
 
@@ -215,25 +374,79 @@ export async function previewXlsx(filePath: string): Promise<{ sheets: SheetPrev
     if (!xml) continue;
 
     const rows: string[][] = [];
+    const cellStyleRows: number[][] = [];
+    const rowHeights: Array<number | null> = [];
     let maxCol = 0;
     let totalRows = 0;
     let truncated = false;
     const dim = xml.match(/<(?:\w+:)?dimension\b[^>]*ref="([A-Z]+\d+:)?([A-Z]+)(\d+)"/i);
     if (dim) totalRows = Number(dim[3]) || 0;
 
+    // Estilos usados (deduplicados por planilha)
+    const styleList: CellStyle[] = [];
+    const styleIdx = new Map<string, number>();
+    const styleOf = (s: number): number => {
+      const st = xfStyle[s];
+      if (!st || !Object.keys(st).length) return -1;
+      const key = JSON.stringify(st);
+      let i = styleIdx.get(key);
+      if (i === undefined) {
+        i = styleList.length;
+        styleList.push(st);
+        styleIdx.set(key, i);
+      }
+      return i;
+    };
+
+    // Larguras das colunas e altura padrão
+    const fmtPr = xml.match(/<(?:\w+:)?sheetFormatPr\b([^>]*)>/);
+    const fmtAttrs = fmtPr ? parseAttrs(fmtPr[1]) : {};
+    const defaultColPx = Math.round((Number(fmtAttrs.defaultColWidth) || (Number(fmtAttrs.baseColWidth) || 8) + 0.71) * 7 + 5);
+    const defaultRowPx = Math.round((Number(fmtAttrs.defaultRowHeight) || 15) * (4 / 3));
+    const colWidths: number[] = [];
+    const colStyle: number[] = [];
+    const colsBlock = xml.match(/<(?:\w+:)?cols\b[^>]*>([\s\S]*?)<\/(?:\w+:)?cols>/);
+    if (colsBlock) {
+      const re = /<(?:\w+:)?col\b([^>]*?)\/?>/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(colsBlock[1]))) {
+        const a = parseAttrs(m[1]);
+        const min = Math.max(1, Number(a.min) || 1);
+        const max = Math.min(MAX_COLS, Number(a.max) || min);
+        const px = a.hidden === '1' || a.hidden === 'true' ? 0 : a.width ? Math.round(Number(a.width) * 7 + 5) : defaultColPx;
+        for (let c = min; c <= max; c++) {
+          colWidths[c - 1] = px;
+          if (a.style) colStyle[c - 1] = Number(a.style);
+        }
+      }
+    }
+
+    // Células mescladas
+    const merges: Array<{ r: number; c: number; rs: number; cs: number }> = [];
+    const mergeRe = /<(?:\w+:)?mergeCell\b[^>]*ref="([A-Z]+)(\d+):([A-Z]+)(\d+)"/gi;
+    let mm: RegExpExecArray | null;
+    while ((mm = mergeRe.exec(xml)) && merges.length < 5000) {
+      const c = colIndex(mm[1]), r = Number(mm[2]) - 1, c2 = colIndex(mm[3]), r2 = Number(mm[4]) - 1;
+      if (r < MAX_ROWS && c < MAX_COLS) merges.push({ r, c, rs: Math.min(r2, MAX_ROWS - 1) - r + 1, cs: Math.min(c2, MAX_COLS - 1) - c + 1 });
+    }
+    const showGrid = !/<(?:\w+:)?sheetView\b[^>]*showGridLines="(0|false)"/.test(xml);
+
     const rowRe = /<(?:\w+:)?row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?row>)/g;
     let rm: RegExpExecArray | null;
     let nextRow = 0;
     while ((rm = rowRe.exec(xml))) {
-      const rAttr = rm[1].match(/\br="(\d+)"/);
-      const rowIdx = rAttr ? Number(rAttr[1]) - 1 : nextRow;
+      const ra = parseAttrs(rm[1]);
+      const rowIdx = ra.r ? Number(ra.r) - 1 : nextRow;
       nextRow = rowIdx + 1;
       totalRows = Math.max(totalRows, rowIdx + 1);
       if (rowIdx >= MAX_ROWS) {
         truncated = true;
         continue; // continua só para contar as linhas
       }
+      rowHeights[rowIdx] = ra.hidden === '1' || ra.hidden === 'true' ? 0 : ra.ht ? Math.round(Number(ra.ht) * (4 / 3)) : null;
+      const rowStyle = ra.customFormat === '1' && ra.s ? Number(ra.s) : undefined;
       const cells: string[] = [];
+      const cstyles: number[] = [];
       const cellRe = /<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g;
       let cm: RegExpExecArray | null;
       let nextCol = 0;
@@ -261,18 +474,55 @@ export async function previewXlsx(filePath: string): Promise<{ sheets: SheetPrev
           const f = body.match(/<(?:\w+:)?f\b[^>]*>([\s\S]*?)<\/(?:\w+:)?f>/);
           if (f) text = '=' + decodeEntities(f[1]);
         }
-        if (text !== '') {
+        const si = a.s !== undefined ? styleOf(Number(a.s)) : -1;
+        if (text !== '' || si >= 0) {
           while (cells.length < col) cells.push('');
+          while (cstyles.length < col) cstyles.push(-1);
           cells[col] = text;
-          maxCol = Math.max(maxCol, col + 1);
+          cstyles[col] = si;
+          if (text !== '' || xfStyle[Number(a.s)]?.bg || xfStyle[Number(a.s)]?.bt || xfStyle[Number(a.s)]?.bb) maxCol = Math.max(maxCol, col + 1);
         }
       }
+      // Linha com formatação própria vale para as células vazias dela
+      if (rowStyle !== undefined) {
+        const rs = styleOf(rowStyle);
+        if (rs >= 0) for (let c = 0; c < Math.max(cstyles.length, maxCol); c++) if (cstyles[c] === undefined || cstyles[c] === -1) cstyles[c] = rs;
+      }
       while (rows.length < rowIdx) rows.push([]);
+      while (cellStyleRows.length < rowIdx) cellStyleRows.push([]);
       rows[rowIdx] = cells;
+      cellStyleRows[rowIdx] = cstyles;
     }
-    // remove linhas vazias do fim
-    while (rows.length && !rows[rows.length - 1].some((c) => c)) rows.pop();
-    sheets.push({ name: sh.attrs.name || `Planilha ${sheets.length + 1}`, rows, totalRows, totalCols: maxCol, truncated });
+    for (const m of merges) maxCol = Math.max(maxCol, m.c + m.cs);
+    // remove linhas vazias do fim (sem texto e sem formatação)
+    while (rows.length && !rows[rows.length - 1].some((c) => c) && !(cellStyleRows[rows.length - 1] || []).some((x) => x >= 0)) {
+      rows.pop();
+      cellStyleRows.pop();
+    }
+    // Colunas com estilo próprio (ex.: coluna inteira pintada) valem para células sem estilo
+    if (colStyle.length) {
+      for (let r = 0; r < rows.length; r++) {
+        for (let c = 0; c < maxCol; c++) {
+          if (colStyle[c] !== undefined && (cellStyleRows[r][c] === undefined || cellStyleRows[r][c] === -1)) {
+            const cs = styleOf(colStyle[c]);
+            if (cs >= 0) cellStyleRows[r][c] = cs;
+          }
+        }
+      }
+    }
+    sheets.push({
+      name: sh.attrs.name || `Planilha ${sheets.length + 1}`,
+      rows,
+      totalRows,
+      totalCols: maxCol,
+      truncated,
+      styles: styleList,
+      cellStyles: cellStyleRows,
+      colWidths: Array.from({ length: maxCol }, (_, c) => colWidths[c] ?? defaultColPx),
+      rowHeights: Array.from({ length: rows.length }, (_, r) => rowHeights[r] ?? defaultRowPx),
+      merges,
+      showGrid,
+    });
   }
   if (!sheets.length) throw new Error('Nenhuma planilha visível neste arquivo.');
   return { sheets };
