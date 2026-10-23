@@ -141,7 +141,7 @@ export async function archiveItemFile(doc: DocRow, innerPath: string): Promise<{
 export async function officePdf(doc: DocRow, inner?: string): Promise<string> {
   const source = inner ? (await archiveItemFile(doc, inner)).file : await decryptedCopy(doc);
   const ext = (inner ? inner.split('.').pop() : doc.extension) || '';
-  return cached(`pdf:${doc.id}:${doc.hash_sha256}:${inner || ''}`, (dest) => convertToPdf(source, ext.toLowerCase(), dest));
+  return cached(`pdf2:${doc.id}:${doc.hash_sha256}:${inner || ''}`, (dest) => convertToPdf(source, ext.toLowerCase(), dest));
 }
 
 /** Cópias em uso (a limpeza de sobras não pode apagar) */

@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   X,
+  Maximize2,
+  Minimize2,
+  Table2,
+  FileImage,
   Download,
   ChevronLeft,
   ShieldCheck,
@@ -78,8 +82,10 @@ async function loadPreview(docId: string, kind: Kind, ext: string, inner?: strin
   if (kind === 'office') {
     try {
       const pdf = await apiClient.getOfficePdf(docId, inner);
-      const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
-      return { state: { kind: 'pdf', url }, cleanup: () => URL.revokeObjectURL(url) };
+      const raw = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+      // Planilha: a página tem a largura da aba inteira; abre ajustada à largura da tela
+      const url = ['xls', 'xlsx', 'xlsm', 'ods'].includes(ext) ? `${raw}#view=FitH` : raw;
+      return { state: { kind: 'pdf', url }, cleanup: () => URL.revokeObjectURL(raw) };
     } catch (err: any) {
       // Conversão indisponível/falhou: usa a visualização básica quando o formato permite
       const basic = kindOf(ext, Boolean(inner), 'basic');
@@ -132,7 +138,26 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   const [preview, setPreview] = useState<PreviewState>({ kind: 'loading' });
 
   const ext = (document?.extension || '').toLowerCase();
-  const previewKind = kindOf(ext, false, officeMode);
+  // Tela cheia (lembrada neste navegador)
+  const [fullscreen, setFullscreen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ds.viewer.fullscreen') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleFullscreen = () =>
+    setFullscreen((v) => {
+      try {
+        localStorage.setItem('ds.viewer.fullscreen', v ? '0' : '1');
+      } catch {}
+      return !v;
+    });
+  // Planilha com a visualização completa: "como no Excel" (PDF, uma página por aba) ou "tabela" (rolar e pesquisar)
+  const canSheetToggle = officeMode === 'full' && ['xlsx', 'xlsm'].includes(ext);
+  const [sheetMode, setSheetMode] = useState<'pdf' | 'table'>('pdf');
+  useEffect(() => setSheetMode('pdf'), [document?.id]);
+  const previewKind = canSheetToggle && sheetMode === 'table' ? 'sheet' : kindOf(ext, false, officeMode);
   // Item aberto de dentro do .zip/.rar
   const [inner, setInner] = useState<{ item: ArchiveItem; preview: PreviewState } | null>(null);
 
@@ -172,7 +197,7 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
       cancelled = true;
       cleanup?.();
     };
-  }, [isOpen, document?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, document?.id, sheetMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Abre um item de dentro do compactado
   useEffect(() => {
@@ -297,8 +322,16 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl w-full max-w-5xl h-full sm:h-[92dvh] flex flex-col shadow-2xl overflow-hidden">
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150 ${
+        fullscreen ? 'p-0' : 'p-0 sm:p-3'
+      }`}
+    >
+      <div
+        className={`bg-slate-900 flex flex-col shadow-2xl overflow-hidden w-full h-full ${
+          fullscreen ? '' : 'sm:max-w-[1600px] sm:h-[95dvh] sm:rounded-2xl sm:border border-slate-700/80'
+        }`}
+      >
         {/* Barra superior */}
         <div className="px-4 sm:px-5 py-3 bg-[#0a1222] border-b border-slate-800 flex items-center justify-between gap-3 text-white select-none">
           <div className="flex items-center gap-3 min-w-0">
@@ -321,6 +354,32 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {canSheetToggle && activeTab === 'preview' && !inner && (
+              <div className="hidden sm:flex items-center bg-slate-800/80 p-0.5 rounded-lg text-xs">
+                {([
+                  ['pdf', 'Como no Excel', FileImage],
+                  ['table', 'Tabela', Table2],
+                ] as const).map(([mode, label, Icon]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setSheetMode(mode)}
+                    title={mode === 'pdf' ? 'Igual ao arquivo original: cores, mesclagens, todas as colunas' : 'Planilha em tabela, para rolar e copiar'}
+                    className={`px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 ${sheetMode === mode ? 'bg-emerald-600 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    <Icon className="w-3.5 h-3.5" /> {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="hidden sm:inline-flex p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              title={fullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+            >
+              {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
             <div className="hidden sm:flex items-center bg-slate-800/80 p-0.5 rounded-lg text-xs">
               {(['preview', 'details'] as const).map((tab) => (
                 <button
@@ -400,12 +459,12 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
                     </button>
                   )}
                 </div>
-                <div className="flex-1 flex items-center justify-center p-3 sm:p-6 min-h-0">
+                <div className="flex-1 flex items-center justify-center p-2 sm:p-3 min-h-0">
                   {renderPreview(inner.preview, inner.item.path.split('/').pop() || '', (inner.item.path.split('.').pop() || '').toLowerCase(), true)}
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex items-center justify-center p-3 sm:p-6 min-h-0">{renderPreview(preview, document.name, ext, false)}</div>
+              <div className="flex-1 flex items-center justify-center p-2 sm:p-3 min-h-0">{renderPreview(preview, document.name, ext, false)}</div>
             )
           ) : (
             <div className="w-full max-w-2xl mx-auto p-4 sm:p-6">

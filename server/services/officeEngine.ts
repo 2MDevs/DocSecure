@@ -22,6 +22,8 @@ const UPDATE_DIR = process.env.UPDATE_STATE_DIR || path.join(APP_DIR, '.update')
 /** Formatos que a visualização completa converte para PDF */
 export const FULL_OFFICE_EXT = new Set(['doc', 'docx', 'docm', 'odt', 'rtf', 'xls', 'xlsx', 'xlsm', 'ods', 'ppt', 'pptx', 'pps', 'ppsx', 'odp']);
 const MAX_INPUT_BYTES = 150 * 1024 * 1024;
+/** Planilhas: convertidas com uma página por aba (sem quebrar colunas em folhas A4) */
+export const SHEET_EXT = new Set(['xls', 'xlsx', 'xlsm', 'ods']);
 const TIMEOUT_MS = 120_000;
 
 function readJson(file: string): any {
@@ -156,39 +158,52 @@ export function convertToPdf(srcPath: string, ext: string, destPath: string): Pr
     try {
       const input = path.join(work, `documento.${ext.replace(/[^a-z0-9]/gi, '')}`);
       fs.copyFileSync(srcPath, input);
-      await new Promise<void>((resolve, reject) => {
-        const child = spawn(
-          bin,
-          [
-            '--headless',
-            '--norestore',
-            '--nolockcheck',
-            '--nodefault',
-            '--nofirststartwizard',
-            `-env:UserInstallation=file://${work}/perfil`,
-            '--convert-to',
-            'pdf',
-            '--outdir',
-            work,
-            input,
-          ],
-          { env: { PATH: process.env.PATH || '/usr/bin:/bin', HOME: work, LANG: 'pt_BR.UTF-8' }, stdio: 'ignore', detached: true }
-        );
-        const timer = setTimeout(() => {
-          try {
-            process.kill(-child.pid!, 'SIGKILL');
-          } catch {}
-          reject(new OfficeConvertError('A conversão demorou demais. Baixe o arquivo para abrir no computador.'));
-        }, TIMEOUT_MS);
-        child.on('error', (err) => {
-          clearTimeout(timer);
-          reject(new OfficeConvertError(`Não foi possível iniciar o LibreOffice: ${err.message}`));
+      const run = (target: string) =>
+        new Promise<void>((resolve, reject) => {
+          const child = spawn(
+            bin,
+            [
+              '--headless',
+              '--norestore',
+              '--nolockcheck',
+              '--nodefault',
+              '--nofirststartwizard',
+              `-env:UserInstallation=file://${work}/perfil`,
+              '--convert-to',
+              target,
+              '--outdir',
+              work,
+              input,
+            ],
+            { env: { PATH: process.env.PATH || '/usr/bin:/bin', HOME: work, LANG: 'pt_BR.UTF-8' }, stdio: 'ignore', detached: true }
+          );
+          const timer = setTimeout(() => {
+            try {
+              process.kill(-child.pid!, 'SIGKILL');
+            } catch {}
+            reject(new OfficeConvertError('A conversão demorou demais. Baixe o arquivo para abrir no computador.'));
+          }, TIMEOUT_MS);
+          child.on('error', (err) => {
+            clearTimeout(timer);
+            reject(new OfficeConvertError(`Não foi possível iniciar o LibreOffice: ${err.message}`));
+          });
+          child.on('exit', () => {
+            clearTimeout(timer);
+            resolve();
+          });
         });
-        child.on('exit', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
+      const produced = () => {
+        const f = path.join(work, 'documento.pdf');
+        return fs.existsSync(f) && fs.statSync(f).size > 0;
+      };
+      if (SHEET_EXT.has(ext.toLowerCase())) {
+        // Planilha: cada aba numa página só, do tamanho da planilha (todas as colunas, sem cortar no A4).
+        // Versões antigas do LibreOffice (antes da 7.4) não aceitam a opção: aí converte do jeito normal.
+        await run('pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}');
+        if (!produced()) await run('pdf');
+      } else {
+        await run('pdf');
+      }
       const out = path.join(work, 'documento.pdf');
       if (!fs.existsSync(out) || fs.statSync(out).size === 0) {
         throw new OfficeConvertError('O LibreOffice não conseguiu converter este arquivo (pode estar danificado ou protegido por senha).');
