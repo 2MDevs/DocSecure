@@ -259,6 +259,10 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS email_2fa_code_hash VARCHAR(64);
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS created_by_id VARCHAR(100);
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS last_used_ip VARCHAR(100);
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS email_2fa_expires TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_attempts INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_last_sent TIMESTAMPTZ;

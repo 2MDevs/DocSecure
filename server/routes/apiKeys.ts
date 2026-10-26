@@ -2,72 +2,67 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
 import { requireAuth, requireRole } from '../auth/middleware';
+import { API_KEY_COLUMNS, API_KEY_SCOPES, generateApiKey, toApiKeyDto } from '../auth/apiKeyAuth';
+import { writeAudit } from '../services/documentAccess';
 
 export const apiKeysRouter = Router();
 
+// As chaves só são gerenciadas por quem está logado na tela (nunca por outra chave de API)
+const noApiKey = (req: Request, res: Response, next: () => void) =>
+  (req as any).apiKey ? res.status(403).json({ error: 'Chaves de API não podem gerenciar chaves de API.' }) : next();
+
+const auditCtx = (req: Request) => {
+  const u = (req as any).user;
+  return { id: u.id, name: u.name, role: u.role, departmentName: u.departmentName };
+};
+const clientIp = (req: Request) => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+
 // Listar Chaves de API
-apiKeysRouter.get('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (_req: Request, res: Response) => {
+apiKeysRouter.get('/', requireAuth, noApiKey, requireRole('DEVELOPER', 'DIRECTOR'), async (_req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query('SELECT id, name, key_preview, scopes, status, created_by, created_at, last_used_at FROM api_keys ORDER BY created_at DESC');
-    return res.json(
-      rows.map((k) => ({
-        id: k.id,
-        name: k.name,
-        keyPreview: k.key_preview,
-        scopes: k.scopes || [],
-        status: k.status,
-        createdBy: k.created_by,
-        createdAt: k.created_at,
-        lastUsedAt: k.last_used_at,
-      }))
-    );
+    const { rows } = await pool.query(`SELECT ${API_KEY_COLUMNS} FROM api_keys ORDER BY created_at DESC`);
+    return res.json(rows.map(toApiKeyDto));
   } catch (err: any) {
     console.error('[API KEYS GET ERROR]', err);
     return res.status(500).json({ error: 'Erro ao listar chaves de API.' });
   }
 });
 
-// Criar Chave de API: Gera com crypto.randomBytes e exibe a chave completa apenas uma vez
-apiKeysRouter.post('/', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
+// Criar Chave de API: gerada no servidor e mostrada completa apenas nesta resposta
+apiKeysRouter.post('/', requireAuth, noApiKey, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
   try {
-    const { name, scopes } = req.body;
-    if (!name) {
-      return res.status(400).json({ error: 'Nome da credencial é obrigatório.' });
-    }
+    const name = String(req.body?.name || '').trim().slice(0, 120);
+    if (!name) return res.status(400).json({ error: 'Nome da credencial é obrigatório.' });
+    const scopes = Array.isArray(req.body?.scopes)
+      ? [...new Set(req.body.scopes.map(String))].filter((s) => (API_KEY_SCOPES as readonly string[]).includes(s as string))
+      : [];
+    if (!scopes.length) return res.status(400).json({ error: 'Escolha pelo menos um escopo de acesso.' });
 
     const user = (req as any).user;
     const keyId = 'key-' + crypto.randomBytes(8).toString('hex');
-    const rawKey = 'dcs_live_' + crypto.randomBytes(32).toString('hex');
-    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-    const keyPreview = rawKey.substring(0, 12) + '...' + rawKey.substring(rawKey.length - 4);
+    const { rawKey, keyHash, keyPreview } = generateApiKey();
 
     await pool.query(
-      `INSERT INTO api_keys (id, name, key_preview, key_hash, scopes, status, created_by, created_at)
-       VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6, NOW())`,
-      [keyId, name, keyPreview, keyHash, scopes || ['read:documents'], user?.name || 'Administrador']
+      `INSERT INTO api_keys (id, name, key_preview, key_hash, scopes, status, created_by, created_by_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6, $7, NOW())`,
+      [keyId, name, keyPreview, keyHash, scopes, user.name, user.id]
     );
+    await writeAudit(auditCtx(req), 'API_KEY_CREATED', keyId, name, `Chave de API gerada com escopos: ${scopes.join(', ')}.`, 'SUCCESS', clientIp(req)).catch(() => {});
 
-    return res.status(201).json({
-      id: keyId,
-      name,
-      keyPreview,
-      fullKey: rawKey, // Exibida exclusivamente nesta resposta de criação
-      scopes: scopes || ['read:documents'],
-      status: 'ACTIVE',
-      createdBy: user?.name || 'Administrador',
-      createdAt: new Date().toISOString(),
-      lastUsedAt: null,
-    });
+    const { rows } = await pool.query(`SELECT ${API_KEY_COLUMNS} FROM api_keys WHERE id = $1`, [keyId]);
+    return res.status(201).json({ ...toApiKeyDto(rows[0]), fullKey: rawKey });
   } catch (err: any) {
     console.error('[API KEYS CREATE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao gerar chave de API.' });
   }
 });
 
-apiKeysRouter.post('/:id/revoke', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
+apiKeysRouter.post('/:id/revoke', requireAuth, noApiKey, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await pool.query("UPDATE api_keys SET status = 'REVOKED' WHERE id = $1", [id]);
+    const { rows } = await pool.query("UPDATE api_keys SET status = 'REVOKED', revoked_at = NOW() WHERE id = $1 RETURNING name", [id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Chave não encontrada.' });
+    await writeAudit(auditCtx(req), 'API_KEY_REVOKED', id, rows[0].name, 'Chave de API revogada: deixa de funcionar imediatamente.', 'SUCCESS', clientIp(req)).catch(() => {});
     return res.json({ success: true, message: 'Chave revogada.' });
   } catch (err: any) {
     console.error('[API KEYS REVOKE ERROR]', err);
@@ -75,7 +70,7 @@ apiKeysRouter.post('/:id/revoke', requireAuth, requireRole('DEVELOPER', 'DIRECTO
   }
 });
 
-apiKeysRouter.delete('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
+apiKeysRouter.delete('/:id', requireAuth, noApiKey, requireRole('DEVELOPER', 'DIRECTOR'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await pool.query('DELETE FROM api_keys WHERE id = $1', [id]);
@@ -84,6 +79,20 @@ apiKeysRouter.delete('/:id', requireAuth, requireRole('DEVELOPER', 'DIRECTOR'), 
     console.error('[API KEYS DELETE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao remover chave.' });
   }
+});
+
+// Teste de conexão para o outro sistema: GET /api/external/ping com a chave
+export const externalRouter = Router();
+externalRouter.get('/ping', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const key = (req as any).apiKey;
+  return res.json({
+    ok: true,
+    service: 'DocSecure',
+    key: key ? { name: key.name, scopes: key.scopes } : null,
+    actingAs: { id: user.id, name: user.name, role: user.role, department: user.departmentName },
+    time: new Date().toISOString(),
+  });
 });
 
 // Rotas de Webhooks
