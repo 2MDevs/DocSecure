@@ -330,7 +330,7 @@ async function receiveUpload(req: Request, res: Response, next: NextFunction) {
         destination: UPLOAD_TMP_DIR,
         filename: (_req, _file, cb) => cb(null, 'up-' + crypto.randomBytes(16).toString('hex')),
       }),
-      limits: { fileSize: maxBytes, files: 1, fields: 10 },
+      limits: { ...(maxBytes > 0 ? { fileSize: maxBytes } : {}), files: 1, fields: 10 },
       defParamCharset: 'utf8',
     } as any);
 
@@ -580,7 +580,7 @@ documentsRouter.post('/uploads', requireAuth, async (req: Request, res: Response
     if (BLOCKED_EXTENSIONS.has(extension)) return res.status(415).json({ error: `Arquivos .${extension} não são permitidos por segurança.` });
 
     const maxBytes = await getMaxUploadBytes();
-    if (size > maxBytes) {
+    if (maxBytes > 0 && size > maxBytes) {
       return res.status(413).json({
         error: `O arquivo tem ${formatMb(size)} e o limite atual é ${formatMb(maxBytes)} por arquivo. O desenvolvedor pode aumentar em Integração › Segurança & Sessão.`,
         code: 'FILE_TOO_LARGE',

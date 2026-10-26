@@ -15,6 +15,7 @@ import { departmentsRouter } from './server/routes/departments';
 import { foldersRouter } from './server/routes/folders';
 import { documentsRouter, startTrashPurgeJob } from './server/routes/documents';
 import { startUploadSessionCleanup } from './server/services/uploadSessions';
+import { migrateLegacyUploadLimit } from './server/services/systemSettings';
 import { previewRouter } from './server/routes/preview';
 import { startPreviewCacheCleanup } from './server/services/previewCache';
 import { ensureStorageDirs, FILES_DIR, isFileStorageReady } from './server/services/fileStorage';
@@ -116,6 +117,7 @@ async function startServer() {
     console.warn('[STORAGE] SETTINGS_ENCRYPTION_KEY ausente: envio e leitura de arquivos ficarão bloqueados até configurá-la.');
   }
   console.log(`[STORAGE] Arquivos criptografados em: ${FILES_DIR}`);
+  await migrateLegacyUploadLimit();
   startTrashPurgeJob();
   startUploadSessionCleanup();
   startPreviewCacheCleanup();
