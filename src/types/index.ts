@@ -229,12 +229,15 @@ export interface ApiKey {
   id: string;
   name: string;
   keyPreview: string;
-  keyHash: string;
+  keyHash?: string;
   scopes: string[];
   createdAt: string;
   lastUsedAt: string | null;
+  lastUsedIp?: string | null;
   status: 'ACTIVE' | 'REVOKED';
   createdBy: string;
+  /** false = chave antiga, sem dono registrado: não funciona e precisa ser gerada de novo */
+  usable?: boolean;
 }
 
 export interface WebhookConfig {

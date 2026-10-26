@@ -5,6 +5,7 @@ import { pool } from '../db';
 import { applyDeveloperDepartment } from '../services/developerDepartment';
 import { withFolderShares } from '../services/sharing';
 import { User } from '../../src/types';
+import { apiKeyFromRequest, authenticateApiKey, ApiKeyError } from './apiKeyAuth';
 
 export interface AuthenticatedRequest extends Request {
   user: User;
@@ -153,6 +154,23 @@ export async function revokeAllUserSessions(userId: string): Promise<void> {
 
 // Middleware de Autenticação Obrigatória
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // Outro sistema conectado por chave de API (cabeçalho Authorization: Bearer dcs_live_... ou X-API-Key)
+  const apiKey = apiKeyFromRequest(req);
+  if (apiKey) {
+    try {
+      const { key, userRow } = await authenticateApiKey(apiKey, req);
+      const user = await withFolderShares(sanitizeUser(await applyDeveloperDepartment(userRow)));
+      // Tudo o que a chave fizer aparece na auditoria como "Pessoa (API: nome da chave)"
+      (req as any).user = { ...user, name: `${user.name} (API: ${key.name})` };
+      (req as any).apiKey = key;
+      return next();
+    } catch (err: any) {
+      if (err instanceof ApiKeyError) return res.status(err.status).json({ error: err.message, code: 'API_KEY' });
+      console.error('[AUTH] Falha ao validar chave de API:', err?.message || err);
+      return res.status(503).json({ error: 'Banco de dados indisponível. Serviço temporariamente fora do ar.' });
+    }
+  }
+
   try {
     const token = req.cookies?.dcs_session || req.headers.authorization?.replace(/^Bearer\s+/i, '');
 

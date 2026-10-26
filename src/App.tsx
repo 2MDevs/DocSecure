@@ -1461,36 +1461,31 @@ export default function App() {
   };
 
   // API Key Creation & Revocation (Persisted to PostgreSQL)
-  const handleCreateApiKey = async (name: string, scopes: string[]) => {
-    const newKey: ApiKey = {
-      id: 'key-' + Date.now(),
-      name,
-      keyPreview: `dcs_live_••••••••${Math.random().toString(36).substring(2, 6)}`,
-      keyHash: 'hash_' + Date.now(),
-      scopes,
-      createdAt: new Date().toLocaleDateString('pt-BR'),
-      lastUsedAt: null,
-      status: 'ACTIVE',
-      createdBy: currentUser?.name || 'Administrador',
-    };
-
-    setApiKeys((prev) => [newKey, ...prev]);
-    try {
-      await apiClient.createApiKey(name, scopes, currentUser?.name || 'Administrador');
-    } catch (e) {
-      console.warn('[Create API Key Persist]', e);
-    }
-    logSecurityEvent(currentUser, 'API_KEY_CREATED', name, `Chave de API gerada com escopos: ${scopes.join(', ')}.`, 'SUCCESS');
+  const handleCreateApiKey = async (name: string, scopes: string[]): Promise<string> => {
+    // A chave é gerada no servidor; a completa vem só nesta resposta (no banco fica apenas o hash)
+    const created = await apiClient.createApiKey(name, scopes);
+    const { fullKey, ...key } = created;
+    setApiKeys((prev) => [key as ApiKey, ...prev.filter((k) => k.id !== key.id)]);
+    if (!fullKey) throw new Error('O servidor não devolveu a chave. Tente novamente.');
+    return fullKey;
   };
 
   const handleRevokeApiKey = async (keyId: string) => {
-    setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
     try {
       await apiClient.revokeApiKey(keyId);
-    } catch (e) {
-      console.warn('[Revoke API Key Persist]', e);
+      setApiKeys((prev) => prev.map((k) => (k.id === keyId ? { ...k, status: 'REVOKED' } : k)));
+    } catch (e: any) {
+      triggerAccessDenied(e?.message || 'Não foi possível revogar a chave.', 'Chave de API');
     }
-    logSecurityEvent(currentUser, 'API_KEY_REVOKED', keyId, 'Chave de API revogada no banco de dados.', 'SUCCESS');
+  };
+
+  const handleDeleteApiKey = async (keyId: string) => {
+    try {
+      await apiClient.deleteApiKey(keyId);
+      setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
+    } catch (e: any) {
+      triggerAccessDenied(e?.message || 'Não foi possível excluir a chave.', 'Chave de API');
+    }
   };
 
   // Webhook Creation (Persisted to PostgreSQL)
@@ -1857,6 +1852,7 @@ export default function App() {
               apiKeys={apiKeys}
               webhooks={webhooks}
               onCreateApiKey={handleCreateApiKey}
+              onDeleteApiKey={handleDeleteApiKey}
               onCreateWebhook={handleCreateWebhook}
               onRevokeApiKey={handleRevokeApiKey}
               dbStatus={dbStatus}

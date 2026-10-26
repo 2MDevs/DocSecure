@@ -130,3 +130,35 @@ npm start
 - **Completa:** o desenvolvedor ativa na tela e a VPS instala o LibreOffice (~500 MB de disco). Word, Excel e PowerPoint — inclusive .doc, .xls e .ppt antigos — abrem idênticos ao original (convertidos em PDF). O LibreOffice só roda durante a conversão (~200–300 MB de RAM por alguns segundos, uma conversão por vez).
 - Voltar para a básica remove só os pacotes que o DocSecure instalou (lista em `.office/packages.txt`); se outro sistema da VPS depender deles, a remoção é cancelada.
 - Usa o mesmo serviço do botão "Atualizar sistema" (`scripts/update.sh` → `scripts/office-engine.sh`). Requer VPS Debian/Ubuntu (apt).
+
+## 7. API para outros sistemas (Sistema › API & Webhooks)
+
+Outros sistemas (ex.: Gestão de Processos, ERP) se conectam ao DocSecure com uma **chave de API**.
+
+1. Em **Sistema › API & Webhooks › Nova Chave**, dê um nome (o sistema que vai usar) e marque o que ela pode fazer.
+2. A chave completa (`dcs_live_` + 64 caracteres) aparece **uma única vez**. Copie e guarde no outro sistema. No banco fica só o hash SHA-256; se perder, revogue e gere outra.
+3. O outro sistema envia a chave no cabeçalho `Authorization: Bearer dcs_live_...` (ou `X-API-Key: dcs_live_...`).
+
+A chave age com as permissões de **quem a gerou**, limitada aos escopos marcados. Se essa pessoa for bloqueada, a chave para de funcionar. Tudo o que a chave faz aparece na Auditoria como `Nome (API: nome da chave)`.
+
+| Escopo | Libera |
+|---|---|
+| `read:documents` | `GET /api/documents`, `/api/documents/:id/content` (`?download=1`), `/api/folders`, `/api/departments`, `/api/preview/*` |
+| `write:documents` | enviar (`POST /api/documents/upload`, envio em partes), renomear/mover (`PATCH`), criar pastas |
+| `delete:documents` | `DELETE /api/documents/:id`, `DELETE /api/folders/:id`, esvaziar/apagar da lixeira |
+| `read:users` | `GET /api/users` |
+| `admin:permissions` | alterar usuários e setores |
+| `export:audit` | `GET /api/audit-logs` |
+
+Login, sessão, tela Sistema, Integração, atualização, dispositivos e as próprias chaves **nunca** aceitam chave de API.
+
+```bash
+# Testar a conexão
+curl -H "Authorization: Bearer $DOCSECURE_KEY" https://seu-dominio/api/external/ping
+# Enviar um arquivo
+curl -H "Authorization: Bearer $DOCSECURE_KEY" -F "file=@contrato.pdf" -F "departmentId=ID_DO_SETOR" -F "folderId=ID_DA_PASTA" https://seu-dominio/api/documents/upload
+# Baixar
+curl -H "Authorization: Bearer $DOCSECURE_KEY" -o arquivo.pdf "https://seu-dominio/api/documents/ID/content?download=1"
+```
+
+Chaves criadas antes desta versão aparecem como "Inválida — gere outra" (a chave completa nunca foi entregue).

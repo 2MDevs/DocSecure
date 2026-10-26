@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import os from 'os';
 import fs from 'fs';
 import { pool, getDbStatus } from '../db';
+import { API_KEY_COLUMNS, toApiKeyDto } from '../auth/apiKeyAuth';
 import { requireAuth, requireRole, sanitizeUser } from '../auth/middleware';
 import { getDepartmentsWithRealStorage } from './departments';
 import { isInitialSetupModeActive } from '../services/systemSettings';
@@ -304,17 +305,8 @@ systemRouter.get('/bootstrap', requireAuth, async (req: Request, res: Response) 
     let apiKeys: any[] = [];
     let webhooks: any[] = [];
     if (isAdmin) {
-      const { rows: keyRows } = await pool.query('SELECT id, name, key_preview, scopes, status, created_by, created_at, last_used_at FROM api_keys ORDER BY created_at DESC');
-      apiKeys = keyRows.map((k) => ({
-        id: k.id,
-        name: k.name,
-        keyPreview: k.key_preview,
-        scopes: k.scopes || [],
-        status: k.status,
-        createdBy: k.created_by,
-        createdAt: k.created_at,
-        lastUsedAt: k.last_used_at,
-      }));
+      const { rows: keyRows } = await pool.query(`SELECT ${API_KEY_COLUMNS} FROM api_keys ORDER BY created_at DESC`);
+      apiKeys = keyRows.map(toApiKeyDto);
 
       const { rows: whRows } = await pool.query('SELECT * FROM webhooks ORDER BY name ASC');
       webhooks = whRows.map((w) => ({

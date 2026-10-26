@@ -930,11 +930,11 @@ export const apiClient = {
     return apiRequest<ApiKey[]>('/api/api-keys');
   },
 
-  async createApiKey(name: string, scopes: string[], createdBy?: string): Promise<ApiKey & { fullKey?: string }> {
+  async createApiKey(name: string, scopes: string[]): Promise<ApiKey & { fullKey?: string }> {
     return apiRequest<ApiKey & { fullKey?: string }>('/api/api-keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, scopes, createdBy }),
+      body: JSON.stringify({ name, scopes }),
     });
   },
 
