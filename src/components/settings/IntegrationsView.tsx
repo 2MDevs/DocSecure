@@ -63,7 +63,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
   const [smtpFrom, setSmtpFrom] = useState('');
 
   const [sessionTtlHours, setSessionTtlHours] = useState('8');
-  const [maxUploadMb, setMaxUploadMb] = useState('2048');
+  const [maxUploadMb, setMaxUploadMb] = useState('0');
   const [lockIdleMinutes, setLockIdleMinutes] = useState('10');
   const [pinMaxAttempts, setPinMaxAttempts] = useState('5');
 
@@ -157,7 +157,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
       setSmtpFrom(draft?.smtpFrom !== undefined ? draft.smtpFrom : (getVal('SMTP_FROM') || 'DocSecure <nao-responda@empresa.com.br>'));
 
       setSessionTtlHours(draft?.sessionTtlHours !== undefined ? draft.sessionTtlHours : (getVal('SESSION_TTL_HOURS') || '8'));
-      setMaxUploadMb(draft?.maxUploadMb !== undefined ? draft.maxUploadMb : (getVal('MAX_UPLOAD_MB') || '2048'));
+      setMaxUploadMb(draft?.maxUploadMb !== undefined ? draft.maxUploadMb : (getVal('MAX_UPLOAD_MB') || '0'));
       setLockIdleMinutes(getVal('LOCK_IDLE_MINUTES') || '10');
       setPinMaxAttempts(getVal('PIN_MAX_ATTEMPTS') || '5');
 
@@ -228,7 +228,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
         SMTP_USER: smtpUser,
         SMTP_FROM: smtpFrom,
         SESSION_TTL_HOURS: parseInt(sessionTtlHours, 10) || 8,
-        MAX_UPLOAD_MB: parseInt(maxUploadMb, 10) || 2048,
+        MAX_UPLOAD_MB: Math.max(0, parseInt(maxUploadMb, 10) || 0),
         LOCK_IDLE_MINUTES: Number.isFinite(parseInt(lockIdleMinutes, 10)) ? parseInt(lockIdleMinutes, 10) : 10,
         PIN_MAX_ATTEMPTS: parseInt(pinMaxAttempts, 10) || 5,
         ADMIN_EMAIL: adminEmail,
@@ -734,19 +734,19 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
             {/* MAX_UPLOAD_MB */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-slate-700">Tamanho Máximo de Upload (MB)</label>
+                <label className="text-xs font-semibold text-slate-700">Tamanho máximo por arquivo (MB, 0 = sem limite)</label>
                 {getSourceBadge('MAX_UPLOAD_MB')}
               </div>
               <input
                 type="number"
-                min="1"
+                min="0"
                 max="10240"
                 value={maxUploadMb}
                 onChange={(e) => setMaxUploadMb(e.target.value)}
                 placeholder="25"
                 className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
               />
-              <p className="text-[10px] text-slate-400 mt-1">Por arquivo. Padrão: 2048 MB (2 GB) · mínimo 1, máximo 10240 MB (10 GB). Arquivos grandes sobem em partes.</p>
+              <p className="text-[10px] text-slate-400 mt-1">Por arquivo. 0 = sem limite (padrão): vale só a quota do setor e o espaço do servidor. Ou defina até 10240 MB (10 GB).</p>
             </div>
 
             {/* LOCK_IDLE_MINUTES */}

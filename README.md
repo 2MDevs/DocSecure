@@ -21,7 +21,7 @@ cp .env.example .env
 | `NODE_ENV` | Modo de execução (`production` ou `development`) | `production` |
 | `APP_URL` | URL pública onde o sistema está hospedado | `https://docsecure.suaempresa.com.br` |
 | `SESSION_TTL_HOURS` | Tempo de expiração da sessão (renovado a cada requisição) | `8` |
-| `MAX_UPLOAD_MB` | Tamanho máximo por arquivo, em MB (1 a 10240). Arquivos grandes sobem em partes de 4 MB | `2048` |
+| `MAX_UPLOAD_MB` | Tamanho máximo por arquivo, em MB. 0 = sem limite (valem a quota do setor e o espaço do servidor). Arquivos grandes sobem em partes de 4 MB | `0` |
 | `ADMIN_EMAIL` | E-mail do primeiro administrador do sistema | `admin@suaempresa.com.br` |
 | `ADMIN_INITIAL_PASSWORD` | Senha inicial temporária (mínimo 10 caracteres, letras e números) | `TroqueMe123456` |
 | `SMTP_HOST` | Host do servidor SMTP para envio de 2FA e e-mails | `smtp.gmail.com` ou `mail.suaempresa.com.br` |
