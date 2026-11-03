@@ -764,6 +764,11 @@ documentsRouter.patch('/:id', requireAuth, async (req: Request, res: Response) =
     if (!doc || doc.status === 'trash' || docPolicyDecision(user, doc, 'view') === false) {
       return res.status(404).json({ error: 'Documento não encontrado.' });
     }
+    // Isolamento por setor: quem não pode ver o documento não recebe nem os dados dele
+    // (nome, dono, tamanho, hash). Cada operação abaixo ainda exige a sua própria permissão.
+    if (!(await can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id))) {
+      return res.status(404).json({ error: 'Documento não encontrado.' });
+    }
 
     const updates: string[] = [];
     const params: any[] = [];
