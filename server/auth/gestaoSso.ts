@@ -99,6 +99,10 @@ async function consumeJti(jti: string, exp: number) {
   if (r.rowCount === 0) throw new SsoError('Este passe de entrada já foi usado.');
 }
 
+/** Setor vazio: conta criada pelo Gestão esperando o administrador vincular a um setor. Não vê nenhuma pasta. */
+export const NO_DEPARTMENT_ID = '';
+export const NO_DEPARTMENT_NAME = 'Sem setor (aguardando)';
+
 /** Acha a conta pela ligação com o Gestão, depois pelo e-mail, depois pelo CPF. Sem conta, cria. */
 async function findOrCreateUser(g: GestaoUser): Promise<{ user: any; created: boolean }> {
   const email = (g.email || '').trim().toLowerCase();
@@ -129,15 +133,15 @@ async function findOrCreateUser(g: GestaoUser): Promise<{ user: any; created: bo
     return { user, created: false };
   }
 
-  // Conta nova: precisa de e-mail (é o login do DocSecure) e do setor das contas novas
+  // Conta nova: precisa de e-mail (é o login do DocSecure)
   if (!email) throw new SsoError('Seu usuário do Gestão não tem e-mail. Peça para incluírem o seu e-mail.', 403);
+  // Setor das contas novas, se escolhido na Integração. Sem setor: a conta nasce "Sem setor (aguardando)" e
+  // não vê nenhuma pasta até o administrador vincular a pessoa a um setor (tela Usuários).
   const departmentId = (await getEffectiveSetting('GESTAO_SSO_DEPARTMENT_ID')).value;
-  const dep = departmentId
+  const found = departmentId
     ? await pool.query('SELECT id, name FROM departments WHERE id = $1 LIMIT 1', [departmentId])
     : { rows: [] as any[] };
-  if (dep.rows.length === 0) {
-    throw new SsoError('Você ainda não tem conta no DocSecure. Peça acesso ao administrador do DocSecure.', 403);
-  }
+  const dep = found.rows[0] || { id: NO_DEPARTMENT_ID, name: NO_DEPARTMENT_NAME };
 
   const newId = 'user-' + crypto.randomBytes(8).toString('hex');
   // Senha aleatória que ninguém conhece: a pessoa entra pelo Gestão (ou usa "Esqueci minha senha")
@@ -152,7 +156,7 @@ async function findOrCreateUser(g: GestaoUser): Promise<{ user: any; created: bo
       status, password_hash, must_change_password, two_factor_enabled, permitted_folder_ids, granular_permissions,
       gestao_user_id, created_at
     ) VALUES ($1, $2, $3, $4, $5, 'EMPLOYEE', $6, $7, $8, 'ACTIVE', $9, false, true, '[]'::jsonb, '{}'::jsonb, $10, NOW())`,
-    [newId, name, email, matricula, cpf.length === 11 ? cpf : null, dep.rows[0].id, dep.rows[0].name, cargo, passwordHash, g.id]
+    [newId, name, email, matricula, cpf.length === 11 ? cpf : null, dep.id, dep.name, cargo, passwordHash, g.id]
   );
   const created = await pool.query('SELECT * FROM users WHERE id = $1', [newId]);
   return { user: created.rows[0], created: true };
@@ -221,7 +225,9 @@ gestaoSsoRouter.get('/gestao', gestaoSsoLimiter, async (req: Request, res: Respo
       user,
       created ? 'GESTAO_SSO_ACCOUNT_CREATED' : 'GESTAO_SSO_LOGIN',
       created
-        ? `Conta criada na primeira entrada pelo Gestão (pessoa ${claims.user.id}), como Colaborador no setor ${user.department_name}. Sem 2FA: autenticado pelo Gestão.`
+        ? `Conta criada na primeira entrada pelo Gestão (pessoa ${claims.user.id}), como Colaborador ${
+            user.department_id ? `no setor ${user.department_name}` : 'sem setor: aguardando o administrador vincular a um setor'
+          }. Sem 2FA: autenticado pelo Gestão.`
         : `Entrada pelo Gestão (pessoa ${claims.user.id}). Sem 2FA: autenticado pelo Gestão.${replacedTemporary ? ' Senha provisória invalidada.' : ''}`,
       req
     );

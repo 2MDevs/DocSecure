@@ -171,17 +171,17 @@ O DocSecure aparece como aplicativo no Gestão (`gestaohummm.com.br`). Quem est�
 
 - **Como entra:** o Gestão manda a pessoa para `GET /api/auth/gestao?token=...`, um passe JWT HS256 de 60 segundos, de uso único (`jti` guardado em `gestao_sso_tokens`), assinado com a chave compartilhada `GESTAO_SSO_SECRET` (cifrada com AES-256-GCM). Passe vencido, repetido ou com assinatura errada é recusado com uma página explicando.
 - **Sem 2FA:** quem vem do Gestão não recebe código por e-mail (o Gestão já autenticou). A entrada fica na auditoria como `GESTAO_SSO_LOGIN`.
-- **Qual conta:** a ligada à pessoa do Gestão (`users.gestao_user_id`); senão pelo e-mail; senão pelo CPF. Sem conta, cria uma como Colaborador no setor escolhido em "Setor das contas novas" (`GESTAO_SSO_DEPARTMENT_ID`), registrada como `GESTAO_SSO_ACCOUNT_CREATED`. Sem setor escolhido, ninguém novo é criado. Conta bloqueada não entra.
+- **Qual conta:** a ligada à pessoa do Gestão (`users.gestao_user_id`); senão pelo e-mail; senão pelo CPF. Sem conta, cria uma como Colaborador, registrada como `GESTAO_SSO_ACCOUNT_CREATED`. Se houver "Setor das contas novas" (`GESTAO_SSO_DEPARTMENT_ID`), a conta já nasce nesse setor. Sem setor escolhido (padrão), a conta nasce **"Sem setor (aguardando)"**: entra, mas não vê nenhuma pasta e recebe um aviso até o administrador vincular a pessoa a um setor em Usuários (a lista mostra o selo "Vincular a um setor"). Conta bloqueada não entra.
 - **Senha provisória:** se a conta ainda tinha senha provisória, ela deixa de valer na primeira entrada pelo Gestão. Para entrar direto no DocSecure, a pessoa usa "Esqueci minha senha".
 - **Bloqueio por inatividade:** para quem entrou pelo Gestão, a tela de bloqueio mostra "Desbloquear pelo Gestão", que abre uma sessão nova pelo Gestão.
 - **Limite:** 20 tentativas que falham a cada 15 minutos por IP (as que dão certo não contam, porque a loja toda sai pelo mesmo IP).
 - **Abrir dentro da tela do Gestão:** não é usado. Os dois sites estão em domínios diferentes e o Safari e as abas anônimas descartam o login dentro de outro site.
 
-Para ligar: no Gestão, Sistema → DocSecure → gere a chave. Aqui, em Integração → Gestão Hummm!: cole a chave, escolha o setor das contas novas, confira o endereço do Gestão, marque "Ligar" e salve. Copie o "Endereço de entrada" e cole no Gestão, ligue lá e salve.
+Para ligar: no Gestão, Sistema → DocSecure → gere a chave. Aqui, em Integração → Gestão Hummm!: cole a chave, escolha (se quiser) o setor das contas novas, confira o endereço do Gestão, marque "Ligar" e salve. Copie o "Endereço de entrada" e cole no Gestão, ligue lá e salve.
 
 | Variável / configuração | Padrão | Para que serve |
 | :--- | :--- | :--- |
 | `GESTAO_SSO_ENABLED` | `false` | Liga a entrada pelo Gestão |
 | `GESTAO_SSO_SECRET` | vazio | Chave compartilhada com o Gestão (segredo) |
-| `GESTAO_SSO_DEPARTMENT_ID` | vazio | Setor das contas criadas na primeira entrada (vazio = não cria) |
+| `GESTAO_SSO_DEPARTMENT_ID` | vazio | Setor das contas criadas na primeira entrada (vazio = conta sem setor, aguardando o administrador) |
 | `GESTAO_URL` | `https://gestaohummm.com.br` | Destino do botão "Voltar ao Gestão" |

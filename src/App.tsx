@@ -57,7 +57,7 @@ import { AuditLogsView } from './components/audit/AuditLogsView';
 import { SystemView } from './components/system/SystemView';
 import { AccountSecurity } from './components/settings/AccountSecurity';
 import { LockScreen } from './components/auth/LockScreen';
-import { GestaoReturnBar } from './components/layout/GestaoReturnBar';
+import { GestaoReturnBar, PendingSectorBanner } from './components/layout/GestaoReturnBar';
 import { startConnectivityMonitor, useConnectionStatus, canWrite } from './services/connectivity';
 import { enqueueUpload, listPendingUploads, loadPendingFile, removePendingUpload, PendingUpload } from './services/offlineQueue';
 import { IntegrationsView } from './components/settings/IntegrationsView';
@@ -1652,7 +1652,12 @@ export default function App() {
   // RESPONSIVE UNIFIED APP SHELL (Mobile-first with drawer & bottom nav, full desktop on lg+)
   return (
     <AppShell
-      gestaoBar={gestaoReturnUrl ? <GestaoReturnBar url={gestaoReturnUrl} /> : null}
+      gestaoBar={
+        <>
+          {gestaoReturnUrl ? <GestaoReturnBar url={gestaoReturnUrl} /> : null}
+          {!currentUser.departmentId && currentUser.role !== 'DEVELOPER' ? <PendingSectorBanner /> : null}
+        </>
+      }
       currentUser={currentUser}
       activeTab={activeTab}
       allowedTabs={(Object.keys(TAB_TO_PATH) as NavigationTab[]).filter((tab) => {
