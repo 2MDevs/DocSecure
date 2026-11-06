@@ -32,6 +32,11 @@ export const DEFAULT_SETTINGS: Record<string, { defaultValue: string; isSecret: 
   PIN_MAX_ATTEMPTS: { defaultValue: '5', isSecret: false },
   ADMIN_EMAIL: { defaultValue: '', isSecret: false },
   GEMINI_API_KEY: { defaultValue: '', isSecret: true },
+  // Entrada pelo Gestão Hummm! (aplicativo DocSecure no gestaohummm.com.br)
+  GESTAO_SSO_ENABLED: { defaultValue: 'false', isSecret: false },
+  GESTAO_SSO_SECRET: { defaultValue: '', isSecret: true },
+  GESTAO_SSO_DEPARTMENT_ID: { defaultValue: '', isSecret: false },
+  GESTAO_URL: { defaultValue: 'https://gestaohummm.com.br', isSecret: false },
 };
 
 // Validação com Zod
@@ -94,6 +99,24 @@ export const SettingsUpdateSchema = z.object({
       return z.string().email().safeParse(val).success;
     }, { message: 'ADMIN_EMAIL deve ser um e-mail válido.' }),
   GEMINI_API_KEY: z.string().optional(),
+  GESTAO_SSO_ENABLED: z.union([z.boolean(), z.string()]).optional().transform((val) => (val !== undefined ? String(val) : undefined)),
+  GESTAO_SSO_SECRET: z
+    .string()
+    .optional()
+    .refine((val) => !val || val.trim().length >= 32, { message: 'A chave do Gestão deve ter pelo menos 32 caracteres (copie a gerada no Gestão).' }),
+  GESTAO_SSO_DEPARTMENT_ID: z.string().max(100).optional(),
+  GESTAO_URL: z
+    .string()
+    .optional()
+    .refine((val) => {
+      if (!val || val.trim() === '') return true;
+      try {
+        const u = new URL(val);
+        return u.protocol === 'https:' && !u.username && !u.password;
+      } catch {
+        return false;
+      }
+    }, { message: 'O endereço do Gestão deve começar com https://' }),
 });
 
 // Cache em memória para funcionamento resiliente mesmo sem banco conectado

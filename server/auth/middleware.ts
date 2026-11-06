@@ -46,7 +46,7 @@ export function sanitizeUser(row: any): User {
 }
 
 // Cria uma sessão segura com cookie HttpOnly de 8 horas
-export async function createSession(userId: string, req: Request, res: Response) {
+export async function createSession(userId: string, req: Request, res: Response, options: { viaGestao?: boolean } = {}) {
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const sessionId = 'sess_' + crypto.randomBytes(16).toString('hex');
@@ -57,9 +57,9 @@ export async function createSession(userId: string, req: Request, res: Response)
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
   await pool.query(
-    `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at, last_seen_at, ip, user_agent)
-     VALUES ($1, $2, $3, NOW(), $4, NOW(), $5, $6)`,
-    [sessionId, userId, tokenHash, expiresAt, ip, userAgent]
+    `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at, last_seen_at, ip, user_agent, via_gestao)
+     VALUES ($1, $2, $3, NOW(), $4, NOW(), $5, $6, $7)`,
+    [sessionId, userId, tokenHash, expiresAt, ip, userAgent, Boolean(options.viaGestao)]
   );
 
   const isHttps = process.env.APP_URL?.startsWith('https') || process.env.NODE_ENV === 'production';
@@ -183,7 +183,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let result;
     try {
       result = await pool.query(
-        `SELECT s.id as session_id, s.expires_at, s.locked_at as session_locked_at, u.*
+        `SELECT s.id as session_id, s.expires_at, s.locked_at as session_locked_at, s.via_gestao as session_via_gestao, u.*
          FROM sessions s
          JOIN users u ON s.user_id = u.id
          WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW()
@@ -227,6 +227,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     (req as any).user = await withFolderShares(sanitizeUser(await applyDeveloperDepartment(row)));
     (req as any).sessionId = row.session_id;
     (req as any).sessionLocked = Boolean(row.session_locked_at);
+    // Sessão aberta pelo aplicativo DocSecure do Gestão Hummm! (mostra "Voltar ao Gestão")
+    (req as any).viaGestao = Boolean(row.session_via_gestao);
 
     // Sessão em modo de suspensão (bloqueada por inatividade): só libera desbloqueio, sessão e saída
     if (row.session_locked_at) {

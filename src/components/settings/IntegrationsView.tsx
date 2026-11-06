@@ -20,8 +20,10 @@ import {
   Terminal,
   HelpCircle,
   ExternalLink,
+  Link2,
+  Copy,
 } from 'lucide-react';
-import { User } from '../../types';
+import { Department, User } from '../../types';
 import { apiClient } from '../../services/apiClient';
 import { SystemUpdatePanel } from './SystemUpdatePanel';
 
@@ -70,6 +72,15 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
   const [adminEmail, setAdminEmail] = useState('');
 
   const [geminiApiKey, setGeminiApiKey] = useState('');
+
+  // Entrada pelo Gestão Hummm!
+  const [gestaoEnabled, setGestaoEnabled] = useState(false);
+  const [gestaoSecret, setGestaoSecret] = useState('');
+  const [showGestaoSecret, setShowGestaoSecret] = useState(false);
+  const [gestaoDepartmentId, setGestaoDepartmentId] = useState('');
+  const [gestaoUrl, setGestaoUrl] = useState('https://gestaohummm.com.br');
+  const [departmentsList, setDepartmentsList] = useState<Department[]>([]);
+  const [entryCopied, setEntryCopied] = useState(false);
 
   // Password / Secret states
   const [showSmtpPass, setShowSmtpPass] = useState(false);
@@ -163,6 +174,12 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
 
       setAdminEmail(draft?.adminEmail !== undefined ? draft.adminEmail : getVal('ADMIN_EMAIL'));
 
+      setGestaoEnabled(getVal('GESTAO_SSO_ENABLED') === 'true');
+      setGestaoDepartmentId(getVal('GESTAO_SSO_DEPARTMENT_ID'));
+      setGestaoUrl(getVal('GESTAO_URL') || 'https://gestaohummm.com.br');
+      setGestaoSecret('');
+      apiClient.getDepartments().then(setDepartmentsList).catch(() => setDepartmentsList([]));
+
       // Clean secret draft inputs
       setSmtpPass('');
       setGeminiApiKey('');
@@ -232,7 +249,14 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
         LOCK_IDLE_MINUTES: Number.isFinite(parseInt(lockIdleMinutes, 10)) ? parseInt(lockIdleMinutes, 10) : 10,
         PIN_MAX_ATTEMPTS: parseInt(pinMaxAttempts, 10) || 5,
         ADMIN_EMAIL: adminEmail,
+        GESTAO_SSO_ENABLED: gestaoEnabled,
+        GESTAO_SSO_DEPARTMENT_ID: gestaoDepartmentId,
+        GESTAO_URL: gestaoUrl.trim(),
       };
+
+      if (gestaoSecret && gestaoSecret.trim() !== '') {
+        payload.GESTAO_SSO_SECRET = gestaoSecret.trim();
+      }
 
       if (smtpPass && smtpPass.trim() !== '') {
         payload.SMTP_PASS = smtpPass;
@@ -384,6 +408,10 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
 
   const smtpSecret = getSecretInfo('SMTP_PASS');
   const geminiSecret = getSecretInfo('GEMINI_API_KEY');
+  const gestaoSecretInfo = getSecretInfo('GESTAO_SSO_SECRET');
+  const gestaoEntryUrl = `${window.location.origin}/api/auth/gestao`;
+  const inputCls =
+    'w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all';
 
   return (
     <div className="p-6 lg:p-8 space-y-6 max-w-6xl mx-auto animate-in fade-in select-none">
@@ -991,6 +1019,141 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
                 <span className="leading-relaxed font-medium">{geminiTestResult.message}</span>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* CARD 5: ENTRADA PELO GESTÃO HUMMM! */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between space-y-5 lg:col-span-2">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#FDF8CF] text-[#1D1D1B] flex items-center justify-center">
+                  <Link2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Gestão Hummm!</h2>
+                  <p className="text-xs text-slate-500">Entrada sem senha pelo aplicativo DocSecure do Gestão, com o botão "Voltar ao Gestão"</p>
+                </div>
+              </div>
+              <span
+                className={`px-2 py-0.5 text-[10px] rounded-md border uppercase tracking-wider ${
+                  gestaoEnabled && gestaoSecretInfo?.configured
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-slate-50 text-slate-500 border-slate-200'
+                }`}
+              >
+                {gestaoEnabled && gestaoSecretInfo?.configured ? 'Configurada' : 'Não configurada'}
+              </span>
+            </div>
+
+            <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={gestaoEnabled}
+                onChange={(e) => setGestaoEnabled(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[#1D1D1B]"
+              />
+              <span>
+                <span className="block text-xs font-semibold text-slate-800">Ligar a entrada pelo Gestão</span>
+                <span className="block text-[11px] text-slate-500">
+                  Quem está logado no Gestão entra aqui sem senha e sem código por e-mail (o Gestão já autenticou). Fica registrado na auditoria.
+                </span>
+              </span>
+            </label>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs font-semibold text-slate-700">Chave da integração</label>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800">SEGREDO</span>
+                  </div>
+                  {getSourceBadge('GESTAO_SSO_SECRET')}
+                </div>
+                <div className="relative flex items-center">
+                  <input
+                    type={showGestaoSecret ? 'text' : 'password'}
+                    value={gestaoSecret}
+                    onChange={(e) => setGestaoSecret(e.target.value)}
+                    placeholder={gestaoSecretInfo?.configured ? `•••••• ${gestaoSecretInfo.last4 || ''}` : 'Cole a chave gerada no Gestão'}
+                    className={`${inputCls} pr-20 font-mono`}
+                  />
+                  <div className="absolute right-2 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowGestaoSecret(!showGestaoSecret)}
+                      className="p-1 rounded text-slate-400 hover:text-slate-600"
+                      title={showGestaoSecret ? 'Ocultar' : 'Exibir'}
+                    >
+                      {showGestaoSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    {gestaoSecretInfo?.configured && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRemovedSecrets((prev) => [...prev, 'GESTAO_SSO_SECRET']);
+                          setGestaoSecret('');
+                        }}
+                        className="p-1 rounded text-rose-400 hover:text-rose-600 hover:bg-rose-50"
+                        title="Remover chave do banco de dados"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Gerada no Gestão em Sistema → DocSecure. {gestaoSecretInfo?.configured ? 'Salva com AES-256-GCM. Deixe vazio para manter.' : ''}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Setor das contas novas</label>
+                <select value={gestaoDepartmentId} onChange={(e) => setGestaoDepartmentId(e.target.value)} className={inputCls}>
+                  <option value="">Não criar contas (só entra quem já tem conta)</option>
+                  {departmentsList.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Quem ainda não tem conta ganha uma como Colaborador neste setor. A conta é achada antes pelo e-mail ou CPF.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Endereço do Gestão</label>
+                  {getSourceBadge('GESTAO_URL')}
+                </div>
+                <input type="url" value={gestaoUrl} onChange={(e) => setGestaoUrl(e.target.value)} className={inputCls} spellCheck={false} />
+                <p className="text-[10px] text-slate-400 mt-1">Para onde leva o botão "Voltar ao Gestão".</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Endereço de entrada (colar no Gestão)</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-mono text-slate-700 truncate">
+                    {gestaoEntryUrl}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(gestaoEntryUrl);
+                        setEntryCopied(true);
+                        window.setTimeout(() => setEntryCopied(false), 2000);
+                      } catch {}
+                    }}
+                    className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 inline-flex items-center gap-1.5"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> {entryCopied ? 'Copiado' : 'Copiar'}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">No Gestão: Sistema → DocSecure → "Endereço de entrada do DocSecure".</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db';
 import { send2FACode, sendPasswordResetEmail, maskEmail, buildPasswordLink } from '../mailer';
-import { isInitialSetupModeActive } from '../services/systemSettings';
+import { getEffectiveSetting, isInitialSetupModeActive } from '../services/systemSettings';
 import {
   requireAuth,
   sanitizeUser,
@@ -407,10 +407,18 @@ authRouter.post('/resend-2fa', authRateLimiter, async (req: Request, res: Respon
 });
 
 // 4. RETORNA USUÁRIO DA SESSÃO ATUAL (/api/auth/me)
-authRouter.get('/me', requireAuth, (req: Request, res: Response) => {
+authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
+  // Quem entrou pelo Gestão Hummm! recebe o endereço do botão "Voltar ao Gestão"
+  let gestaoReturnUrl: string | null = null;
+  if ((req as any).viaGestao) {
+    try {
+      gestaoReturnUrl = (await getEffectiveSetting('GESTAO_URL')).value || null;
+    } catch {}
+  }
   return res.json({
     user: (req as any).user,
     sessionLocked: Boolean((req as any).sessionLocked),
+    gestaoReturnUrl,
   });
 });
 
