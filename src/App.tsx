@@ -57,6 +57,7 @@ import { AuditLogsView } from './components/audit/AuditLogsView';
 import { SystemView } from './components/system/SystemView';
 import { AccountSecurity } from './components/settings/AccountSecurity';
 import { LockScreen } from './components/auth/LockScreen';
+import { GestaoReturnBar } from './components/layout/GestaoReturnBar';
 import { startConnectivityMonitor, useConnectionStatus, canWrite } from './services/connectivity';
 import { enqueueUpload, listPendingUploads, loadPendingFile, removePendingUpload, PendingUpload } from './services/offlineQueue';
 import { IntegrationsView } from './components/settings/IntegrationsView';
@@ -154,6 +155,8 @@ export function getTabFromPath(pathname: string): NavigationTab {
 export default function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Sessão aberta pelo aplicativo DocSecure do Gestão Hummm!: endereço do botão "Voltar ao Gestão"
+  const [gestaoReturnUrl, setGestaoReturnUrl] = useState<string | null>(null);
   const [sessionExpiredNotice, setSessionExpiredNotice] = useState<string | null>(null);
   const [pendingDeviceUser, setPendingDeviceUser] = useState<User | null>(null);
 
@@ -334,6 +337,7 @@ export default function App() {
         const res = await apiClient.getMe();
         if (res && res.user) {
           setCurrentUser(res.user);
+          setGestaoReturnUrl(res.gestaoReturnUrl || null);
           if (res.sessionLocked) setIsLocked(true);
           await loadBootstrapData();
         }
@@ -936,6 +940,7 @@ export default function App() {
       logSecurityEvent(currentUser, 'LOGOUT', 'Sessão Web', 'Sessão encerrada pelo usuário.', 'SUCCESS');
     }
     setCurrentUser(null);
+    setGestaoReturnUrl(null);
     navigate('/login');
   };
 
@@ -1647,6 +1652,7 @@ export default function App() {
   // RESPONSIVE UNIFIED APP SHELL (Mobile-first with drawer & bottom nav, full desktop on lg+)
   return (
     <AppShell
+      gestaoBar={gestaoReturnUrl ? <GestaoReturnBar url={gestaoReturnUrl} /> : null}
       currentUser={currentUser}
       activeTab={activeTab}
       allowedTabs={(Object.keys(TAB_TO_PATH) as NavigationTab[]).filter((tab) => {
@@ -1731,6 +1737,7 @@ export default function App() {
                 dispatchSessionExpired(msg);
               }}
               onLogout={handleLogout}
+              gestaoUrl={gestaoReturnUrl}
             />
           )}
 

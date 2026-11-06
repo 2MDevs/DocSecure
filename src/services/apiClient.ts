@@ -414,8 +414,8 @@ export const apiClient = {
     });
   },
 
-  async getMe(): Promise<{ user: User; sessionLocked?: boolean }> {
-    return apiRequest<{ user: User; sessionLocked?: boolean }>('/api/auth/me');
+  async getMe(): Promise<{ user: User; sessionLocked?: boolean; gestaoReturnUrl?: string | null }> {
+    return apiRequest<{ user: User; sessionLocked?: boolean; gestaoReturnUrl?: string | null }>('/api/auth/me');
   },
 
   // Bloqueio por inatividade e PIN

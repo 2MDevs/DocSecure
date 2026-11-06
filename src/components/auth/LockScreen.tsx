@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Lock, Loader2, LogOut, AlertTriangle } from 'lucide-react';
+import { Lock, Loader2, LogOut, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { User } from '../../types';
 import { Avatar } from '../common/Avatar';
 import { apiClient } from '../../services/apiClient';
@@ -10,13 +10,24 @@ interface LockScreenProps {
   onUnlocked: () => void;
   onForcedLogout: (message: string) => void;
   onLogout: () => void;
+  /** Sessão aberta pelo Gestão Hummm!: desbloqueia entrando de novo pelo Gestão (a pessoa pode não ter senha aqui). */
+  gestaoUrl?: string | null;
+}
+
+/** Entrada do DocSecure no Gestão: abre o DocSecure de novo, já logado (substitui a sessão bloqueada). */
+export function gestaoUnlockHref(gestaoUrl: string) {
+  try {
+    return new URL('/api/docsecure/entrar', gestaoUrl).toString();
+  } catch {
+    return gestaoUrl;
+  }
 }
 
 /**
  * Modo de suspensão: cobre toda a tela (o conteúdo fica oculto) até o usuário digitar o PIN.
  * Sem PIN cadastrado, o desbloqueio é feito com a senha.
  */
-export const LockScreen: React.FC<LockScreenProps> = ({ currentUser, hasPin, onUnlocked, onForcedLogout, onLogout }) => {
+export const LockScreen: React.FC<LockScreenProps> = ({ currentUser, hasPin, onUnlocked, onForcedLogout, onLogout, gestaoUrl }) => {
   const [secret, setSecret] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -86,7 +97,16 @@ export const LockScreen: React.FC<LockScreenProps> = ({ currentUser, hasPin, onU
           </button>
         </form>
 
-        {!hasPin && (
+        {gestaoUrl && (
+          <a
+            href={gestaoUnlockHref(gestaoUrl)}
+            className="w-full py-2.5 rounded-xl text-sm font-bold bg-[#F6D35C] text-[#1D1D1B] hover:brightness-95 inline-flex items-center justify-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" /> Desbloquear pelo Gestão
+          </a>
+        )}
+
+        {!hasPin && !gestaoUrl && (
           <p className="text-[11px] text-slate-400">
             Dica: cadastre um PIN em “Segurança da conta” para desbloquear mais rápido.
           </p>

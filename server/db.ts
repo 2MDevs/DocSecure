@@ -325,6 +325,14 @@ export async function initDatabase(): Promise<void> {
         PRIMARY KEY (user_id, document_id)
       );
       UPDATE documents SET trashed_at = updated_at WHERE status = 'trash' AND trashed_at IS NULL;
+      -- Entrada pelo Gestão Hummm!: conta ligada à pessoa do Gestão, sessão aberta por ele e passes já usados
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gestao_user_id VARCHAR(100);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_gestao_user_id ON users(gestao_user_id) WHERE gestao_user_id IS NOT NULL;
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS via_gestao BOOLEAN DEFAULT false;
+      CREATE TABLE IF NOT EXISTS gestao_sso_tokens (
+        jti VARCHAR(100) PRIMARY KEY,
+        expires_at TIMESTAMPTZ NOT NULL
+      );
     `);
 
     // 3. Criação de Índices após garantir a existência das colunas

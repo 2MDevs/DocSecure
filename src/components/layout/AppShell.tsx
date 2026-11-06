@@ -31,6 +31,8 @@ interface AppShellProps {
   onOpenLocation: (location: ExplorerLocation) => void;
   initialSetupBanner?: React.ReactNode;
   apiSyncErrorBanner?: React.ReactNode;
+  /** Barra "Voltar ao Gestão" (sessão aberta pelo Gestão Hummm!) */
+  gestaoBar?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -67,6 +69,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   onOpenLocation,
   initialSetupBanner,
   apiSyncErrorBanner,
+  gestaoBar,
   children,
 }) => {
   const [isNavOpen, setIsNavOpen] = useState(false);
@@ -76,6 +79,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   return (
     <div className="ds-app h-screen h-[100dvh] bg-[#eef1f5] text-slate-900 flex flex-col overflow-hidden">
+      {gestaoBar}
       {initialSetupBanner}
 
       <Header

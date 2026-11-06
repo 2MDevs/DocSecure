@@ -10,6 +10,7 @@ import { initDatabase, pool } from './server/db';
 import { syncDevelopersToTI } from './server/services/developerDepartment';
 import { authRouter } from './server/auth/routes';
 import { lockRouter } from './server/auth/lockRoutes';
+import { gestaoSsoRouter } from './server/auth/gestaoSso';
 import { usersRouter } from './server/routes/users';
 import { departmentsRouter } from './server/routes/departments';
 import { foldersRouter } from './server/routes/folders';
@@ -79,6 +80,8 @@ app.get('/api/health', async (_req, res) => {
 app.get('/api/events', requireAuth, eventsHandler);
 app.use(realtimeChangeNotifier);
 
+// Entrada pelo aplicativo DocSecure do Gestão Hummm! (GET /api/auth/gestao?token=...)
+app.use('/api/auth', gestaoSsoRouter);
 app.use('/api/auth', lockRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
