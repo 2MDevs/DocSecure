@@ -1108,9 +1108,9 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Setor das contas novas</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Setor das contas novas (opcional)</label>
                 <select value={gestaoDepartmentId} onChange={(e) => setGestaoDepartmentId(e.target.value)} className={inputCls}>
-                  <option value="">Não criar contas (só entra quem já tem conta)</option>
+                  <option value="">Nenhum: o administrador vincula cada pessoa a um setor</option>
                   {departmentsList.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
@@ -1118,7 +1118,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({ currentUser,
                   ))}
                 </select>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Quem ainda não tem conta ganha uma como Colaborador neste setor. A conta é achada antes pelo e-mail ou CPF.
+                  Quem ainda não tem conta ganha uma como Colaborador. Sem setor escolhido, a conta fica "Sem setor (aguardando)" e não vê nenhuma pasta até o administrador vincular a pessoa a um setor em Usuários. A conta é achada antes pelo e-mail ou CPF.
                 </p>
               </div>
 

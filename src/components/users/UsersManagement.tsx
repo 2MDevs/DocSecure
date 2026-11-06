@@ -101,7 +101,8 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
     setEditMatricula(u.matricula || '');
     setEditCargo(u.cargo || '');
     setEditRole(u.role);
-    setEditDeptId(u.departmentId || departments[0]?.id || '');
+    // Conta criada pelo Gestão sem setor: o administrador escolhe (não assume o primeiro setor da lista)
+    setEditDeptId(u.departmentId || '');
     setEditDirectorAccess(Boolean(u.directorAccess));
     setEditError(null);
   };
@@ -360,6 +361,9 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                 <div>
                   <span className="text-slate-400 block">Setor & Cargo</span>
                   <span className="font-semibold text-slate-800">{u.departmentName}</span>
+                  {!u.departmentId && (
+                    <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">Vincular a um setor</span>
+                  )}
                   <span className="text-slate-500 block">{u.cargo}</span>
                 </div>
                 <div>
@@ -488,6 +492,9 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
 
                   <td className="py-3.5 px-4">
                     <span className="font-semibold text-slate-800 block">{u.departmentName}</span>
+                    {!u.departmentId && (
+                      <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">Vincular a um setor</span>
+                    )}
                     <span className="text-[11px] text-slate-500">{u.cargo}</span>
                   </td>
 
@@ -876,11 +883,14 @@ export const UsersManagement: React.FC<UsersManagementProps> = ({
                   {departments.length === 0 ? (
                     <option value="">Geral (Sem setor cadastrado)</option>
                   ) : (
-                    departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))
+                    [
+                      ...(!editDeptId ? [<option key="__none" value="">Escolha o setor…</option>] : []),
+                      ...departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      )),
+                    ]
                   )}
                 </select>
                 {editingUser.role === 'DEVELOPER' && (
