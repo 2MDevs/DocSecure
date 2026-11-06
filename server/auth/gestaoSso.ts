@@ -75,7 +75,10 @@ export function verifyGestaoToken(token: string, secret: string, nowSeconds = Ma
   const expected = crypto.createHmac('sha256', secret).update(`${head}.${body}`).digest();
   const given = Buffer.from(sig, 'base64url');
   if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
-    throw new SsoError('Passe de entrada inválido.');
+    // Causa mais comum: a chave salva aqui não é a mesma gerada no Gestão (foi gerada outra lá, ou colada pela metade)
+    throw new SsoError(
+      'A chave da integração no DocSecure não é a mesma do Gestão. No Gestão, em Sistema → DocSecure, confira os 4 últimos caracteres da chave (ou gere uma nova) e cole a mesma chave no DocSecure, em Integração → Gestão Hummm!.'
+    );
   }
 
   if (claims?.iss !== 'gestao-hummm' || claims?.aud !== 'docsecure') throw new SsoError('Passe de entrada inválido.');
