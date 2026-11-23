@@ -586,6 +586,11 @@ export const apiClient = {
     return apiRequest<DocumentItem[]>('/api/documents');
   },
 
+  /** Endereço para baixar a pasta inteira (com subpastas) como um único .zip, em streaming. */
+  folderDownloadUrl(id: string): string {
+    return `/api/folders/${encodeURIComponent(id)}/download`;
+  },
+
   /** Conteúdo real do arquivo (descriptografado pelo servidor). download=true exige permissão de download. */
   async getDocumentContent(id: string, download = false): Promise<Blob> {
     const res = await fetch(`/api/documents/${encodeURIComponent(id)}/content${download ? '?download=1' : ''}`, {

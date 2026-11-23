@@ -144,6 +144,29 @@ export async function streamDecryptedTo(storagePath: string, res: Response): Pro
   );
 }
 
+/** Stream de leitura com o conteúdo já descriptografado (usado para montar o .zip de uma pasta). */
+export function createDecryptStream(storagePath: string): NodeJS.ReadableStream {
+  const key = getFileKey();
+  const abs = resolveStoragePath(storagePath);
+  const stat = fs.statSync(abs);
+  if (stat.size < HEADER_LEN + TAG_LEN) throw new Error('Arquivo armazenado corrompido.');
+
+  const fd = fs.openSync(abs, 'r');
+  const header = Buffer.alloc(HEADER_LEN);
+  const tag = Buffer.alloc(TAG_LEN);
+  try {
+    fs.readSync(fd, header, 0, HEADER_LEN, 0);
+    fs.readSync(fd, tag, 0, TAG_LEN, stat.size - TAG_LEN);
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (!header.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('Formato de arquivo armazenado desconhecido.');
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, header.subarray(MAGIC.length));
+  decipher.setAuthTag(tag);
+  return fs.createReadStream(abs, { start: HEADER_LEN, end: stat.size - TAG_LEN - 1 }).pipe(decipher);
+}
+
 /** Descriptografa para um arquivo temporário (usado na pré-visualização de compactados e Office). */
 export async function decryptToFile(storagePath: string, destPath: string): Promise<void> {
   const out = fs.createWriteStream(destPath, { mode: 0o600 });

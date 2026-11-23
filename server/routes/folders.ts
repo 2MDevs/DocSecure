@@ -4,6 +4,8 @@ import { pool } from '../db';
 import { decorateFolders } from '../services/sharing';
 import { requireAuth } from '../auth/middleware';
 import { canAccess, can, isDepartmentManager, roleOf, writeAudit, getClientIp, visibleFolderIds, loadFolderIndex, folderVisible, docPolicyDecision, TRASH_RETENTION_DAYS } from '../services/documentAccess';
+import { isFileStorageReady, createDecryptStream } from '../services/fileStorage';
+import { ZipStream, safeZipName } from '../services/zipWriter';
 
 export const foldersRouter = Router();
 
@@ -257,6 +259,127 @@ foldersRouter.put('/:id', requireAuth, async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[FOLDERS UPDATE ERROR]', err);
     return res.status(500).json({ error: 'Erro ao atualizar pasta.' });
+  }
+});
+
+// Baixar a pasta inteira (com subpastas) como um único .zip
+foldersRouter.get('/:id/download', requireAuth, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+  try {
+    if (!isFileStorageReady()) return res.status(503).json({ error: 'Armazenamento seguro indisponível no servidor.' });
+
+    const { rows: found } = await pool.query('SELECT * FROM folders WHERE id = $1', [id]);
+    const folder = found[0];
+    if (!folder) return res.status(404).json({ error: 'Pasta não encontrada.' });
+
+    const index = await loadFolderIndex();
+    if (!folderVisible(user, id, index)) {
+      await writeAudit(userCtx(req), 'FOLDER_DOWNLOADED', id, folder.name, 'Download da pasta negado: sem acesso.', 'DENIED', getClientIp(req));
+      return res.status(403).json({ error: 'Você não tem permissão para acessar esta pasta.' });
+    }
+
+    // A pasta e todas as subpastas que esta pessoa enxerga
+    const tree: string[] = [id];
+    for (let i = 0; i < tree.length; i++) {
+      index.forEach((f) => {
+        if (f.parent_id === tree[i] && !tree.includes(f.id) && folderVisible(user, f.id, index)) tree.push(f.id);
+      });
+    }
+
+    // Caminho de cada subpasta dentro do .zip (começando pelo nome da pasta escolhida)
+    const nameOf = (fid: string) => index.get(fid)?.name || 'pasta';
+    const relPath = (fid: string): string => {
+      const parts: string[] = [];
+      let cur: string | undefined = fid;
+      const guard = new Set<string>();
+      while (cur && !guard.has(cur)) {
+        guard.add(cur);
+        parts.unshift(nameOf(cur));
+        if (cur === id) break;
+        cur = index.get(cur)?.parent_id || undefined;
+      }
+      return parts.join('/');
+    };
+
+    const { rows: docs } = await pool.query(
+      "SELECT * FROM documents WHERE folder_id = ANY($1::text[]) AND status <> 'trash' AND storage_path IS NOT NULL ORDER BY name",
+      [tree]
+    );
+
+    // Só entram os arquivos que a pessoa pode ver E baixar (respeita a segurança de cada arquivo)
+    const canDownload = (doc: any) => {
+      const viewOk = docPolicyDecision(user, doc, 'view') !== false && can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id, index);
+      if (!viewOk) return false;
+      const policy = docPolicyDecision(user, doc, 'download');
+      if (policy === null) return can(user, 'DOWNLOAD_DOCUMENT', doc.department_id, doc.folder_id, index);
+      return policy && (can(user, 'VIEW_DOCUMENT', doc.department_id, doc.folder_id, index) || doc.owner_id === user.id || isDepartmentManager(user, doc.department_id));
+    };
+    const included = docs.filter(canDownload);
+    const skipped = docs.length - included.length;
+
+    if (included.length === 0) {
+      return res.status(404).json({
+        error: skipped > 0 ? 'Você não tem permissão para baixar os arquivos desta pasta.' : 'Esta pasta não tem arquivos para baixar.',
+      });
+    }
+
+    // Nomes repetidos na mesma pasta do .zip ganham sufixo "(1)", "(2)"…
+    const used = new Set<string>();
+    const uniquePath = (dir: string, name: string) => {
+      let full = dir ? `${dir}/${name}` : name;
+      if (!used.has(full.toLowerCase())) { used.add(full.toLowerCase()); return full; }
+      const dot = name.lastIndexOf('.');
+      const base = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : '';
+      let n = 1;
+      do {
+        full = dir ? `${dir}/${base} (${n})${ext}` : `${base} (${n})${ext}`;
+        n++;
+      } while (used.has(full.toLowerCase()));
+      used.add(full.toLowerCase());
+      return full;
+    };
+
+    const zipName = (safeZipName(folder.name) || 'pasta') + '.zip';
+    const asciiName = zipName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+    res.status(200);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(zipName)}`);
+
+    const zip = new ZipStream(res);
+    let added = 0;
+    try {
+      for (const doc of included) {
+        const dir = relPath(doc.folder_id);
+        const entry = uniquePath(dir, doc.name);
+        // Um arquivo por vez (await), para manter o uso de memória baixo mesmo com pastas grandes
+        await zip.addFile(entry, createDecryptStream(doc.storage_path), String(doc.extension || ''));
+        added++;
+      }
+    } catch (err) {
+      // Conexão caiu no meio ou arquivo corrompido: encerra sem deixar o .zip pela metade "ok"
+      console.error('[FOLDER DOWNLOAD STREAM ERROR]', err);
+      try { res.destroy(); } catch {}
+      return;
+    }
+    await zip.finish();
+
+    await writeAudit(
+      userCtx(req),
+      'FOLDER_DOWNLOADED',
+      id,
+      folder.name,
+      `Pasta baixada em .zip: ${added} arquivo(s)${skipped > 0 ? `; ${skipped} sem permissão de download ficaram de fora` : ''}.`,
+      'SUCCESS',
+      getClientIp(req)
+    );
+  } catch (err: any) {
+    console.error('[FOLDER DOWNLOAD ERROR]', err);
+    if (!res.headersSent) return res.status(500).json({ error: 'Erro ao baixar a pasta.' });
+    try { res.destroy(); } catch {}
   }
 });
 
