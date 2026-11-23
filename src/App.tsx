@@ -991,6 +991,17 @@ export default function App() {
     }
   };
 
+  // Baixar a pasta inteira como .zip. O arquivo pode ser grande (vários GB), então o navegador
+  // grava direto em disco, em streaming, sem carregar tudo na memória.
+  const handleDownloadFolder = (folder: Folder) => {
+    const element = document.createElement('a');
+    element.href = apiClient.folderDownloadUrl(folder.id);
+    element.download = `${folder.name}.zip`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   // Upload: com conexão, envia na hora (setas girando → check verde).
   // Sem conexão, guarda o arquivo criptografado neste navegador e envia quando voltar.
   const handleUploadDocument = async (
@@ -1773,6 +1784,7 @@ export default function App() {
               searchTerm={globalSearchTerm}
               onOpenDocument={(doc) => setViewingDocument(doc)}
               onDownloadDocument={handleDownloadDocument}
+              onDownloadFolder={handleDownloadFolder}
               onOpenUploadModal={(deptId, folderId) => {
                 setUploadDeptId(deptId);
                 setUploadFolderId(folderId);
@@ -1949,6 +1961,7 @@ export default function App() {
               searchTerm={globalSearchTerm}
               onOpenDocument={(doc) => setViewingDocument(doc)}
               onDownloadDocument={handleDownloadDocument}
+              onDownloadFolder={handleDownloadFolder}
               onOpenUploadModal={() => setIsUploadModalOpen(true)}
               onOpenCreateFolderModal={(deptId, parentId) => {
                 setCreateFolderDeptId(deptId);

@@ -58,6 +58,7 @@ interface DocumentsExplorerProps {
   searchTerm: string;
   onOpenDocument: (doc: DocumentItem) => void;
   onDownloadDocument: (doc: DocumentItem) => void;
+  onDownloadFolder?: (folder: Folder) => void;
   onOpenUploadModal: (deptId?: string, folderId?: string) => void;
   onOpenCreateFolderModal: (deptId?: string, parentId?: string | null) => void;
   onAccessDenied: (reason: string, resourceName: string) => void;
@@ -153,6 +154,7 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
   searchTerm,
   onOpenDocument,
   onDownloadDocument,
+  onDownloadFolder,
   onOpenUploadModal,
   onOpenCreateFolderModal,
   onAccessDenied,
@@ -1248,6 +1250,9 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
                         onClick={() => onUpdateFolder(f.id, { isPrivate: !f.isPrivate })}
                       />
                     )}
+                    {onDownloadFolder && (
+                      <MenuItem icon={<Download className="w-4 h-4" />} label="Baixar pasta (.zip)" onClick={() => onDownloadFolder(f)} />
+                    )}
                     {(manager || f.createdBy === currentUser.id) && (
                       <>
                         <div className="border-t border-slate-100 my-1" />
@@ -1404,9 +1409,12 @@ export const DocumentsExplorer: React.FC<DocumentsExplorerProps> = ({
           <button
             type="button"
             className={toolbarBtn}
-            disabled={!selectedDoc}
-            onClick={() => selectedDoc && downloadDoc(selectedDoc)}
-            title="Baixar"
+            disabled={!selectedDoc && !(selectedFolder && onDownloadFolder)}
+            onClick={() => {
+              if (selectedDoc) downloadDoc(selectedDoc);
+              else if (selectedFolder && onDownloadFolder) onDownloadFolder(selectedFolder);
+            }}
+            title={selectedFolder ? 'Baixar pasta (.zip)' : 'Baixar'}
           >
             <Download className="w-4 h-4" />
             <span className="hidden md:inline">Baixar</span>
