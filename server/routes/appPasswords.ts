@@ -201,9 +201,19 @@ New-Item -ItemType Directory -Force -Path $DsDir | Out-Null
 #    e arquivos de ate 4 GB (o padrao do Windows para este tipo de pasta e 50 MB).
 Say '  [1/3] Preparando o Windows. Clique em "Sim" se o Windows pedir permissao...' Cyan
 $admin = @'
+$p = 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters'
+if (-not (Test-Path $p)) { New-Item -Path $p | Out-Null }
+# Se a configuracao do servico tiver sido apagada (versao antiga deste conector), restaura o padrao do Windows
+if (-not (Get-ItemProperty -Path $p -Name ServiceDll -ErrorAction SilentlyContinue)) {
+  New-ItemProperty -Path $p -Name ServiceDll -PropertyType ExpandString -Value '%SystemRoot%\\System32\\webclnt.dll' -Force | Out-Null
+  $padrao = @{ ServiceDllUnloadOnStop = 1; AcceptOfficeAndTahoeServers = 1; BasicAuthLevel = 1; FileAttributesLimitInBytes = 1000000;
+               InternetServerTimeoutInSec = 30; LocalServerTimeoutInSec = 15; SendReceiveTimeOutInSec = 60;
+               ServerNotFoundCacheLifeTimeInSec = 60; SupportLocking = 1 }
+  foreach ($k in $padrao.Keys) { New-ItemProperty -Path $p -Name $k -PropertyType DWord -Value $padrao[$k] -Force | Out-Null }
+}
+# Arquivos de ate 4 GB (muda so este valor; o resto da configuracao do Windows fica como esta)
+New-ItemProperty -Path $p -Name FileSizeLimitInBytes -PropertyType DWord -Value 0xFFFFFFFF -Force | Out-Null
 sc.exe config WebClient start= auto | Out-Null
-New-Item -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters' -Force | Out-Null
-Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters' -Name FileSizeLimitInBytes -Type DWord -Value 0xFFFFFFFF
 Restart-Service -Name WebClient -Force -ErrorAction SilentlyContinue
 Start-Service -Name WebClient -ErrorAction SilentlyContinue
 '@
@@ -306,14 +316,14 @@ if (-not $ok) {
 Say ''
 Say '  [3/3] Colocando o nome, o icone e o atalho na barra lateral...' Cyan
 try {
-  New-Item -Path $MountKey -Force | Out-Null
+  if (-not (Test-Path $MountKey)) { New-Item -Path $MountKey | Out-Null }
   Set-ItemProperty -Path $MountKey -Name '_LabelFromReg' -Value 'DocSecure'
 } catch { }
 try {
   $ico = Join-Path $DsDir 'docsecure.ico'
   Invoke-WebRequest -UseBasicParsing -Uri $DsIcon -OutFile $ico
   $iconKey = "HKCU:\\Software\\Classes\\Applications\\Explorer.exe\\Drives\\$letter\\DefaultIcon"
-  New-Item -Path $iconKey -Force | Out-Null
+  if (-not (Test-Path $iconKey)) { New-Item -Path $iconKey -Force | Out-Null }
   Set-Item -Path $iconKey -Value $ico
 } catch { }
 try {
