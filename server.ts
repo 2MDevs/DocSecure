@@ -28,6 +28,9 @@ import { integrationsRouter } from './server/routes/integrations';
 import { systemUpdateRouter, startUpdateWatcher } from './server/routes/systemUpdate';
 import { eventsHandler, realtimeChangeNotifier } from './server/services/realtime';
 import { requireAuth } from './server/auth/middleware';
+import { appPasswordsRouter } from './server/routes/appPasswords';
+import { davHandler, davRootProbe, startDavHousekeeping, makeEmptyMaterializer } from './server/webdav/davServer';
+import { loadDavUserById } from './server/webdav/davAuth';
 
 dotenv.config();
 
@@ -49,6 +52,15 @@ app.use(
   })
 );
 app.disable('x-powered-by');
+
+// Pasta do DocSecure no Windows (WebDAV): fica antes dos leitores de corpo, porque o conteúdo dos
+// arquivos chega direto na requisição. O Windows também testa a raiz do site antes de conectar.
+app.use((req, res, next) => {
+  if (!davRootProbe(req, res)) next();
+});
+app.use('/dav', (req, res) => {
+  void davHandler(req, res);
+});
 
 // 2. Middlewares de Requisição
 app.use(cookieParser());
@@ -94,6 +106,7 @@ app.use('/api/devices', devicesRouter);
 app.use('/api/api-keys', apiKeysRouter);
 app.use('/api/external', externalRouter);
 app.use('/api/webhooks', webhooksRouter);
+app.use('/api/app-passwords', appPasswordsRouter);
 app.use('/api/system', systemRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/system-update', systemUpdateRouter);
@@ -125,6 +138,7 @@ async function startServer() {
   startTrashPurgeJob();
   startUploadSessionCleanup();
   startPreviewCacheCleanup();
+  startDavHousekeeping(makeEmptyMaterializer(loadDavUserById));
 
   // Integração com Frontend Vite (Dev) ou Arquivos Estáticos Compilados (Prod)
   if (!isProduction) {
@@ -157,10 +171,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[DocSecure Server] Executando em http://0.0.0.0:${PORT} (Modo: ${isProduction ? 'PRODUÇÃO' : 'DESENVOLVIMENTO'})`);
     startUpdateWatcher(); // avisa as telas abertas quando surgir versão nova no GitHub
   });
+  // Arquivos grandes pela pasta do Windows podem levar mais que os 5 minutos padrão do Node para chegar
+  server.requestTimeout = 4 * 60 * 60 * 1000;
 }
 
 startServer().catch((err) => {

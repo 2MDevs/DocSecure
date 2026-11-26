@@ -192,6 +192,18 @@ export function dispatchSessionExpired(message: string = SESSION_EXPIRED_MESSAGE
  * Helper central de requisição para todas as chamadas do apiClient.
  * Intercepta erros 401 de forma centralizada e notifica a aplicação via evento global.
  */
+export type WindowsFolderAccess = 'off' | 'developers' | 'all';
+export type AppPasswordItem = { id: string; name: string; preview: string; createdAt: string; lastUsedAt: string | null; lastUsedIp: string | null; revoked: boolean };
+export type WindowsFolderInfo = {
+  access: WindowsFolderAccess;
+  allowed: boolean;
+  canManageAccess: boolean;
+  davUrl: string;
+  secure: boolean;
+  login: string;
+  items: AppPasswordItem[];
+};
+
 export async function apiRequest<T = any>(url: string, init?: RequestInit): Promise<T> {
   const options: RequestInit = {
     credentials: 'include',
@@ -941,6 +953,35 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, scopes }),
     });
+  },
+
+  // Pasta do DocSecure no Windows (WebDAV)
+  async getWindowsFolder(): Promise<WindowsFolderInfo> {
+    return apiRequest<WindowsFolderInfo>('/api/app-passwords');
+  },
+
+  async createAppPassword(name: string, password: string): Promise<AppPasswordItem & { password: string }> {
+    return apiRequest('/api/app-passwords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, password }),
+    });
+  },
+
+  async revokeAppPassword(id: string): Promise<void> {
+    await apiRequest(`/api/app-passwords/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  async setWindowsFolderAccess(access: WindowsFolderAccess, password: string): Promise<{ access: WindowsFolderAccess }> {
+    return apiRequest('/api/app-passwords/access', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access, password }),
+    });
+  },
+
+  windowsScriptUrl(): string {
+    return '/api/app-passwords/windows-script';
   },
 
   async revokeApiKey(id: string): Promise<void> {

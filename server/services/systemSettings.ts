@@ -37,6 +37,8 @@ export const DEFAULT_SETTINGS: Record<string, { defaultValue: string; isSecret: 
   GESTAO_SSO_SECRET: { defaultValue: '', isSecret: true },
   GESTAO_SSO_DEPARTMENT_ID: { defaultValue: '', isSecret: false },
   GESTAO_URL: { defaultValue: 'https://gestaohummm.com.br', isSecret: false },
+  // Pasta do DocSecure no Windows (WebDAV): off = desligada | developers = só desenvolvedores (piloto) | all = todos
+  WEBDAV_ACCESS: { defaultValue: 'developers', isSecret: false },
 };
 
 // Validação com Zod

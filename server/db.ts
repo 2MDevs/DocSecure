@@ -263,6 +263,20 @@ export async function initDatabase(): Promise<void> {
       ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS last_used_ip VARCHAR(100);
       ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+
+      -- Senhas de aplicativo: usadas pela pasta do DocSecure no Windows (WebDAV). Só o hash fica no banco.
+      CREATE TABLE IF NOT EXISTS app_passwords (
+        id VARCHAR(100) PRIMARY KEY,
+        user_id VARCHAR(100) NOT NULL,
+        name VARCHAR(120) NOT NULL,
+        token_hash VARCHAR(64) NOT NULL UNIQUE,
+        token_preview VARCHAR(40) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ,
+        last_used_ip VARCHAR(100),
+        revoked_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_app_passwords_user ON app_passwords(user_id);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS email_2fa_expires TIMESTAMPTZ;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_attempts INT DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS two_fa_last_sent TIMESTAMPTZ;

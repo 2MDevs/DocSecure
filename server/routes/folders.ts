@@ -6,6 +6,7 @@ import { requireAuth } from '../auth/middleware';
 import { canAccess, can, isDepartmentManager, roleOf, writeAudit, getClientIp, visibleFolderIds, loadFolderIndex, folderVisible, docPolicyDecision, TRASH_RETENTION_DAYS } from '../services/documentAccess';
 import { isFileStorageReady, createDecryptStream } from '../services/fileStorage';
 import { ZipStream, safeZipName } from '../services/zipWriter';
+import { cleanFolderName } from '../services/documentRules';
 
 export const foldersRouter = Router();
 
@@ -32,13 +33,6 @@ const userCtx = (req: Request) => {
   return { id: u.id, name: u.name, role: u.role, departmentName: u.departmentName };
 };
 
-function cleanFolderName(name: unknown): string {
-  return String(name || '')
-    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 120);
-}
 
 foldersRouter.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
