@@ -185,3 +185,48 @@ Para ligar: no Gestão, Sistema → DocSecure → gere a chave. Aqui, em Integra
 | `GESTAO_SSO_SECRET` | vazio | Chave compartilhada com o Gestão (segredo) |
 | `GESTAO_SSO_DEPARTMENT_ID` | vazio | Setor das contas criadas na primeira entrada (vazio = conta sem setor, aguardando o administrador) |
 | `GESTAO_URL` | `https://gestaohummm.com.br` | Destino do botão "Voltar ao Gestão" |
+
+## 9. Pasta no Windows (Segurança da conta › Pasta no Windows)
+
+O DocSecure aparece no Explorador de Arquivos do Windows como uma unidade (ex.: **Z: DocSecure**), no **Este Computador** e no **Acesso rápido** da barra lateral. Cada pessoa vê só os setores, pastas e arquivos que pode acessar no site; o que é salvo ali vai direto para o DocSecure (criptografado, com auditoria). Não precisa instalar programa: usa o recurso de unidade de rede (WebDAV) que já vem no Windows.
+
+**Como a pessoa conecta**
+1. Em **Segurança da conta › Pasta no Windows**, gera uma **senha de aplicativo** (pede a senha atual). Ela aparece uma única vez; a senha principal nunca é digitada no Windows.
+2. Baixa o **conector** (`Conectar DocSecure.bat`) e dá dois cliques. Ele prepara o Windows (aceitar arquivos de até 4 GB — o padrão do Windows é 50 MB — pede permissão uma vez), conecta a unidade, coloca o nome e o ícone do DocSecure e fixa na barra lateral.
+3. Para desconectar: botão direito na unidade › Desconectar, e **Desconectar** o computador na mesma tela (a senha para de funcionar na hora).
+
+Sem o conector: *Este Computador › Mapear unidade de rede*, endereço `https://<dominio>/dav`, usuário = e-mail, senha = senha de aplicativo.
+
+**Regras (as mesmas do site)**
+- Setor, pasta, pastas privadas e compartilhadas, segurança de cada arquivo, extensões bloqueadas, conferência do conteúdo, quota e lixeira de 7 dias.
+- Arquivos "só visualizar" não aparecem na pasta (abrir no Windows = baixar).
+- Arquivos que a pessoa não pode alterar aparecem como **somente leitura**.
+- Salvar por cima cria **nova versão do mesmo documento**. Se a versão anterior tiver mais de 15 minutos, ela vai para a lixeira do setor ("Nome (versão de dd-mm-aaaa HHhMM)"), recuperável por 7 dias.
+- Word, Excel e PowerPoint funcionam normalmente: os arquivos temporários deles (`~$...`, `~WRD0001.tmp`...) ficam só na memória do servidor e nunca viram documentos.
+- Arquivo aberto por uma pessoa fica travado para as outras ("em uso").
+- Tudo vai para a Auditoria com o dispositivo **Pasta no Windows**. Abrir o mesmo arquivo várias vezes em 10 minutos gera um registro só.
+- 20 senhas erradas do mesmo endereço em 15 minutos bloqueiam esse endereço por 15 minutos.
+
+**Quem pode usar** (só o desenvolvedor muda, na mesma tela): `Em teste (só desenvolvedor)` (padrão), `Liberada para todos` ou `Desligada`. Valor guardado em `WEBDAV_ACCESS` (`developers` | `all` | `off`).
+
+**Na VPS (uma vez só)** — o Nginx precisa aceitar arquivos grandes em `/dav`:
+```bash
+cd /caminho/do/docsecure && sudo bash scripts/setup-webdav-nginx.sh
+```
+O script mexe só no site do Nginx que encaminha para a porta do DocSecure, faz cópia de segurança, testa com `nginx -t` e desfaz sozinho se der erro. Se preferir fazer à mão, coloque antes do `location / {` do site do DocSecure:
+```nginx
+location /dav {
+    proxy_pass http://127.0.0.1:3000;   # a mesma porta do DocSecure
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 0;
+    proxy_request_buffering off;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+O Windows só conecta este tipo de pasta por **HTTPS** (o DocSecure já usa).

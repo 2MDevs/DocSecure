@@ -13,6 +13,7 @@ import { pool } from '../db';
 import { FILES_DIR, UPLOAD_TMP_DIR } from './fileStorage';
 import { activeUploadTempFiles } from './uploadSessions';
 import { activePreviewFiles } from './previewCache';
+import { activeDavTempFiles } from '../webdav/davServer';
 
 /** Só mexe em sobras/temporários parados há pelo menos este tempo (nada que esteja sendo gravado agora) */
 const SAFE_AGE_MS = 60 * 60 * 1000;
@@ -72,7 +73,7 @@ async function doScan() {
 
   const [stored, tmp] = await Promise.all([listFiles(FILES_DIR), listFiles(UPLOAD_TMP_DIR)]);
   const now = Date.now();
-  const inUse = new Set([...activeUploadTempFiles(), ...activePreviewFiles()].map((p) => path.resolve(p)));
+  const inUse = new Set([...activeUploadTempFiles(), ...activePreviewFiles(), ...activeDavTempFiles()].map((p) => path.resolve(p)));
 
   const scan: StorageScan = {
     activeBytes: 0,

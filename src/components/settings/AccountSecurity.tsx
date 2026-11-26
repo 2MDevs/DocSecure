@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { KeyRound, Lock, ShieldCheck, Hash, Loader2, CheckCircle2, AlertTriangle, Timer, Server, Trash2 } from 'lucide-react';
 import { User } from '../../types';
 import { apiClient } from '../../services/apiClient';
+import { WindowsFolderPanel } from './WindowsFolderPanel';
 
 interface AccountSecurityProps {
   currentUser: User;
@@ -211,6 +212,9 @@ export const AccountSecurity: React.FC<AccountSecurityProps> = ({ currentUser, o
         </form>
         <FeedbackLine value={pwdFeedback} />
       </section>
+
+      {/* Pasta do DocSecure no Windows (unidade de rede) */}
+      <WindowsFolderPanel currentUser={currentUser} />
 
       {/* Informações técnicas: somente desenvolvedor */}
       {currentUser.role === 'DEVELOPER' && (
