@@ -28,7 +28,7 @@ fi
 
 echo "Procurando o site do DocSecure no Nginx (porta ${PORT})..."
 mapfile -t FILES < <(
-  grep -rlE "proxy_pass[[:space:]]+https?://(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]):${PORT}([/;[:space:]]|$)" \
+  grep -RlE "proxy_pass[[:space:]]+https?://(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]):${PORT}([/;[:space:]]|$)" \
     /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | xargs -r -n1 readlink -f | sort -u
 )
 
