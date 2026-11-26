@@ -178,6 +178,8 @@ $DsHost  = '${host}'
 $DsUrl   = '${origin}/dav'
 $DsUser  = '${scriptSafe(o.login)}'
 $DsIcon  = '${origin}/docsecure.ico'
+$DsUnc   = '\\\\${host}@SSL${port ? '@' + port : ''}\\dav'
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072 } catch { }
 $MountKey = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\##${host}@SSL${port ? '@' + port : ''}#dav'
 $DsDir   = Join-Path $env:LOCALAPPDATA 'DocSecure'
 
@@ -227,22 +229,75 @@ $drive = "$($letter):"
 Say ''
 Say "  [2/3] Conectando o DocSecure na unidade $drive" Cyan
 Say "        Usuario: $DsUser"
-Say '        Cole a SENHA DE APLICATIVO e tecle Enter (ela nao aparece na tela).'
-$sec = Read-Host '        Senha de aplicativo' -AsSecureString
-$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
-try { $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim() } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
-if (-not $plain) { Say '  Nenhuma senha informada.' Red; Fim 1 }
+Say ''
+Say '        1. No DocSecure, clique em "Copiar" ao lado da senha de aplicativo.' White
+Say '        2. Volte para esta janela e tecle Enter.' White
+Say '        O assistente pega a senha copiada sozinho: nao precisa colar.' DarkGray
+$plain = $null
+for ($try = 1; $try -le 3 -and -not $plain; $try++) {
+  [void](Read-Host '        Tecle Enter depois de copiar a senha')
+  $clip = ''
+  try { $clip = [string](Get-Clipboard -Raw) } catch { }
+  if (-not $clip) { try { Add-Type -AssemblyName System.Windows.Forms; $clip = [string][Windows.Forms.Clipboard]::GetText() } catch { } }
+  $clip = ($clip -replace '\\s', '')
+  if ($clip -match '^dsk-[A-Za-z0-9-]{20,}$') { $plain = $clip }
+  else { Say '        Nao encontrei a senha copiada. Clique em "Copiar" no DocSecure e tecle Enter de novo.' DarkYellow }
+}
+if (-not $plain) { Say '  Nao recebi a senha de aplicativo.' Red; Fim 1 }
+try { Set-Clipboard -Value ' ' } catch { }
+Say '        Senha recebida (e apagada da area de transferencia).' Green
+
+# Confere a senha direto com o DocSecure antes de ligar a unidade (mensagem clara se algo estiver errado)
+Say '        Conferindo com o DocSecure...'
+$code = 0; $why = ''
+try {
+  $pair = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($DsUser + ':' + $plain))
+  $req = [Net.WebRequest]::Create($DsUrl + '/')
+  $req.Method = 'PROPFIND'
+  $req.Headers.Add('Authorization', 'Basic ' + $pair)
+  $req.Headers.Add('Depth', '0')
+  $req.Timeout = 20000
+  $resp = $req.GetResponse(); $code = [int]$resp.StatusCode; $resp.Close()
+} catch {
+  $ex = $_.Exception
+  while ($ex -and -not ($ex -is [Net.WebException])) { $ex = $ex.InnerException }
+  if ($ex -and $ex.Response) { $code = [int]$ex.Response.StatusCode } else { $code = -1; $why = $_.Exception.Message }
+}
+if ($code -eq 401) { Say '  A senha de aplicativo nao confere. Gere outra no DocSecure (Seguranca da conta > Pasta no Windows) e rode de novo.' Red; Fim 1 }
+if ($code -eq 403) { Say '  A pasta no Windows nao esta liberada para a sua conta. Fale com o TI.' Red; Fim 1 }
+if ($code -eq 429) { Say '  Muitas tentativas erradas. Espere 15 minutos e tente de novo.' Red; Fim 1 }
+if ($code -ne 207) {
+  Say "  Nao consegui falar com $DsUrl (codigo $code). $why" Red
+  Say '  Confira se o DocSecure abre no navegador e se o servidor ja foi atualizado.' Red
+  Fim 1
+}
+Say '        Senha conferida.' Green
+
+# O Windows usa o servico WebClient para este tipo de pasta: precisa estar ligado
+$svc = Get-Service -Name WebClient -ErrorAction SilentlyContinue
+if (-not $svc) { Say '  Este Windows nao tem o servico WebClient (Cliente WebDAV), necessario para a pasta.' Red; Fim 1 }
+if ($svc.Status -ne 'Running') { try { Start-Service -Name WebClient -ErrorAction SilentlyContinue } catch { }; Start-Sleep -Seconds 2; $svc.Refresh() }
+if ($svc.Status -ne 'Running') {
+  Say '  O servico WebClient do Windows esta parado. Rode o conector de novo e clique em "Sim" quando ele pedir permissao.' Red
+  Fim 1
+}
 
 # Guarda a senha no Gerenciador de Credenciais do Windows (para reconectar sozinho ao ligar o computador)
 cmdkey.exe "/add:$DsHost" "/user:$DsUser" "/pass:$plain" | Out-Null
 $out = cmd.exe /c "net use $drive ""$DsUrl"" /user:$DsUser ""$plain"" /persistent:yes 2>&1"
 $ok = $LASTEXITCODE -eq 0
+if (-not $ok) {
+  # Segunda forma de endereco que o Windows tambem aceita
+  $out2 = cmd.exe /c "net use $drive ""$DsUnc"" /user:$DsUser ""$plain"" /persistent:yes 2>&1"
+  $ok = $LASTEXITCODE -eq 0
+  if (-not $ok) { $out = "$out $out2" }
+}
 $plain = $null
 if (-not $ok) {
   Say ''
-  Say '  Nao foi possivel conectar:' Red
+  Say '  A senha esta certa, mas o Windows nao conseguiu ligar a unidade:' Red
   Say "  $out" Red
-  Say '  Confira a senha de aplicativo e se a pasta no Windows esta liberada para voce.' Red
+  Say '  Tire um print desta tela e envie para o TI.' Red
   cmdkey.exe "/delete:$DsHost" | Out-Null
   Fim 1
 }

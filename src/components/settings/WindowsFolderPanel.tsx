@@ -258,7 +258,7 @@ export const WindowsFolderPanel: React.FC<{ currentUser: User }> = ({ currentUse
             <ul className="text-xs text-slate-600 space-y-1 list-disc pl-5">
               <li>Dê dois cliques no arquivo baixado. Se o Windows avisar, clique em <strong>Mais informações › Executar assim mesmo</strong>.</li>
               <li>Clique em <strong>Sim</strong> quando ele pedir permissão (é para aceitar arquivos grandes).</li>
-              <li>Cole a senha de aplicativo e tecle Enter. Pronto: o DocSecure aparece em <strong>Este Computador</strong> e na barra lateral.</li>
+              <li>Quando ele pedir, clique em <strong>Copiar</strong> (passo 1) e tecle <strong>Enter</strong> na janela do conector: ele pega a senha sozinho, não precisa colar. Pronto: o DocSecure aparece em <strong>Este Computador</strong> e na barra lateral.</li>
             </ul>
             <a
               href={apiClient.windowsScriptUrl()}
